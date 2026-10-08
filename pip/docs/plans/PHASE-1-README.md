@@ -50,7 +50,7 @@
 - [x] B2 Claude Code set up in the repo (plans, CLAUDE.md, agents, skill, scripts)
 - [x] B3 Milestone 0.5: second consecutive green `make all`
 - [x] B4 Milestone 0.2: `make test-fast`
-- [ ] B5 Milestone 0.6: CI green on GitHub
+- [x] B5 Milestone 0.6: CI green on GitHub (owner still to do: install Renovate, protect `main`)
 - [ ] B6 Milestone 0.7: product rename
 
 **Part C: Tier 1 exit milestones**

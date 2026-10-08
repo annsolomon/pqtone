@@ -12,12 +12,31 @@
   <properties>
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <kafka.version>3.7.1</kafka.version>
-    <jackson.version>2.17.2</jackson.version>
-    <micrometer.version>1.13.6</micrometer.version>
-    <slf4j.version>2.0.16</slf4j.version>
-    <junit.version>5.10.3</junit.version>
+    <kafka.version>3.9.2</kafka.version>
+    <jackson.version>2.21.7</jackson.version>
+    <micrometer.version>1.15.12</micrometer.version>
+    <slf4j.version>2.0.17</slf4j.version>
+    <junit.version>5.12.2</junit.version>
   </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- One Jackson version for every module (kafka-streams would otherwise pull an older jackson-annotations). -->
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>${jackson.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <!-- Security override: lz4-java 1.10.1 (via kafka-clients) has CVE-2026-106451, fixed in 1.11.4 (API compatible). -->
+      <dependency>
+        <groupId>at.yawk.lz4</groupId>
+        <artifactId>lz4-java</artifactId>
+        <version>1.11.4</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <dependencies>
     <dependency>

@@ -1,0 +1,12 @@
+{
+  "comment": "CodeQL findings reviewed and accepted. Each entry accepts at most `max` results of `rule` in `path`; anything beyond that still fails CI. Changing this file needs review like any security decision.",
+  "accepted": [
+    {
+      "rule": "java/spring-disabled-csrf-protection",
+      "path": "pip/services/event-core/src/main/java/com/pip/eventcore/config/SecurityConfig.java",
+      "max": 3,
+      "reason": "CSRF is disabled only on the three stateless chains: actuator (management port, never routed by the gateway), /v1 ingest (OAuth2 bearer JWT in the Authorization header, no cookies, SessionCreationPolicy.STATELESS) and the deny-all fallback. CSRF needs ambient credentials (cookies) to exploit; none of these chains accept them. The cookie-based console chain keeps CSRF on (CookieCsrfTokenRepository + SPA handler), and tests/http/test_console.py asserts state-changing requests without the token are rejected.",
+      "reviewed": "2026-10-09"
+    }
+  ]
+}

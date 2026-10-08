@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>3.3.5</version>
+    <version>3.5.16</version>
     <relativePath/>
   </parent>
   <groupId>com.pip</groupId>
@@ -18,7 +18,22 @@
   <properties>
     <java.version>21</java.version>
     <json-schema-validator.version>1.5.3</json-schema-validator.version>
+    <!-- Security patch overrides of Spring Boot managed versions (see docs/plans/stage0-log.md). -->
+    <jackson-bom.version>2.21.7</jackson-bom.version>
+    <postgresql.version>42.7.14</postgresql.version>
+    <tomcat.version>10.1.60</tomcat.version>
   </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- Security override: lz4-java 1.10.1 (via kafka-clients) has CVE-2026-106451, fixed in 1.11.4 (API compatible). -->
+      <dependency>
+        <groupId>at.yawk.lz4</groupId>
+        <artifactId>lz4-java</artifactId>
+        <version>1.11.4</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <dependencies>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
