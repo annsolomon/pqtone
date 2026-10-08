@@ -10,3 +10,5 @@ deploy/keycloak/generated/
 .idea/
 .vscode/
 .DS_Store
+.venv/
+.claude/settings.local.json
