@@ -16,6 +16,40 @@ concurrency:
 # clean after the March 2026 tag-hijack incident (CVE-2026-33634).
 
 jobs:
+  unit:
+    name: unit tests (make test-fast)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: pip
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: pip/services/*/pom.xml
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: pip/web/ops-console/package-lock.json
+      - name: make test-fast
+        run: |
+          make dev-setup 2>&1 | tee "$RUNNER_TEMP/test-fast.log"
+          make test-fast 2>&1 | tee -a "$RUNNER_TEMP/test-fast.log"
+      - name: Failure details
+        if: failure()
+        run: |
+          grep -nE "ERROR|FAIL|Error:|error TS|AssertionError|Tests run:.*Fail" "$RUNNER_TEMP/test-fast.log" > "$RUNNER_TEMP/test-fast-errors.log" || true
+          ../.github/scripts/annotate.sh "test-fast errors" "$RUNNER_TEMP/test-fast-errors.log" 60
+          ../.github/scripts/annotate.sh "test-fast (last lines)" "$RUNNER_TEMP/test-fast.log" 60
+
   pipeline:
     name: build, test, score, e2e
     runs-on: ubuntu-24.04
@@ -41,7 +75,8 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
-          output: ${{ runner.temp }}/trivy-event-core.txt
+          format: json
+          output: ${{ runner.temp }}/trivy-event-core.json
       - name: Scan rules-engine image
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
@@ -50,17 +85,18 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
-          output: ${{ runner.temp }}/trivy-rules-engine.txt
+          format: json
+          output: ${{ runner.temp }}/trivy-rules-engine.json
       - name: Failure details
         if: failure()
         run: |
           docker compose --env-file .env -f deploy/compose/docker-compose.yml logs --no-color --tail=300 \
             > "$RUNNER_TEMP/stack.log" 2>&1 || true
           cat "$RUNNER_TEMP/stack.log"
-          ../.github/scripts/annotate.sh "make all (last lines)" "$RUNNER_TEMP/make-all.log" 150
-          ../.github/scripts/annotate.sh "stack logs (last lines)" "$RUNNER_TEMP/stack.log" 150
-          ../.github/scripts/annotate.sh "trivy event-core" "$RUNNER_TEMP/trivy-event-core.txt" 150
-          ../.github/scripts/annotate.sh "trivy rules-engine" "$RUNNER_TEMP/trivy-rules-engine.txt" 150
+          ../.github/scripts/annotate.sh "make all (last lines)" "$RUNNER_TEMP/make-all.log" 60
+          grep -E "ERROR|Exception|FATAL|panic" "$RUNNER_TEMP/stack.log" | grep -v "^grafana" > "$RUNNER_TEMP/stack-errors.log" || true
+          ../.github/scripts/annotate.sh "stack errors" "$RUNNER_TEMP/stack-errors.log" 40
+          python3 ../.github/scripts/trivy-summary.py "$RUNNER_TEMP/trivy-event-core.json" "$RUNNER_TEMP/trivy-rules-engine.json"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -96,10 +132,11 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
-          output: ${{ runner.temp }}/trivy-fs.txt
+          format: json
+          output: ${{ runner.temp }}/trivy-fs.json
       - name: Failure details
         if: failure()
-        run: .github/scripts/annotate.sh "trivy fs" "$RUNNER_TEMP/trivy-fs.txt" 150
+        run: python3 .github/scripts/trivy-summary.py "$RUNNER_TEMP/trivy-fs.json"
 
   # Private repositories without GitHub Advanced Security cannot upload to code scanning,
   # so results stay in the run: high and critical findings fail the job, and the SARIF is

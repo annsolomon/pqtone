@@ -60,6 +60,8 @@ def main(argv: list[str]) -> int:
     if summary:
         with open(summary, "a", encoding="utf-8") as fh:
             fh.write("```\n" + "\n".join(lines) + "\n```\n")
+    for sev, rule, loc in blocking[:9]:
+        print(f"::error title=codeql {rule}::security-severity {sev} at {loc}")
     return 1 if blocking else 0
 
 

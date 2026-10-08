@@ -8,7 +8,8 @@ if [ ! -s "$file" ]; then
   echo "annotate: $file is missing or empty"
   exit 0
 fi
-body=$(tail -n "$max" "$file" | cut -c1-400 | sed -e 's/\x1b\[[0-9;]*[A-Za-z]//g')
+# Annotation messages are cut at about 4 KB, so keep the end of the file within that.
+body=$(tail -n "$max" "$file" | cut -c1-300 | sed -e 's/\x1b\[[0-9;]*[A-Za-z]//g' | tail -c 3300)
 # Workflow-command escaping: % first, then CR and LF.
 body=${body//'%'/'%25'}
 body=${body//$'\r'/'%0D'}
