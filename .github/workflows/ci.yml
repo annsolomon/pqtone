@@ -59,6 +59,11 @@ jobs:
         working-directory: pip
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Free disk space
+        # The hosted runner starts with ~10 GB free; the stack, images and reports need more.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
       - name: make all
         run: make all SEED=42 2>&1 | tee "$RUNNER_TEMP/make-all.log"
       - name: Quality report
@@ -128,7 +133,7 @@ jobs:
       - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           scan-type: fs
-          scanners: vuln,misconfig,secret
+          scanners: vuln,misconfig   # secrets: gitleaks (secret scan job)
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
@@ -169,4 +174,4 @@ jobs:
           path: codeql-results
           if-no-files-found: warn
       - name: Fail on high or critical findings
-        run: python3 .github/scripts/sarif-gate.py codeql-results 7.0
+        run: python3 .github/scripts/sarif-gate.py codeql-results 7.0 .github/codeql-accepted.json

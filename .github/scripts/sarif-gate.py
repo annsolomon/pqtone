@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Fail when a SARIF report has findings at or above a CVSS-style security severity.
 
-Usage: sarif-gate.py <dir-with-sarif-files> <min-severity, e.g. 7.0>
+Usage: sarif-gate.py <dir-with-sarif-files> <min-severity, e.g. 7.0> [accepted.json]
 
 CodeQL tags security queries with properties["security-severity"] (0-10). Results whose
 rule has no security severity (quality queries) are listed but never fail the gate.
+Reviewed findings can be accepted in a JSON file (rule, path, max, reason); each entry
+accepts at most `max` matching results, so a new occurrence still fails.
 """
 from __future__ import annotations
 
@@ -42,19 +44,32 @@ def findings(path: Path) -> list[tuple[float | None, str, str]]:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 3:
+    if len(argv) not in (3, 4):
         print(__doc__, file=sys.stderr)
         return 2
     root, threshold = Path(argv[1]), float(argv[2])
+    accepted = json.loads(Path(argv[3]).read_text(encoding="utf-8"))["accepted"] if len(argv) == 4 else []
+    budget = {(a["rule"], a["path"]): int(a["max"]) for a in accepted}
     files = sorted(root.rglob("*.sarif"))
     if not files:
         print(f"no SARIF files under {root}", file=sys.stderr)
         return 2
     rows = [r for f in files for r in findings(f)]
-    blocking = [r for r in rows if r[0] is not None and r[0] >= threshold]
-    lines = [f"CodeQL: {len(rows)} result(s), {len(blocking)} at security severity >= {threshold}"]
+    blocking, accepted_rows = [], []
+    for r in rows:
+        if r[0] is None or r[0] < threshold:
+            continue
+        key = (r[1], r[2].rsplit(":", 1)[0])
+        if budget.get(key, 0) > 0:
+            budget[key] -= 1
+            accepted_rows.append(r)
+        else:
+            blocking.append(r)
+    lines = [f"CodeQL: {len(rows)} result(s), {len(blocking)} blocking and {len(accepted_rows)} accepted "
+             f"at security severity >= {threshold}"]
     for sev, rule, loc in sorted(rows, key=lambda r: -(r[0] or 0)):
-        lines.append(f"  {'BLOCK' if (sev or 0) >= threshold else 'info '} {sev if sev is not None else '-':>4} {rule} {loc}")
+        tag = "BLOCK" if (sev, rule, loc) in blocking else "accpt" if (sev, rule, loc) in accepted_rows else "info "
+        lines.append(f"  {tag} {sev if sev is not None else '-':>4} {rule} {loc}")
     print("\n".join(lines))
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:

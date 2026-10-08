@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Condense Trivy JSON reports into one line per finding and surface them as annotations.
+"""Condense Trivy JSON reports (vulnerabilities and misconfigurations) into one line per finding.
+
+Secret scanning is gitleaks' job (the secret scan CI job), so it is not repeated here.
 
 Usage: trivy-summary.py <report.json> [<report.json> ...]
 
-Prints every vulnerability, misconfiguration and secret as a single line, writes the
+Prints every vulnerability and failed misconfiguration check as a single line, writes the
 list to the job summary, and emits it as GitHub error annotations (split into chunks,
 because annotation messages are truncated at about 4 KB). Exit code is always 0: the
 Trivy step itself decides pass or fail; this script only makes the result readable.
@@ -33,9 +35,6 @@ def lines_for(report: Path) -> list[str]:
         for m in res.get("Misconfigurations", []) or []:
             if m.get("Status") == "FAIL":
                 out.append(f'{m.get("Severity", "?"):8} {m.get("ID", "?"):16} {m.get("Title", "")} [{target}]')
-        for s in res.get("Secrets", []) or []:
-            out.append(f'{s.get("Severity", "?"):8} {s.get("RuleID", "?"):16} {s.get("Title", "")} '
-                       f'[{target}:{s.get("StartLine", "?")}]')
     return out
 
 
