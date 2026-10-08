@@ -28,3 +28,4 @@ What had to change to make Tier 1 run for real, and why.
 | 2026-10-09 | 0.6 | CI frees runner disk before `make all` | Redpanda raised a storage alert at 6.7% free on the hosted runner |
 | 2026-10-09 | 0.6 | rules-engine imports `jackson-bom`; both services pin `at.yawk.lz4:lz4-java` 1.11.4 | kafka-streams pulled an older jackson-annotations (NoClassDefFound `JsonSerializeAs` in the image build); lz4-java CVE-2026-106451 |
 | 2026-10-09 | 0.6 | `.trivyignore`: CVE-2026-47884, CVE-2026-47890 until 2026-12-31 (ADR-026) | Spring Framework 6.2 is out of OSS support; neither CVE is reachable (no XsltView, no view-fragment SSE). Spring Boot 4 migration planned before the pilot |
+| 2026-10-09 | 0.6 | event-core pins Tomcat 10.1.61 (Boot 3.5.16 ships 10.1.55) | CRITICAL CVE-2026-65182, CVE-2026-65905, CVE-2026-68525, fixed in 10.1.58 |
