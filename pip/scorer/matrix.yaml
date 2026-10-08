@@ -1,0 +1,11 @@
+# Scenario x seed matrix scored on every PR (offline, no Kafka). Keep seeds fixed.
+seeds: [11, 42, 1337]
+scenarios:
+  - baseline
+  - rush_hour
+  - register_delay
+  - restricted_dwell
+  - duplicates
+  - out_of_order
+  - late_beyond_grace
+  - malformed

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests", ":dependencyDashboard"],
+  "docker-compose": {"enabled": true},
+  "dockerfile": {"pinDigests": true},
+  "packageRules": [
+    {"matchUpdateTypes": ["patch"], "matchManagers": ["npm", "pep621", "maven"], "automerge": true},
+    {"matchPackageNames": ["org.apache.kafka:kafka-streams", "org.apache.kafka:kafka-streams-test-utils"], "groupName": "kafka streams"}
+  ],
+  "vulnerabilityAlerts": {"labels": ["security"], "schedule": ["at any time"]}
+}

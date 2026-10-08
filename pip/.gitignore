@@ -1,0 +1,12 @@
+.env
+.work/
+deploy/keycloak/generated/
+**/target/
+**/node_modules/
+**/dist/
+**/__pycache__/
+**/.pytest_cache/
+*.egg-info/
+.idea/
+.vscode/
+.DS_Store

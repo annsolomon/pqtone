@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pip.local/store/queue.joined/1.0.0",
+  "title": "com.pip.store.queue.joined data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "queueId",
+    "trackId"
+  ],
+  "properties": {
+    "queueId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,64}$"
+    },
+    "trackId": {
+      "type": "string",
+      "pattern": "^trk-[a-z0-9]{1,32}$"
+    }
+  }
+}

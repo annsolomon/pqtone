@@ -1,0 +1,26 @@
+{
+  "name": "pip",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "hostRequirements": { "cpus": 2, "memory": "8gb" },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": { "moby": false },
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "21",
+      "jdkDistro": "tem",
+      "installMaven": true,
+      "mavenVersion": "3.9.9"
+    },
+    "ghcr.io/devcontainers/features/node:1": { "version": "22" },
+    "ghcr.io/devcontainers/features/python:1": { "version": "3.12" },
+    "ghcr.io/devcontainers/features/git-lfs:1": {},
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "forwardPorts": [8080, 3000, 9090, 16686],
+  "portsAttributes": {
+    "8080":  { "label": "console (gateway)", "onAutoForward": "notify" },
+    "3000":  { "label": "grafana",           "onAutoForward": "silent" },
+    "9090":  { "label": "prometheus",        "onAutoForward": "silent" },
+    "16686": { "label": "jaeger",            "onAutoForward": "silent" }
+  }
+}

@@ -1,0 +1,6 @@
+name: rush_hour
+duration: PT2H
+arrivals:
+  - {from: PT0S,  to: PT30M, perHour: 90}
+  - {from: PT30M, to: PT90M, perHour: 260}
+  - {from: PT90M, to: PT2H,  perHour: 90}

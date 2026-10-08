@@ -1,0 +1,24 @@
+[project]
+name = "store-sim"
+version = "1.0.0"
+description = "Deterministic discrete-event retail simulator emitting CloudEvents and ground truth"
+requires-python = ">=3.12"
+dependencies = [
+  "numpy==2.1.2",
+  "PyYAML==6.0.2",
+  "confluent-kafka==2.6.0",
+  "requests==2.32.3",
+]
+
+[project.optional-dependencies]
+test = ["pytest==8.3.3", "jsonschema==4.23.0"]
+
+[project.scripts]
+store-sim = "store_sim.cli:main"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["store_sim*"]

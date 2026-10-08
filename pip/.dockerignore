@@ -1,0 +1,12 @@
+.git
+.github
+.env
+.work
+docs
+deploy/keycloak/generated
+**/target
+**/node_modules
+**/dist
+**/__pycache__
+**/.pytest_cache
+**/*.egg-info

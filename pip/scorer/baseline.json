@@ -1,0 +1,114 @@
+{
+  "baseline": {
+    "R-ABS-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-DWELL-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-QUEUE-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
+  "duplicates": {
+    "R-ABS-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-DWELL-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-QUEUE-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
+  "late_beyond_grace": {
+    "R-ABS-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-DWELL-001": {
+      "precision": 0.6667,
+      "recall": 1.0
+    },
+    "R-QUEUE-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
+  "malformed": {
+    "R-ABS-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-DWELL-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-QUEUE-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
+  "out_of_order": {
+    "R-ABS-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-DWELL-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-QUEUE-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
+  "register_delay": {
+    "R-ABS-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-DWELL-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-QUEUE-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
+  "restricted_dwell": {
+    "R-ABS-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-DWELL-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-QUEUE-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
+  "rush_hour": {
+    "R-ABS-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-DWELL-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-QUEUE-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  }
+}

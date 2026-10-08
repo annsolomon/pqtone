@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "types": [
+    {
+      "type": "com.pip.store.zone.entered",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pip.local/store/zone.entered/1.0.0",
+          "file": "data/store.zone.entered-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^track:trk-[a-z0-9]{1,32}$"
+    },
+    {
+      "type": "com.pip.store.zone.exited",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pip.local/store/zone.exited/1.0.0",
+          "file": "data/store.zone.exited-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^track:trk-[a-z0-9]{1,32}$"
+    },
+    {
+      "type": "com.pip.store.queue.joined",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pip.local/store/queue.joined/1.0.0",
+          "file": "data/store.queue.joined-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^queue:[a-z0-9-]{1,64}$"
+    },
+    {
+      "type": "com.pip.store.queue.left",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pip.local/store/queue.left/1.0.0",
+          "file": "data/store.queue.left-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^queue:[a-z0-9-]{1,64}$"
+    },
+    {
+      "type": "com.pip.store.queue.length",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pip.local/store/queue.length/1.0.0",
+          "file": "data/store.queue.length-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^queue:[a-z0-9-]{1,64}$"
+    },
+    {
+      "type": "com.pip.store.register.opened",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pip.local/store/register.opened/1.0.0",
+          "file": "data/store.register.opened-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^register:[a-z0-9-]{1,64}$"
+    },
+    {
+      "type": "com.pip.store.register.closed",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pip.local/store/register.closed/1.0.0",
+          "file": "data/store.register.closed-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^register:[a-z0-9-]{1,64}$"
+    },
+    {
+      "type": "com.pip.store.clock.tick",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pip.local/store/clock.tick/1.0.0",
+          "file": "data/store.clock.tick-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^store$"
+    }
+  ]
+}

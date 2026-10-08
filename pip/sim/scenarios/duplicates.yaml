@@ -1,0 +1,7 @@
+name: duplicates
+description: 5% exact duplicates. event-core dedup must make this indistinguishable from baseline.
+duration: PT2H
+arrivals:
+  - {from: PT0S, to: PT2H, perHour: 130}
+faults:
+  duplicates: {rate: 0.05}

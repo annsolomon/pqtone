@@ -1,0 +1,172 @@
+openapi: 3.1.0
+info:
+  title: PIP event-core
+  version: 1.0.0
+  description: |
+    Ingest gate for CloudEvents and the operations-console API (BFF).
+    Errors use RFC 9457 problem details (application/problem+json) with a stable `code`.
+servers:
+  - url: http://localhost:8080
+components:
+  securitySchemes:
+    clientCredentials:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /auth/realms/pip/protocol/openid-connect/token
+          scopes: {}
+    session:
+      type: apiKey
+      in: cookie
+      name: PIPSESSION
+      description: Server-side session from the OIDC login at /oauth2/authorization/keycloak. State-changing calls also need the X-XSRF-TOKEN header (value of the XSRF-TOKEN cookie).
+  schemas:
+    Problem:
+      type: object
+      properties:
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        code: {type: string}
+        errors: {type: array, items: {type: string}}
+    CloudEvent:
+      $ref: ../../schemas/envelope.schema.json
+    IngestResult:
+      type: object
+      properties:
+        status: {type: string, enum: [accepted, duplicate]}
+        source: {type: string}
+        id: {type: string}
+    Incident:
+      type: object
+      properties:
+        incidentId: {type: string, format: uuid}
+        ruleId: {type: string}
+        ruleVersion: {type: string}
+        mode: {type: string, enum: [enforce, shadow]}
+        storeId: {type: string}
+        simRunId: {type: [string, "null"]}
+        key: {type: string}
+        subject: {type: [string, "null"]}
+        severity: {type: string, enum: [low, medium, high]}
+        summary: {type: string}
+        onsetAt: {type: string, format: date-time}
+        detectedAt: {type: string, format: date-time}
+        resolvedAt: {type: [string, "null"], format: date-time}
+        status: {type: string, enum: [OPEN, ACKNOWLEDGED, CONFIRMED, DISMISSED, AUTO_RESOLVED, CLOSED]}
+        version: {type: integer}
+paths:
+  /v1/events:
+    post:
+      summary: Ingest one event
+      security: [{clientCredentials: []}]
+      requestBody:
+        required: true
+        content:
+          application/cloudevents+json:
+            schema: {$ref: "#/components/schemas/CloudEvent"}
+      responses:
+        "202": {description: Accepted, content: {application/json: {schema: {$ref: "#/components/schemas/IngestResult"}}}}
+        "200": {description: Duplicate of an already accepted event (idempotent success)}
+        "400": {description: Contract violation, content: {application/problem+json: {schema: {$ref: "#/components/schemas/Problem"}}}}
+        "401": {description: Missing or invalid token}
+        "403": {description: Client may not publish for this source}
+        "409": {description: Same (source, id) already accepted with a different payload}
+        "413": {description: Event larger than 64 KiB}
+        "415": {description: Wrong content type}
+        "429": {description: Rate limited; see Retry-After}
+  /v1/events/batch:
+    post:
+      summary: Ingest up to 500 events; per-item results
+      security: [{clientCredentials: []}]
+      requestBody:
+        required: true
+        content:
+          application/cloudevents-batch+json:
+            schema: {type: array, maxItems: 500, items: {$ref: "#/components/schemas/CloudEvent"}}
+      responses:
+        "200":
+          description: Per-item status accepted | duplicate | conflict | invalid | forbidden
+  /api/me:
+    get: {summary: Current user and roles, security: [{session: []}], responses: {"200": {description: OK}, "401": {description: Not signed in}}}
+  /api/stores:
+    get: {summary: Known stores, security: [{session: []}], responses: {"200": {description: OK}}}
+  /api/stores/{storeId}/layout:
+    get:
+      summary: Floor plan
+      security: [{session: []}]
+      parameters: [{name: storeId, in: path, required: true, schema: {type: string, pattern: "^[a-z0-9-]{1,64}$"}}]
+      responses: {"200": {description: OK}, "404": {description: Unknown store}}
+  /api/stores/{storeId}/state:
+    get:
+      summary: Current occupancy and queue state for the store's latest run
+      security: [{session: []}]
+      parameters: [{name: storeId, in: path, required: true, schema: {type: string}}]
+      responses: {"200": {description: OK}}
+  /api/events/recent:
+    get:
+      summary: Most recent events for a store
+      security: [{session: []}]
+      parameters:
+        - {name: storeId, in: query, required: true, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, maximum: 200, default: 50}}
+      responses: {"200": {description: OK}}
+  /api/stream:
+    get:
+      summary: Server-sent events (hello, events, incident)
+      security: [{session: []}]
+      responses: {"200": {description: text/event-stream}}
+  /api/pipeline/health:
+    get: {summary: Rules-engine liveness from heartbeats, security: [{session: []}], responses: {"200": {description: ok or degraded}}}
+  /api/incidents:
+    get:
+      summary: List incidents (shadow mode requires admin)
+      security: [{session: []}]
+      parameters:
+        - {name: mode, in: query, schema: {type: string, enum: [enforce, shadow], default: enforce}}
+        - {name: status, in: query, description: comma-separated, schema: {type: string}}
+        - {name: storeId, in: query, schema: {type: string}}
+        - {name: ruleId, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, maximum: 500, default: 100}}
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Incident"}}}}}
+        "403": {description: Shadow incidents need admin}
+  /api/incidents/{id}:
+    get:
+      summary: Incident with review history; ETag carries the version
+      security: [{session: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses: {"200": {description: OK}, "404": {description: Not found}}
+  /api/incidents/{id}/actions:
+    post:
+      summary: Review action (ack = operator; confirm, dismiss, close = reviewer)
+      security: [{session: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: If-Match, in: header, required: true, schema: {type: string}}
+        - {name: X-XSRF-TOKEN, in: header, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: {type: string, enum: [ack, confirm, dismiss, close]}
+                reasonCode: {type: string, enum: [FALSE_POSITIVE, DUPLICATE, EXPECTED_BEHAVIOUR, TEST_EVENT, OTHER]}
+                note: {type: string, maxLength: 500}
+      responses:
+        "200": {description: Updated incident; new ETag}
+        "400": {description: Missing reason or invalid action}
+        "403": {description: Role or CSRF failure}
+        "409": {description: Invalid transition or shadow incident}
+        "412": {description: Stale If-Match}
+        "428": {description: If-Match missing}
+  /api/admin/audit:
+    get: {summary: Recent audit entries (admin), security: [{session: []}], responses: {"200": {description: OK}}}
+  /api/admin/audit/verify:
+    get: {summary: Recompute the hash chain (admin), security: [{session: []}], responses: {"200": {description: "{valid, rows, brokenAtSeq?}"}}}
+  /logout:
+    post: {summary: End the session; returns the IdP end-session URL, security: [{session: []}], responses: {"200": {description: "{logoutUrl}"}}}

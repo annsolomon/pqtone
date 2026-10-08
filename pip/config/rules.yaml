@@ -1,0 +1,29 @@
+# Rule definitions. Single source of truth for rules-engine AND the simulator's
+# ground-truth reference. Changes go through PR review (see docs/ARCHITECTURE.md §8.4).
+grace: PT30S
+rules:
+  - id: R-QUEUE-001
+    version: 1.0.0
+    mode: enforce          # enforce | shadow | off
+    severity: medium
+    params:
+      threshold: 6         # queue length at or above this is a breach
+      sustain: PT60S       # breach must hold this long before an incident opens
+      hysteresis: 2        # clears only when length <= threshold - hysteresis
+      clearSustain: PT30S  # ...for this long
+  - id: R-DWELL-001
+    version: 1.0.0
+    mode: enforce
+    severity: low
+    params:
+      zones: [fitting-rooms]
+      limit: PT600S
+      sessionTtl: PT4H
+  - id: R-ABS-001
+    version: 1.0.0
+    mode: shadow
+    severity: high
+    params:
+      trigger: R-QUEUE-001
+      expect: com.pip.store.register.opened
+      within: PT300S

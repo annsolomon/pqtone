@@ -1,0 +1,9 @@
+name: register_delay
+description: Staff react slowly to long queues, so the absence rule should escalate.
+duration: PT2H
+arrivals:
+  - {from: PT0S,  to: PT2H, perHour: 150}
+staffing:
+  initialOpen: 1
+  reactionMin: PT380S
+  reactionMax: PT600S

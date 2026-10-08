@@ -1,0 +1,14 @@
+# Quality gates. Metrics are aggregated per (scenario, rule) across all seeds.
+matching:
+  toleranceBefore: PT30S   # an incident may be detected up to this long before ground truth
+  maxLatency: PT120S       # ...or up to this long after
+defaults:
+  R-QUEUE-001: {precision: 0.95, recall: 0.95, latencyP95: PT5S}
+  R-DWELL-001: {precision: 0.95, recall: 0.95, latencyP95: PT5S}
+  R-ABS-001:   {precision: 0.90, recall: 0.95, latencyP95: PT5S}
+scenarios:
+  # Events beyond grace are dropped by design; this scenario measures degradation.
+  late_beyond_grace:
+    "*": {precision: 0.50, recall: 0.50, latencyP95: PT120S}
+regression:
+  maxDropPp: 2.0           # vs scorer/baseline.json when present

@@ -1,0 +1,45 @@
+# Each alert links to a runbook in docs/runbooks.
+groups:
+  - name: pip-pipeline
+    rules:
+      - alert: RulesEngineHeartbeatStale
+        expr: time() - max(pip_rules_heartbeat_last_seconds) > 60
+        for: 1m
+        labels: {severity: page}
+        annotations:
+          summary: rules-engine has not emitted a heartbeat for over a minute
+          runbook: docs/runbooks/RB-01-pipeline-stalled.md
+      - alert: RulesEngineDown
+        expr: up{job="rules-engine"} == 0
+        for: 2m
+        labels: {severity: page}
+        annotations: {summary: rules-engine is not scrapeable, runbook: docs/runbooks/RB-01-pipeline-stalled.md}
+      - alert: EventCoreDown
+        expr: up{job="event-core"} == 0
+        for: 2m
+        labels: {severity: page}
+        annotations: {summary: event-core is not scrapeable, runbook: docs/runbooks/RB-02-ingest-down.md}
+      - alert: OutboxBacklogGrowing
+        expr: pip_outbox_unpublished_rows > 5000
+        for: 5m
+        labels: {severity: ticket}
+        annotations: {summary: validated events are not reaching Kafka, runbook: docs/runbooks/RB-03-outbox-backlog.md}
+      - alert: DeadLetterSpike
+        expr: sum(rate(pip_dlq_events_total[5m])) > 1
+        for: 5m
+        labels: {severity: ticket}
+        annotations: {summary: more than 1 event/s rejected to the DLQ, runbook: docs/runbooks/RB-04-dlq-spike.md}
+      - alert: ConflictingDuplicates
+        expr: sum(increase(pip_ingest_events_total{result="conflict"}[15m])) > 0
+        labels: {severity: ticket}
+        annotations: {summary: a producer reused an event id with a different payload, runbook: docs/runbooks/RB-05-conflicting-duplicates.md}
+      - alert: LateEventsHigh
+        expr: sum(rate(pip_rules_events_late_total[10m])) / clamp_min(sum(rate(pip_rules_events_received_total[10m])), 1) > 0.01
+        for: 10m
+        labels: {severity: ticket}
+        annotations: {summary: more than 1% of events arrive after the watermark, runbook: docs/runbooks/RB-06-late-events.md}
+      - alert: IngestErrorsHigh
+        expr: sum(rate(http_server_requests_seconds_count{uri=~"/v1/events.*",status=~"5.."}[5m])) > 0.1
+        for: 5m
+        labels: {severity: page}
+        annotations: {summary: ingest API returning server errors, runbook: docs/runbooks/RB-02-ingest-down.md}

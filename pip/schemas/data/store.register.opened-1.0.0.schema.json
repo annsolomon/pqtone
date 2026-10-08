@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pip.local/store/register.opened/1.0.0",
+  "title": "com.pip.store.register.opened data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "registerId"
+  ],
+  "properties": {
+    "registerId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,64}$"
+    }
+  }
+}

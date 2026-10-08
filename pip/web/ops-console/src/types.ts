@@ -1,0 +1,88 @@
+export type Role = "viewer" | "operator" | "reviewer" | "admin";
+
+export interface Me {
+  username: string;
+  name?: string;
+  roles: Role[];
+}
+
+export interface Zone {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  kind: "entrance" | "sales" | "monitored" | "checkout";
+}
+
+export interface Layout {
+  storeId: string;
+  name: string;
+  width: number;
+  height: number;
+  zones: Zone[];
+  queues: { id: string; zoneId: string }[];
+  registers: { id: string }[];
+}
+
+export interface QueueState {
+  length: number;
+  openRegisters: number;
+}
+
+export interface StoreState {
+  storeId: string;
+  simRunId: string | null;
+  queues: Record<string, QueueState>;
+  zones: Record<string, number>;
+}
+
+export interface LiveEvent {
+  id: string;
+  type: string;
+  time: string;
+  storeId: string;
+  subject: string;
+  simRunId: string | null;
+  data: Record<string, unknown>;
+}
+
+export type IncidentStatus = "OPEN" | "ACKNOWLEDGED" | "CONFIRMED" | "DISMISSED" | "AUTO_RESOLVED" | "CLOSED";
+
+export interface Incident {
+  incidentId: string;
+  ruleId: string;
+  ruleVersion: string;
+  mode: "enforce" | "shadow";
+  storeId: string;
+  simRunId: string | null;
+  key: string;
+  subject: string | null;
+  severity: "low" | "medium" | "high";
+  summary: string;
+  onsetAt: string;
+  detectedAt: string;
+  resolvedAt: string | null;
+  status: IncidentStatus;
+  evidence: string[];
+  attrs: Record<string, unknown>;
+  updatedAt: string;
+  version: number;
+}
+
+export interface Review {
+  action: string;
+  from: IncidentStatus;
+  to: IncidentStatus;
+  reasonCode: string | null;
+  note: string | null;
+  actor: string;
+  at: string;
+}
+
+export interface PipelineHealth {
+  status: "ok" | "degraded";
+  lastHeartbeatAt: string | null;
+  staleAfterSeconds: number;
+}

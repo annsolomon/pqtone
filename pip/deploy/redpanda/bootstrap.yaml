@@ -1,0 +1,5 @@
+# Cluster properties applied on first start. SASL/SCRAM on every Kafka listener; ACLs are
+# enforced; only the 'admin' principal is a superuser and it is used solely by redpanda-init.
+enable_sasl: true
+superusers: ["admin"]
+auto_create_topics_enabled: false

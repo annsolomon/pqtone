@@ -1,0 +1,7 @@
+name: out_of_order
+description: 10% of events delivered up to 20s late, inside the 30s grace period.
+duration: PT2H
+arrivals:
+  - {from: PT0S, to: PT2H, perHour: 130}
+faults:
+  outOfOrder: {rate: 0.10, maxDelay: PT20S}
