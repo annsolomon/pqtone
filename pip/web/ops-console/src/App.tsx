@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+import { AlertProvider } from "./alerts/AlertProvider";
+import { ToastStack } from "./alerts/ToastStack";
 import { ApiError, get, loginUrl } from "./api";
 import { HealthBanner } from "./components/HealthBanner";
 import { TopBar } from "./components/TopBar";
@@ -35,26 +37,29 @@ export function App() {
   return (
     <SessionContext.Provider value={me}>
       <LiveProvider onSessionLost={onSessionLost}>
-        <TopBar />
-        <HealthBanner />
-        <Routes>
-          <Route path="/" element={<FloorPage />} />
-          <Route path="/review" element={
-            <IncidentListPage title="Review queue" query="mode=enforce&status=OPEN,ACKNOWLEDGED,AUTO_RESOLVED&limit=200"
-              intro="Incidents waiting for a person to confirm or dismiss them, newest first."
-              empty="The queue is empty. New incidents appear here as soon as a rule fires." />} />
-          <Route path="/incidents" element={
-            <IncidentListPage title="All incidents" query="mode=enforce&limit=200"
-              intro="Every alerting incident, including reviewed and closed ones."
-              empty="No incidents have been raised yet." />} />
-          <Route path="/incidents/:id" element={<IncidentDetailPage />} />
-          {admin && <Route path="/shadow" element={
-            <IncidentListPage title="Shadow rules" query="mode=shadow&limit=200"
-              intro="Shadow rules run silently so their accuracy can be measured before they alert anyone. Nothing here notifies staff."
-              empty="No shadow incidents yet." />} />}
-          {admin && <Route path="/audit" element={<AuditPage />} />}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <AlertProvider>
+          <TopBar />
+          <HealthBanner />
+          <Routes>
+            <Route path="/" element={<FloorPage />} />
+            <Route path="/review" element={
+              <IncidentListPage title="Review queue" query="mode=enforce&status=OPEN,ACKNOWLEDGED,AUTO_RESOLVED&limit=200"
+                intro="Incidents waiting for a person to confirm or dismiss them, newest first."
+                empty="The queue is empty. New incidents appear here as soon as a rule fires." />} />
+            <Route path="/incidents" element={
+              <IncidentListPage title="All incidents" query="mode=enforce&limit=200"
+                intro="Every alerting incident, including reviewed and closed ones."
+                empty="No incidents have been raised yet." />} />
+            <Route path="/incidents/:id" element={<IncidentDetailPage />} />
+            {admin && <Route path="/shadow" element={
+              <IncidentListPage title="Shadow rules" query="mode=shadow&limit=200"
+                intro="Shadow rules run silently so their accuracy can be measured before they alert anyone. Nothing here notifies staff."
+                empty="No shadow incidents yet." />} />}
+            {admin && <Route path="/audit" element={<AuditPage />} />}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+          <ToastStack />
+        </AlertProvider>
       </LiveProvider>
     </SessionContext.Provider>
   );

@@ -54,7 +54,7 @@
 - [ ] B6 Milestone 0.7: product rename
 
 **Part C: Tier 1 exit milestones**
-- [ ] C1 Alert toast
+- [x] C1 Alert toast
 - [ ] C2 Playwright demo test
 - [ ] C3 R1 Watermarks doc
 - [ ] C4 R2 Windowed footfall rule
