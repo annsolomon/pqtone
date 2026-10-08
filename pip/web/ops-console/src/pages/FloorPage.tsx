@@ -94,7 +94,7 @@ export function FloorPage() {
             </select>
           </label>
         )}
-        {state?.simRunId && <span className="muted">Simulation {state.simRunId}</span>}
+        {state?.simRunId && <span className="muted" data-testid="sim-run">Simulation {state.simRunId}</span>}
       </div>
       {error && <p className="error">Could not load the floor: {error}</p>}
       <div className="floor-grid">

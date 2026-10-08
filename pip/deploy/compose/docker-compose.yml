@@ -308,3 +308,26 @@ services:
     volumes:
       - ../../.work:/work
     command: ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/http", "--junitxml=/work/reports/e2e-http.xml"]
+
+  # Browser demo test (Playwright, milestone C2). Same network namespace as e2e-http, so the
+  # browser's origin is http://localhost:8080. Started by `make e2e-ui`, which starts the
+  # simulation once the test has signed in.
+  e2e-ui:
+    build: {context: ../.., dockerfile: tests/ui/Dockerfile}
+    image: pip/e2e-ui:local
+    profiles: [tools]
+    <<: [*logging, *hardened]
+    user: "${PIP_UID:-1000}:${PIP_GID:-1000}"
+    working_dir: /repo
+    network_mode: "service:gateway"
+    shm_size: "1gb"
+    environment:
+      HOME: /tmp
+      PIP_BASE_URL: http://localhost:8080
+      PIP_PUBLIC_URL: ${PIP_PUBLIC_URL}
+      PIP_REVIEWER_PASSWORD: ${PIP_REVIEWER_PASSWORD}
+      PIP_UI_REPORTS: /work/reports/ui
+      PIP_UI_TIMEOUT_S: "300"
+    volumes:
+      - ../../.work:/work
+    command: ["python3", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/ui", "--junitxml=/work/reports/e2e-ui.xml"]

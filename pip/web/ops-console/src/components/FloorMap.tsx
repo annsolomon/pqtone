@@ -59,7 +59,7 @@ export function FloorMap({ layout, state, incidents, threshold, pulsing }: Props
           {queueTrail(q?.length ?? 0, { x: checkout.x + 16, y: checkout.y + 92, w: checkout.w - 92, h: checkout.h - 108 }).map((p, i) => (
             <circle key={i} cx={p.x} cy={p.y} r="7" className={i + 1 >= threshold ? "dot over" : "dot"} />
           ))}
-          <text x={checkout.x + 14} y={checkout.y + 54} className="queue-count">
+          <text x={checkout.x + 14} y={checkout.y + 54} className="queue-count" data-testid="queue-count">
             {q?.length ?? 0}
             <tspan className="queue-unit"> waiting</tspan>
           </text>

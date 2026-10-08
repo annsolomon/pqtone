@@ -43,7 +43,7 @@ No `make`? Run `./run.sh` instead.
 
 To watch the floor fill up live, run `make sim`, or pick a scenario with `SCENARIO=rush_hour make sim`.
 
-Other targets: `make help`, `make up`, `make e2e`, `make offline`, `make logs`, `make down`, and `make clean` (deletes data and secrets).
+Other targets: `make help`, `make up`, `make e2e` (includes the browser demo `make e2e-ui`, localhost mode only), `make offline`, `make logs`, `make down`, and `make clean` (deletes data and secrets).
 
 **GitHub Codespaces.** Open the console through port forwarding to `localhost:8080`, either from VS Code desktop or with `gh codespace ports forward 8080:8080` on your machine. The login redirect URLs are bound to `PIP_PUBLIC_URL` in `.env`.
 
@@ -59,7 +59,7 @@ services/
   rules-engine/    Kafka Streams 3.7 / Java 21: event-time rules, shadow mode, EOS v2, offline runner
 web/ops-console/   React 18 + TypeScript + Vite; served by the nginx gateway
 deploy/            compose stack, gateway, Postgres init, Redpanda ACLs, Keycloak realm, observability
-tests/             end-to-end HTTP and database tests
+tests/             end-to-end HTTP, database and browser (Playwright, tests/ui) tests
 docs/              architecture, runbooks
 ```
 
