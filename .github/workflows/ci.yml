@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: make all
-        run: make all SEED=42
+        run: make all SEED=42 2>&1 | tee "$RUNNER_TEMP/make-all.log"
       - name: Quality report
         if: always()
         run: |
@@ -41,6 +41,7 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
+          output: ${{ runner.temp }}/trivy-event-core.txt
       - name: Scan rules-engine image
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
@@ -49,9 +50,17 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
-      - name: Stack logs on failure
+          output: ${{ runner.temp }}/trivy-rules-engine.txt
+      - name: Failure details
         if: failure()
-        run: docker compose --env-file .env -f deploy/compose/docker-compose.yml logs --no-color --tail=300
+        run: |
+          docker compose --env-file .env -f deploy/compose/docker-compose.yml logs --no-color --tail=300 \
+            > "$RUNNER_TEMP/stack.log" 2>&1 || true
+          cat "$RUNNER_TEMP/stack.log"
+          ../.github/scripts/annotate.sh "make all (last lines)" "$RUNNER_TEMP/make-all.log" 150
+          ../.github/scripts/annotate.sh "stack logs (last lines)" "$RUNNER_TEMP/stack.log" 150
+          ../.github/scripts/annotate.sh "trivy event-core" "$RUNNER_TEMP/trivy-event-core.txt" 150
+          ../.github/scripts/annotate.sh "trivy rules-engine" "$RUNNER_TEMP/trivy-rules-engine.txt" 150
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -87,6 +96,10 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
+          output: ${{ runner.temp }}/trivy-fs.txt
+      - name: Failure details
+        if: failure()
+        run: .github/scripts/annotate.sh "trivy fs" "$RUNNER_TEMP/trivy-fs.txt" 150
 
   # Private repositories without GitHub Advanced Security cannot upload to code scanning,
   # so results stay in the run: high and critical findings fail the job, and the SARIF is
@@ -96,6 +109,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
