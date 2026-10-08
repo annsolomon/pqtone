@@ -56,7 +56,7 @@
 **Part C: Tier 1 exit milestones**
 - [x] C1 Alert toast
 - [x] C2 Playwright demo test
-- [ ] C3 R1 Watermarks doc
+- [x] C3 R1 Watermarks doc
 - [ ] C4 R2 Windowed footfall rule
 - [ ] C5 E2 Schema versioning and compat check
 - [ ] C6 Q1 Scorer PR comment
