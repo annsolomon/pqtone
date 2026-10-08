@@ -414,13 +414,15 @@ CREATE TRIGGER no_update BEFORE UPDATE OR DELETE ON audit_log
 
 ### 8.2 Time semantics (and why "watermarks" means something specific here)
 
-Kafka Streams has no Flink-style watermarks. It tracks **stream time** per task: the highest event timestamp observed so far. Windows close at `window end + grace`; records arriving later than that are dropped and counted (`dropped-records` metric). In this project:
+Kafka Streams has no Flink-style watermarks. It tracks **stream time** per task: the highest event timestamp observed so far. Windows close at `window end + grace`; records arriving later than that are dropped and counted (`dropped-records` metric). The Tier 1 rules are threshold-for-duration and absence rules rather than windows, so `RuleEngine` keeps its own watermark per (store, run). In this project:
 
-- **Effective watermark** = stream time − grace. Default grace: 30 s, configurable per rule.
-- **Out-of-order within grace**: accepted and handled correctly.
-- **Late beyond grace**: dropped from rule evaluation, still stored by event-core, counted, and reported by the scorer.
-- **Absence detection** uses a `PunctuationType.STREAM_TIME` punctuator. Stream time only advances when records arrive, so a quiet store would never fire an absence rule. The `store.clock.tick` heartbeat guarantees it advances.
-- Wall-clock punctuation is **not** used for rule decisions: it makes output depend on processing speed and breaks replay determinism. It is used only for the liveness check (§12.4).
+- **Effective watermark** = (highest event time seen for the store and run) − grace. Grace: 30 s (`grace` in `config/rules.yaml`).
+- **Out-of-order within grace**: buffered, released in (time, sequence, id) order once at or below the watermark, so the result is identical to in-order delivery.
+- **Late beyond grace** (event time ≤ watermark already reached): dropped from rule evaluation, still stored by event-core, counted (`lateDropped`, `pip.rules.events.late`), and reported by the scorer.
+- **Timers** (sustain, clear, absence deadline, dwell limit) fire in event time as the watermark passes them. Stream time only advances when records arrive, so a quiet store would never fire an absence rule; the `store.clock.tick` heartbeat guarantees it advances.
+- Wall-clock punctuation is **not** used for rule decisions: it makes output depend on processing speed and breaks replay determinism. It is used only for the liveness heartbeat and idle-state eviction (§12.4).
+
+A worked example with a hand-made sequence is in `docs/learn/watermarks.md`.
 
 ### 8.3 Rules (Tier 1)
 
