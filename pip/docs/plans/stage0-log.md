@@ -26,3 +26,5 @@ What had to change to make Tier 1 run for real, and why.
 | 2026-10-09 | 0.6 | Trivy fs scan drops the `secret` scanner | gitleaks (secret scan job) owns secret detection |
 | 2026-10-09 | 0.6 | `scripts/summary.sh` hides generated passwords when `CI` is set | CI logs and annotations are readable by everyone with repo access |
 | 2026-10-09 | 0.6 | CI frees runner disk before `make all` | Redpanda raised a storage alert at 6.7% free on the hosted runner |
+| 2026-10-09 | 0.6 | rules-engine imports `jackson-bom`; both services pin `at.yawk.lz4:lz4-java` 1.11.4 | kafka-streams pulled an older jackson-annotations (NoClassDefFound `JsonSerializeAs` in the image build); lz4-java CVE-2026-106451 |
+| 2026-10-09 | 0.6 | `.trivyignore`: CVE-2026-47884, CVE-2026-47890 until 2026-12-31 (ADR-026) | Spring Framework 6.2 is out of OSS support; neither CVE is reachable (no XsltView, no view-fragment SSE). Spring Boot 4 migration planned before the pilot |
