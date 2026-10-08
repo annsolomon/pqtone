@@ -30,3 +30,4 @@ What had to change to make Tier 1 run for real, and why.
 | 2026-10-09 | 0.6 | `.trivyignore`: CVE-2026-47884, CVE-2026-47890 until 2026-12-31 (ADR-026) | Spring Framework 6.2 is out of OSS support; neither CVE is reachable (no XsltView, no view-fragment SSE). Spring Boot 4 migration planned before the pilot |
 | 2026-10-09 | 0.6 | event-core pins Tomcat 10.1.60, the newest on Maven Central (Boot 3.5.16 ships 10.1.55) | CRITICAL CVE-2026-65182, CVE-2026-65905, CVE-2026-68525, fixed in 10.1.58 |
 | 2026-10-09 | 0.6 | Workflow `defaults.run.shell: bash` | Without it steps run as `bash -e` (no pipefail), so `make all \| tee` hid a failed image build |
+| 2026-10-09 | C2 | `make help` regex accepts digits; `dev-setup` and `test-fast` documented | `e2e*` targets were missing from `make help` |
