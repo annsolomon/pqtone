@@ -24,6 +24,7 @@ const RULE_NAMES: Record<string, string> = {
   "R-QUEUE-001": "Long checkout queue",
   "R-DWELL-001": "Long fitting-room visit",
   "R-ABS-001": "No register opened",
+  "R-FOOT-001": "Footfall spike",
 };
 
 export function ruleName(ruleId: string): string {

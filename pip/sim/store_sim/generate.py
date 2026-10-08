@@ -12,7 +12,7 @@ from .config import RuleSet, load_layout, load_rules, load_scenario, parse_durat
 from .events import canonical, iso_ms, make_event, parse_iso_ms
 from .faults import inject
 from .model import StoreModel
-from .reference import RefEngine
+from .reference import FootfallRef, RefEngine
 
 DEFAULT_EPOCH = "2026-01-01T09:00:00.000Z"
 
@@ -47,13 +47,17 @@ def simulate(*, seed: int, layout_path: str, scenario_path: str, rules_path: str
 
     # Ground truth: reference rules over the clean, in-order stream.
     ref = RefEngine(rules)
+    foot = FootfallRef(rules)
     for ev in clean:
-        ref.process({"t": parse_iso_ms(ev["time"]), "type": ev["type"], "storeId": store_id,
-                     "simRunId": run_id, "id": ev["id"], "data": ev["data"]})
+        ref_ev = {"t": parse_iso_ms(ev["time"]), "type": ev["type"], "storeId": store_id,
+                  "simRunId": run_id, "id": ev["id"], "data": ev["data"]}
+        ref.process(ref_ev)
+        foot.process(ref_ev)
     horizon = epoch_ms + model.end_ms - rules.grace_ms
     ref.finish(horizon)
+    foot.finish()
     gt = []
-    for inc in ref.out:
+    for inc in ref.out + foot.out:
         if inc["kind"] != "OPENED":
             continue
         gt.append({"gtId": f"gt-{len(gt):05d}", "ruleId": inc["ruleId"], "mode": inc["mode"],

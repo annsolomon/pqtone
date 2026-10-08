@@ -6,6 +6,7 @@ defaults:
   R-QUEUE-001: {precision: 0.95, recall: 0.95, latencyP95: PT5S}
   R-DWELL-001: {precision: 0.95, recall: 0.95, latencyP95: PT5S}
   R-ABS-001:   {precision: 0.90, recall: 0.95, latencyP95: PT5S}
+  R-FOOT-001:  {precision: 0.95, recall: 0.95, latencyP95: PT5S}
 scenarios:
   # Events beyond grace are dropped by design; this scenario measures degradation.
   late_beyond_grace:

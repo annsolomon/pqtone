@@ -5,6 +5,7 @@ scenarios:
   - rush_hour
   - register_delay
   - restricted_dwell
+  - footfall_spike
   - duplicates
   - out_of_order
   - late_beyond_grace
