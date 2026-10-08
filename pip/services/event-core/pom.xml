@@ -21,7 +21,7 @@
     <!-- Security patch overrides of Spring Boot managed versions (see docs/plans/stage0-log.md). -->
     <jackson-bom.version>2.21.7</jackson-bom.version>
     <postgresql.version>42.7.14</postgresql.version>
-    <tomcat.version>10.1.61</tomcat.version>
+    <tomcat.version>10.1.60</tomcat.version>
   </properties>
 
   <dependencyManagement>
