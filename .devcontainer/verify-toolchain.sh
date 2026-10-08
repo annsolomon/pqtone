@@ -29,6 +29,7 @@ check docker-compose  'docker compose version'                      'v2\.'
 check make            'make --version'                              'GNU Make'
 check openssl         'openssl version'                             'OpenSSL 3\.'
 check git-lfs         'git lfs version'                             'git-lfs/3\.'
+check gh              'gh --version'                                'gh version [0-9]+\.'
 check claude-code     'claude --version'                            '[0-9]+\.[0-9]+\.[0-9]+'
 # Minimum proven: make all is green on a 2-core / 8 GB Codespace (the kernel reports ~7 GiB).
 check cpus            'nproc'                                       '^([2-9]|[1-9][0-9]+)$'
