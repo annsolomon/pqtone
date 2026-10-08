@@ -32,7 +32,7 @@ So this tier starts with **Stage 0: make it green**.
 | ✅ 0.3 | **Compile event-core and rules-engine for real.** Fix whatever Maven reports. Likely suspects: generic inference in `Map.of(...)` calls, Spring Security 6.3 DSL signatures, networknt validator API. | `mvn verify` green in both modules; all unit tests run (not skipped). |
 | ✅ 0.4 | **`make up` healthy.** Fix stack issues. Likely suspects: Redpanda SASL bootstrap and ACL flags, Keycloak 26 hostname/relative-path options, Postgres TLS key permissions, nginx variable `proxy_pass`. | `scripts/wait-healthy.sh` reports every service healthy. |
 | ✅ 0.5 | **`make all` green.** Fix e2e failures one test at a time. Never weaken a test to pass it. If a test is wrong, explain why in the commit. | Full run green twice in a row (second run proves idempotency). |
-| 0.6 | **CI green on GitHub.** Push, make `ci.yml` pass, let Renovate pin action SHAs. | Green badge; reports uploaded as artifacts. |
+| ✅ 0.6 | **CI green on GitHub.** Push, make `ci.yml` pass, let Renovate pin action SHAs. | Green badge; reports uploaded as artifacts. Note: CI green on annsolomon/pqtone; actions pinned to SHAs in the workflow; Renovate app and main protection are repo-owner settings |
 | 0.7 | **Rename decision.** Choose the product name; one mechanical PR renames `pip`, `com.pip`, `urn:pip`, `schemas.pip.local`. | `make all` green after the rename. |
 
 **Opus prompt for 0.3–0.5:**
