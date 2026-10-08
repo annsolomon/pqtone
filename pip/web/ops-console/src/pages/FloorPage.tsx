@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAlerts } from "../alerts/AlertProvider";
 import { get } from "../api";
 import { EventTicker } from "../components/EventTicker";
 import { FloorMap } from "../components/FloorMap";
@@ -12,6 +13,7 @@ const TICKER_SIZE = 40;
 
 export function FloorPage() {
   const live = useLive();
+  const { pulsing } = useAlerts();
   const [stores, setStores] = useState<{ storeId: string; name: string }[]>([]);
   const [storeId, setStoreId] = useState<string | null>(null);
   const [layout, setLayout] = useState<Layout | null>(null);
@@ -97,7 +99,7 @@ export function FloorPage() {
       {error && <p className="error">Could not load the floor: {error}</p>}
       <div className="floor-grid">
         <div className="floor-main">
-          {layout && state ? <FloorMap layout={layout} state={state} incidents={incidents} threshold={threshold} />
+          {layout && state ? <FloorMap layout={layout} state={state} incidents={incidents} threshold={threshold} pulsing={pulsing} />
             : <div className="floor placeholder" aria-busy="true" />}
           <EventTicker events={ticker} skipped={skipped} />
         </div>

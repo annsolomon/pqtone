@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { AlertControls } from "../alerts/AlertControls";
 import { logout } from "../api";
 import { useLive } from "../live";
 import { hasRole, useMe } from "../session";
@@ -26,6 +27,7 @@ export function TopBar() {
         {admin && <NavLink to="/audit">Audit log</NavLink>}
       </nav>
       <div className="who">
+        <AlertControls />
         <span className={connected ? "pulse on" : "pulse"} title={connected ? "Receiving live data" : "Reconnecting"} />
         <span className="who-name">{me.name || me.username}</span>
         <span className="who-role">{me.roles.includes("admin") ? "admin" : me.roles.includes("reviewer") ? "reviewer" : me.roles.includes("operator") ? "operator" : "viewer"}</span>

@@ -6,6 +6,8 @@ interface Props {
   state: StoreState;
   incidents: Incident[];
   threshold: number;
+  /** Incident ids whose zone outline is animating because they just opened. */
+  pulsing?: Set<string>;
 }
 
 function zoneForIncident(inc: Incident, layout: Layout): string | null {
@@ -15,11 +17,13 @@ function zoneForIncident(inc: Incident, layout: Layout): string | null {
   return null;
 }
 
-export function FloorMap({ layout, state, incidents, threshold }: Props) {
+export function FloorMap({ layout, state, incidents, threshold, pulsing }: Props) {
   const alerting = new Map<string, Incident["severity"]>();
+  const pulsingZones = new Set<string>();
   for (const inc of incidents) {
     const z = zoneForIncident(inc, layout);
     if (!z) continue;
+    if (pulsing?.has(inc.incidentId)) pulsingZones.add(z);
     const prev = alerting.get(z);
     if (!prev || inc.severity === "high" || (inc.severity === "medium" && prev === "low")) alerting.set(z, inc.severity);
   }
@@ -35,7 +39,8 @@ export function FloorMap({ layout, state, incidents, threshold }: Props) {
         const count = state.zones[z.id] ?? 0;
         const sev = alerting.get(z.id);
         return (
-          <g key={z.id} className={`zone kind-${z.kind}${sev ? ` alert alert-${sev}` : ""}`}>
+          <g key={z.id} className={`zone kind-${z.kind}${sev ? ` alert alert-${sev}` : ""}${pulsingZones.has(z.id) ? " alert-new" : ""}`}
+             data-zone={z.id} data-alert={sev ?? undefined}>
             <rect x={z.x} y={z.y} width={z.w} height={z.h} rx="6" className="zone-fill"
                   style={{ fillOpacity: occupancyStrength(count) }} />
             <rect x={z.x} y={z.y} width={z.w} height={z.h} rx="6" className="zone-edge" />
