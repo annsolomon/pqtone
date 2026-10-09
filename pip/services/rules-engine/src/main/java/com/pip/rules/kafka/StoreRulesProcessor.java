@@ -40,7 +40,7 @@ public final class StoreRulesProcessor implements Processor<String, String, Stri
     private static final Logger log = LoggerFactory.getLogger(StoreRulesProcessor.class);
     private static final int HEARTBEAT_MAX_KEYS = 500;
 
-    private final RuleEngine engine;
+    private final RulesHolder rules;
     private final Topics topics;
     private final RulesMetrics metrics;
     private final String instanceId;
@@ -49,7 +49,11 @@ public final class StoreRulesProcessor implements Processor<String, String, Stri
     private KeyValueStore<String, StoreState> store;
 
     public StoreRulesProcessor(RuleEngine engine, Topics topics, RulesMetrics metrics, String instanceId, Duration idleTtl) {
-        this.engine = engine;
+        this(RulesHolder.fixed(engine), topics, metrics, instanceId, idleTtl);
+    }
+
+    public StoreRulesProcessor(RulesHolder rules, Topics topics, RulesMetrics metrics, String instanceId, Duration idleTtl) {
+        this.rules = rules;
         this.topics = topics;
         this.metrics = metrics;
         this.instanceId = instanceId;
@@ -78,6 +82,7 @@ public final class StoreRulesProcessor implements Processor<String, String, Stri
         String key = Event.stateKey(e);
         StoreState s = store.get(key);
         if (s == null) s = new StoreState();
+        RuleEngine engine = rules.current().engine();   // one consistent rule set per record (R4)
         RuleEngine.Outcome outcome = engine.onEvent(s, e, System.currentTimeMillis());
         store.put(key, s);
         if (outcome.late) metrics.late(e.storeId);
@@ -99,6 +104,12 @@ public final class StoreRulesProcessor implements Processor<String, String, Stri
         hb.put("instance", instanceId);
         hb.put("at", Instant.ofEpochMilli(wallMs).toString());
         hb.put("atMs", wallMs);
+        RulesHolder.Active active = rules.current();
+        ObjectNode r = hb.putObject("rules");
+        r.put("sha256", active.rules().sha256());
+        r.put("source", active.source());
+        ObjectNode versions = r.putObject("versions");
+        active.rules().versions().forEach(versions::put);
         ArrayNode keys = hb.putArray("keys");
         try (KeyValueIterator<String, StoreState> it = store.all()) {
             int n = 0;

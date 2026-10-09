@@ -33,17 +33,40 @@ public final class RulesTopology {
     public static Topology build(RuleEngine engine, Optional<FootfallConfig> footfall, Topics topics, RulesMetrics metrics,
                                  String instanceId, Duration idleTtl) {
         StreamsBuilder builder = new StreamsBuilder();
+        KStream<String, String> events = coreRules(builder, RulesHolder.fixed(engine), topics, metrics, instanceId, idleTtl);
+        footfall.ifPresent(cfg -> FootfallTopology.addTo(builder, events, cfg, topics, metrics, idleTtl));
+        return builder.build();
+    }
+
+    /**
+     * Milestone R4: the rules come from {@code rules} and, when {@code configTopic} is set, a global
+     * store on that compacted topic swaps them without a restart (see RulesConfigProcessor).
+     */
+    public static Topology build(RulesHolder rules, Optional<String> configTopic, Topics topics, RulesMetrics metrics,
+                                 String instanceId, Duration idleTtl) {
+        StreamsBuilder builder = new StreamsBuilder();
+        configTopic.ifPresent(topic -> builder.addGlobalStore(
+                Stores.keyValueStoreBuilder(Stores.inMemoryKeyValueStore(RulesConfigProcessor.STORE),
+                        Serdes.String(), Serdes.String()).withLoggingDisabled(),
+                topic, Consumed.with(Serdes.String(), Serdes.String()),
+                () -> new RulesConfigProcessor(rules, metrics)));
+        KStream<String, String> events = coreRules(builder, rules, topics, metrics, instanceId, idleTtl);
+        rules.current().rules().footfall().ifPresent(cfg -> FootfallTopology.addTo(builder, events, cfg,
+                () -> rules.current().footfall().orElseThrow(), topics, metrics, idleTtl));
+        return builder.build();
+    }
+
+    private static KStream<String, String> coreRules(StreamsBuilder builder, RulesHolder rules, Topics topics,
+                                                     RulesMetrics metrics, String instanceId, Duration idleTtl) {
         builder.addStateStore(Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(StoreRulesProcessor.STORE), Serdes.String(), StoreStateSerde.create()));
-
         ProcessorSupplier<String, String, String, String> supplier =
-                () -> new StoreRulesProcessor(engine, topics, metrics, instanceId, idleTtl);
+                () -> new StoreRulesProcessor(rules, topics, metrics, instanceId, idleTtl);
         KStream<String, String> events = builder.stream(topics.validated(), Consumed.with(Serdes.String(), Serdes.String())
                 .withTimestampExtractor(new CloudEventTimestampExtractor()));
         events.process(supplier, StoreRulesProcessor.STORE)
                 .to(router(), Produced.with(Serdes.String(), Serdes.String()));
-        footfall.ifPresent(cfg -> FootfallTopology.addTo(builder, events, cfg, topics, metrics, idleTtl));
-        return builder.build();
+        return events;
     }
 
     /** Routes each output record to the topic named in its pip-route header. */

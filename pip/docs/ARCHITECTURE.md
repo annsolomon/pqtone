@@ -452,6 +452,13 @@ A worked example with a hand-made sequence is in `docs/learn/watermarks.md`.
 
 `rule_version` is stamped on every incident. `mode: off` is the per-rule kill switch.
 
+**Versioning and hot reload (milestone R4, ADR-030).** A rule whose mode, severity or params change
+must carry a higher version: CI checks it (`scripts/rules-version-check.py`) and so does the engine.
+The engine starts from `PIP_RULES_FILE`; an operator can publish a reviewed document to the compacted
+topic `rules.config.v1` (`make rules-publish RULES=...`) and every engine switches to it without a
+restart. `make rules-reset` sends a tombstone and the engines go back to the file. Grace and
+R-FOOT-001's window, history and zones are structural and still need a restart.
+
 ### 8.5 Shadow mode
 
 - Shadow rules run the same code path on the same input.
@@ -871,6 +878,7 @@ All configuration via environment variables (12-factor); secrets via the secret 
 | `PIP_MAX_FUTURE_SKEW` | event-core | Default `PT5M` |
 | `PIP_OIDC_ISSUER` / `PIP_OIDC_CLIENT_ID` / `PIP_OIDC_CLIENT_SECRET` | event-core | BFF OIDC client |
 | `PIP_RULES_FILE` | rules-engine | Path to `rules.yaml` |
+| `PIP_TOPIC_RULES_CONFIG` | rules-engine | Hot-reload topic, default `rules.config.v1`; `off` disables it |
 | `PIP_STREAMS_STATE_DIR` | rules-engine | RocksDB directory (persistent volume) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | all | Collector endpoint |
 | `SIM_SEED` / `SIM_LAYOUT` / `SIM_SCENARIO` / `SIM_SINK` | store-sim | Run parameters |

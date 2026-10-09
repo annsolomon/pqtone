@@ -12,10 +12,12 @@ SCENARIO ?= register_delay
 SEED     ?= $(shell date +%s)
 # The browser demo always needs a fresh run (a repeated seed is deduplicated away), so it never uses SEED.
 UI_SEED  ?= $(shell echo $$(( $$(date +%s) + 7919 )))
+# The hot-reload run (R4) also needs ids of its own.
+HOT_SEED ?= $(shell echo $$(( $$(date +%s) + 15485863 )))
 export DOCKER_BUILDKIT := 1
 export COMPOSE_DOCKER_CLI_BUILD := 1
 
-.PHONY: all help bootstrap build offline up e2e e2e-pipeline e2e-http e2e-db e2e-ui summary sim down clean logs ps
+.PHONY: all help bootstrap build offline up e2e e2e-pipeline e2e-http e2e-db e2e-ui e2e-hot-reload rules-publish rules-reset summary sim down clean logs ps
 
 all: bootstrap build test-it offline up e2e summary ## Build + unit tests, integration tests, offline quality gate, start the stack, live end-to-end tests, summary
 
@@ -40,7 +42,7 @@ up: bootstrap ## Start the stack and wait until it is healthy
 	$(COMPOSE) up -d
 	COMPOSE="$(COMPOSE)" ./scripts/wait-healthy.sh
 
-e2e: e2e-pipeline e2e-http e2e-db e2e-ui ## Live end-to-end tests against the running stack
+e2e: e2e-pipeline e2e-http e2e-db e2e-ui e2e-hot-reload ## Live end-to-end tests against the running stack
 
 e2e-pipeline: ## Simulate SCENARIO through Kafka and score the incidents stored in PostgreSQL
 	rm -rf "$(WORK)/e2e" "$(WORK)/reports/e2e" && mkdir -p "$(WORK)/reports"
@@ -49,6 +51,30 @@ e2e-pipeline: ## Simulate SCENARIO through Kafka and score the incidents stored 
 
 e2e-http: ## Security and API tests through the gateway (auth, RBAC, CSRF, ingest contract, review flow)
 	$(COMPOSE) run --rm e2e-http
+
+RULES ?= config/rules.yaml
+rules-publish: ## R4: publish RULES (a file under config/ or .work/) to the running engines, no restart
+	$(COMPOSE) run --rm rules-admin --rules $(patsubst .work/%,/work/%,$(patsubst config/%,/config/%,$(RULES)))
+
+rules-reset: ## R4: drop the published rules; every engine goes back to config/rules.yaml
+	$(COMPOSE) run --rm rules-admin --reset
+
+e2e-hot-reload: ## R4: change a threshold in the running stack without a restart; old incidents keep their version
+	rm -rf "$(WORK)/hot-reload" && mkdir -p "$(WORK)/hot-reload" "$(WORK)/reports"
+	@started=$$(docker inspect -f '{{.State.StartedAt}}' $$($(COMPOSE) ps -q rules-engine)); \
+	  $(RUN) tools python tests/hot_reload/check.py make-rules --out /work/hot-reload/rules.yaml --threshold 4 --version 1.1.0 && \
+	  $(RUN) tools python tests/hot_reload/check.py snapshot --out /work/hot-reload/before.json && \
+	  $(MAKE) --no-print-directory rules-publish RULES=.work/hot-reload/rules.yaml && \
+	  $(RUN) tools python tests/hot_reload/check.py wait-rules --version 1.1.0 --source topic && \
+	  $(RUN) tools store-sim run --seed $(HOT_SEED) --scenario sim/scenarios/register_delay.yaml \
+	    --rules /work/hot-reload/rules.yaml --out /work/hot-reload/sim --sink kafka && \
+	  $(RUN) tools python tests/hot_reload/check.py verify --case-dir /work/hot-reload/sim \
+	    --rules /work/hot-reload/rules.yaml --snapshot /work/hot-reload/before.json; rc=$$?; \
+	  $(MAKE) --no-print-directory rules-reset && \
+	  $(RUN) tools python tests/hot_reload/check.py wait-rules --version 1.0.0 --source file || rc=1; \
+	  now=$$(docker inspect -f '{{.State.StartedAt}}' $$($(COMPOSE) ps -q rules-engine)); \
+	  if [ "$$started" != "$$now" ]; then echo "rules-engine restarted during the test ($$started -> $$now)"; rc=1; fi; \
+	  exit $$rc
 
 e2e-db: ## Database guarantees (append-only, least privilege, TLS-only)
 	$(RUN) tools python -m pytest -q -p no:cacheprovider tests/db --junitxml=/work/reports/e2e-db.xml
