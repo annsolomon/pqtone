@@ -90,6 +90,11 @@ jobs:
           done
           python3 ../.github/scripts/score-annotate.py "offline score" .work/reports/offline/score.json
           python3 ../.github/scripts/score-annotate.py "e2e score" .work/reports/e2e/score.json
+      - name: Test counts
+        if: always()
+        run: |
+          python3 ../.github/scripts/test-summary.py "e2e test counts" .work/reports
+          python3 ../.github/scripts/test-summary.py "integration test counts" services/event-core/target/failsafe-reports
       - name: Scan event-core image
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
