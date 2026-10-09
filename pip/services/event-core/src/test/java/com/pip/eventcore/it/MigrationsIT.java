@@ -3,11 +3,13 @@ package com.pip.eventcore.it;
 import com.pip.eventcore.ingest.IngestService;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.core.NestedExceptionUtils;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -18,7 +20,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Milestone E3: every migration applies cleanly to an empty database, and V5 applies cleanly to a
  * database that already ran V1-V4 and holds data, without touching that data. Same roles and
  * Flyway user as production.
+ *
+ * <p>The timeout turns a blocked migration (e.g. CREATE INDEX CONCURRENTLY waiting on an open
+ * transaction) into a failure instead of a CI job that hangs until GitHub kills it.
  */
+@Timeout(value = 5, unit = TimeUnit.MINUTES)
 class MigrationsIT {
 
     static String latest(Db db) {

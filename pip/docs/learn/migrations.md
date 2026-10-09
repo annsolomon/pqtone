@@ -44,6 +44,14 @@ That is why `V5__incident_assignee.sql.conf` sets `executeInTransaction=false`, 
 statement in the file is idempotent (`IF NOT EXISTS`): if the migration fails half way, running
 it again finishes the job.
 
+One more trap: `CONCURRENTLY` waits until every transaction that was open when it started has
+finished, in any table. Flyway's default PostgreSQL lock is a *transactional* advisory lock, which
+keeps a transaction open for the whole run, so the index build waits on Flyway itself and never
+finishes. Both places that run Flyway (the compose `flyway` service and the integration tests'
+`Db.migrate`) therefore set `postgresql.transactional.lock=false` (a session-level lock), and
+`SET lock_timeout = '60s'` so any other blocked wait fails fast instead of hanging a deploy.
+`MigrationsIT` has a timeout for the same reason.
+
 ## Rollback note
 
 There is no down-migration, on purpose.
