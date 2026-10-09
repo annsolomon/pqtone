@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 260" role="img" aria-label="Events processed per second (rules-engine)" font-family="system-ui, sans-serif" font-size="11">
+<rect width="720" height="260" fill="#fff"/>
+<text x="56" y="16" font-size="13" font-weight="600" fill="#1C2430">Events processed per second (rules-engine)</text>
+<line x1="56" x2="570" y1="224.0" y2="224.0" stroke="#EEF1F4"/><text x="50" y="228.0" text-anchor="end" fill="#4A5565">0</text>
+<line x1="56" x2="570" y1="184.8" y2="184.8" stroke="#EEF1F4"/><text x="50" y="188.8" text-anchor="end" fill="#4A5565">668</text>
+<line x1="56" x2="570" y1="145.6" y2="145.6" stroke="#EEF1F4"/><text x="50" y="149.6" text-anchor="end" fill="#4A5565">1,337</text>
+<line x1="56" x2="570" y1="106.4" y2="106.4" stroke="#EEF1F4"/><text x="50" y="110.4" text-anchor="end" fill="#4A5565">2,005</text>
+<line x1="56" x2="570" y1="67.2" y2="67.2" stroke="#EEF1F4"/><text x="50" y="71.2" text-anchor="end" fill="#4A5565">2,674</text>
+<line x1="56" x2="570" y1="28.0" y2="28.0" stroke="#EEF1F4"/><text x="50" y="32.0" text-anchor="end" fill="#4A5565">3,342</text>
+<text x="56.0" y="240" text-anchor="middle" fill="#4A5565">0 s</text>
+<text x="158.8" y="240" text-anchor="middle" fill="#4A5565">75 s</text>
+<text x="261.6" y="240" text-anchor="middle" fill="#4A5565">151 s</text>
+<text x="364.4" y="240" text-anchor="middle" fill="#4A5565">226 s</text>
+<text x="467.2" y="240" text-anchor="middle" fill="#4A5565">302 s</text>
+<text x="570.0" y="240" text-anchor="middle" fill="#4A5565">377 s</text>
+<text x="14" y="126" transform="rotate(-90 14 126)" text-anchor="middle" fill="#4A5565">events/s</text>
+<path d="M62.8,217.0 L69.6,216.5 L76.6,216.8 L83.4,215.2 L90.2,216.3 L97.2,215.1 L104.0,212.5 L110.8,214.3 L117.8,213.2 L124.6,212.1 L131.4,211.7 L138.2,211.1 L145.0,210.7 L152.0,209.3 L158.8,209.5 L165.6,208.9 L172.6,208.6 L179.4,208.8 L186.2,207.8 L193.0,209.1 L200.0,207.6 L206.8,206.9 L213.6,207.2 L220.4,207.2 L227.4,206.0 L234.2,205.5 L241.0,203.5 L247.8,205.2 L254.8,204.5 L261.6,203.4 L268.4,203.7 L275.4,203.9 L282.2,202.0 L289.0,202.4 L296.0,203.1 L302.8,200.6 L309.6,205.7 L316.4,207.2 L323.4,207.3 L330.2,207.1 L337.0,208.7 L343.9,210.3 L350.8,208.8 L357.6,210.0 L364.5,211.5 L371.4,211.3 L378.2,212.1 L385.0,212.1 L391.9,212.9 L398.8,213.4 L405.6,214.3 L412.4,214.5 L419.3,216.1 L426.2,216.3 L433.0,216.6 L439.8,217.3 L446.6,217.8 L453.6,218.4 L460.4,218.7 L467.2,218.8 L474.0,219.4 L481.0,219.5 L487.8,219.5 L494.6,220.0 L501.4,220.2 L508.2,220.3 L515.2,220.2 L522.0,220.8 L528.8,220.6 L535.6,221.2 L542.6,221.8 L549.4,222.2 L556.2,223.0 L563.0,223.3 L570.0,223.9" fill="none" stroke="#1F5FBF" stroke-width="2"/>
+<line x1="582" x2="598" y1="38" y2="38" stroke="#1F5FBF" stroke-width="2"/><text x="604" y="42" fill="#1C2430">s50-x10-t2</text>
+<path d="M63.0,193.3 L69.9,184.4 L76.7,171.2 L83.7,164.3 L90.5,156.9 L97.4,158.0 L104.3,145.4 L111.1,146.3 L118.0,142.8 L124.9,156.9 L131.8,167.5 L138.6,174.6 L145.4,187.9 L152.3,195.1 L159.1,201.8 L166.0,207.3 L172.8,210.1 L179.7,214.6 L186.5,222.0 L193.4,224.0" fill="none" stroke="#0B7A75" stroke-width="2"/>
+<line x1="582" x2="598" y1="54" y2="54" stroke="#0B7A75" stroke-width="2"/><text x="604" y="58" fill="#1C2430">s50-x40-t1</text>
+<path d="M63.0,194.7 L69.8,184.6 L76.6,174.2 L83.4,164.8 L90.4,163.2 L97.3,156.0 L104.1,149.1 L110.9,144.6 L117.9,145.3 L124.7,157.4 L131.5,169.6 L138.5,179.7 L145.3,185.3 L152.3,196.8 L159.1,201.8 L165.9,206.4 L172.8,209.8 L179.7,214.9 L186.5,222.5 L193.3,224.0" fill="none" stroke="#B86E00" stroke-width="2"/>
+<line x1="582" x2="598" y1="70" y2="70" stroke="#B86E00" stroke-width="2"/><text x="604" y="74" fill="#1C2430">s50-x40-t2</text>
+<path d="M62.8,193.8 L69.8,184.5 L76.6,175.3 L83.5,169.1 L90.4,160.4 L97.2,156.8 L104.1,149.3 L110.9,143.0 L117.9,144.1 L124.7,156.0 L131.5,167.7 L138.5,176.5 L145.3,188.4 L152.1,195.9 L159.1,201.7 L165.9,205.1 L172.7,210.1 L179.7,215.1 L186.5,222.5 L193.3,224.0" fill="none" stroke="#A3243B" stroke-width="2"/>
+<line x1="582" x2="598" y1="86" y2="86" stroke="#A3243B" stroke-width="2"/><text x="604" y="90" fill="#1C2430">s50-x40-t4</text>
+<path d="M63.0,88.9 L69.9,71.9 L76.9,74.6 L83.7,66.7 L90.6,45.8 L97.4,155.6" fill="none" stroke="#5B4B8A" stroke-width="2"/>
+<line x1="582" x2="598" y1="102" y2="102" stroke="#5B4B8A" stroke-width="2"/><text x="604" y="106" fill="#1C2430">s50-x160-t2</text>
+</svg>
