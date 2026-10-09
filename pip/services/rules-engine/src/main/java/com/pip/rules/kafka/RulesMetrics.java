@@ -39,6 +39,12 @@ public final class RulesMetrics {
                 .register(registry).increment();
     }
 
+    /** Milestone R4: a rules document from rules.config.v1 was applied, refused, or reset to the file. */
+    public void rulesReloaded(String outcome) {
+        Counter.builder("pip.rules.config.reloads").description("Rules documents received from rules.config.v1")
+                .tag("outcome", outcome).register(registry).increment();
+    }
+
     public void heartbeat(long epochMillis) {
         lastHeartbeatEpochSeconds.set(epochMillis / 1000);
     }

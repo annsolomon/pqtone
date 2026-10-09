@@ -48,6 +48,12 @@ jobs:
           cache-dependency-path: pip/web/ops-console/package-lock.json
       - name: Schema compatibility (every catalog version accepts what the previous one accepted)
         run: python3 scripts/schema-compat.py
+      - name: Rule versions (a changed rule needs a higher version, milestone R4)
+        run: |
+          git fetch -q --depth=1 origin main
+          git show "FETCH_HEAD:$(git rev-parse --show-prefix)config/rules.yaml" > "$RUNNER_TEMP/main-rules.yaml"
+          pip install -q pyyaml==6.0.2
+          python3 scripts/rules-version-check.py "$RUNNER_TEMP/main-rules.yaml" config/rules.yaml
       - name: make test-fast
         run: |
           make dev-setup 2>&1 | tee "$RUNNER_TEMP/test-fast.log"
