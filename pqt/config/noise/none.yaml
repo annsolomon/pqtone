@@ -1,0 +1,15 @@
+# A perfect camera: nothing missed, nothing invented, no timing error.
+# Applying it must leave a simulation unchanged; it is the control in Tier 2's noise matrix.
+apiVersion: noise.pqt/v1
+name: none
+description: Perfect perception. The control profile.
+measuredFrom: {clips: 0, trackMinutes: 0, notes: Not measured; defined.}
+detection:
+  missRate: {base: 0}
+  falsePositivesPerMinute: 0
+tracking:
+  idSwitchesPerTrackMinute: 0
+  fragmentation: {probability: 0}
+timing:
+  entryJitterMs: {kind: constant, value: 0}
+  exitJitterMs: {kind: constant, value: 0}

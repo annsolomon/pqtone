@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pqt.local/sim/noise-profile/1.0.0",
+  "title": "Vision noise profile for store-sim faults.vision",
+  "description": "How a camera pipeline gets people wrong, measured from labelled clips (Tier 2, milestone N1) and replayed onto clean simulated tracks (milestone N2). Tier 1 validates and records a profile but applies nothing. A profile holds rates and error distributions only: never frames, crops, embeddings or anything that could identify a person.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "name", "measuredFrom", "detection", "tracking", "timing"],
+  "properties": {
+    "apiVersion": {"const": "noise.pqt/v1"},
+    "name": {"type": "string", "pattern": "^[a-z0-9-]{1,64}$"},
+    "description": {"type": "string", "maxLength": 1000},
+    "measuredFrom": {
+      "description": "Provenance. Sample sizes make a thin profile visible before anyone trusts it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clips", "trackMinutes"],
+      "properties": {
+        "clips": {"type": "integer", "minimum": 0},
+        "trackMinutes": {"type": "number", "minimum": 0},
+        "cameras": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9-]{1,64}$"}, "uniqueItems": true},
+        "measuredAt": {"type": "string", "format": "date"},
+        "notes": {"type": "string", "maxLength": 2000}
+      }
+    },
+    "detection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["missRate", "falsePositivesPerMinute"],
+      "properties": {
+        "missRate": {
+          "description": "Probability a present person is not detected: base + perPersonInZone x (people in the zone), capped at max.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["base"],
+          "properties": {
+            "base": {"$ref": "#/$defs/probability"},
+            "perPersonInZone": {"type": "number", "minimum": 0, "maximum": 1},
+            "max": {"$ref": "#/$defs/probability"}
+          }
+        },
+        "falsePositivesPerMinute": {"type": "number", "minimum": 0, "description": "Phantom detections per camera-minute."},
+        "phantomTrackDurationMs": {"$ref": "#/$defs/distribution"}
+      }
+    },
+    "tracking": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["idSwitchesPerTrackMinute", "fragmentation"],
+      "properties": {
+        "idSwitchesPerTrackMinute": {"type": "number", "minimum": 0},
+        "fragmentation": {
+          "description": "Probability one person becomes several tracks, and how many extra tracks appear when it happens.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["probability"],
+          "properties": {
+            "probability": {"$ref": "#/$defs/probability"},
+            "extraTracks": {"$ref": "#/$defs/distribution"}
+          }
+        }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entryJitterMs", "exitJitterMs"],
+      "properties": {
+        "entryJitterMs": {"$ref": "#/$defs/distribution"},
+        "exitJitterMs": {"$ref": "#/$defs/distribution"}
+      }
+    },
+    "queueCountError": {
+      "description": "predicted - manual queue count, from 10-second samples.",
+      "$ref": "#/$defs/distribution"
+    },
+    "zones": {
+      "description": "Per-zone overrides of detection.missRate, keyed by zone id from the layout.",
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z0-9-]{1,64}$"},
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {"missRate": {"$ref": "#/properties/detection/properties/missRate"}}
+      }
+    }
+  },
+  "$defs": {
+    "probability": {"type": "number", "minimum": 0, "maximum": 1},
+    "distribution": {
+      "description": "A fitted distribution plus the sample size it was fitted on.",
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "value"],
+          "properties": {"kind": {"const": "constant"}, "value": {"type": "number"}, "n": {"$ref": "#/$defs/n"}}
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "mean", "sd"],
+          "properties": {"kind": {"const": "normal"}, "mean": {"type": "number"}, "sd": {"type": "number", "minimum": 0}, "n": {"$ref": "#/$defs/n"}}
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "mu", "sigma"],
+          "properties": {"kind": {"const": "lognormal"}, "mu": {"type": "number"}, "sigma": {"type": "number", "minimum": 0}, "n": {"$ref": "#/$defs/n"}}
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "min", "max"],
+          "properties": {"kind": {"const": "uniform"}, "min": {"type": "number"}, "max": {"type": "number"}, "n": {"$ref": "#/$defs/n"}}
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "values", "weights"],
+          "properties": {
+            "kind": {"const": "empirical"},
+            "values": {"type": "array", "items": {"type": "number"}, "minItems": 1, "maxItems": 1000},
+            "weights": {"type": "array", "items": {"type": "number", "minimum": 0}, "minItems": 1, "maxItems": 1000},
+            "n": {"$ref": "#/$defs/n"}
+          }
+        }
+      ]
+    },
+    "n": {"type": "integer", "minimum": 0, "description": "Sample size the distribution was fitted on."}
+  }
+}

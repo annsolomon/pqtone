@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "types": [
+    {
+      "type": "com.pqt.store.zone.entered",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pqt.local/store/zone.entered/1.0.0",
+          "file": "data/store.zone.entered-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^track:trk-[a-z0-9]{1,32}$"
+    },
+    {
+      "type": "com.pqt.store.zone.exited",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pqt.local/store/zone.exited/1.0.0",
+          "file": "data/store.zone.exited-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^track:trk-[a-z0-9]{1,32}$"
+    },
+    {
+      "type": "com.pqt.store.queue.joined",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pqt.local/store/queue.joined/1.0.0",
+          "file": "data/store.queue.joined-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^queue:[a-z0-9-]{1,64}$"
+    },
+    {
+      "type": "com.pqt.store.queue.left",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pqt.local/store/queue.left/1.0.0",
+          "file": "data/store.queue.left-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^queue:[a-z0-9-]{1,64}$"
+    },
+    {
+      "type": "com.pqt.store.queue.length",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pqt.local/store/queue.length/1.0.0",
+          "file": "data/store.queue.length-1.0.0.schema.json"
+        },
+        {
+          "dataschema": "https://schemas.pqt.local/store/queue.length/1.1.0",
+          "file": "data/store.queue.length-1.1.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^queue:[a-z0-9-]{1,64}$"
+    },
+    {
+      "type": "com.pqt.store.register.opened",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pqt.local/store/register.opened/1.0.0",
+          "file": "data/store.register.opened-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^register:[a-z0-9-]{1,64}$"
+    },
+    {
+      "type": "com.pqt.store.register.closed",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pqt.local/store/register.closed/1.0.0",
+          "file": "data/store.register.closed-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^register:[a-z0-9-]{1,64}$"
+    },
+    {
+      "type": "com.pqt.store.clock.tick",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pqt.local/store/clock.tick/1.0.0",
+          "file": "data/store.clock.tick-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^store$"
+    }
+  ]
+}

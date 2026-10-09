@@ -1,5 +1,5 @@
 {
-  "name": "pip",
+  "name": "pqt",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
   "hostRequirements": { "cpus": 2, "memory": "8gb" },
   "features": {

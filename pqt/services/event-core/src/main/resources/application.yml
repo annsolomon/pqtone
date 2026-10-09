@@ -1,0 +1,149 @@
+server:
+  port: 8080
+  forward-headers-strategy: framework
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        name: PQTSESSION
+        http-only: true
+        same-site: lax
+        secure: ${PQT_COOKIE_SECURE:false}
+  tomcat:
+    max-swallow-size: 2MB
+
+spring:
+  application:
+    name: event-core
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  mvc:
+    problemdetails:
+      enabled: true
+  datasource:
+    url: jdbc:postgresql://${PQT_DB_HOST:postgres}:5432/${PQT_DB_NAME:pqt}?sslmode=${PQT_DB_SSLMODE:verify-full}&sslrootcert=${PQT_DB_SSLROOTCERT:/certs/ca.crt}&ApplicationName=event-core
+    username: ${PQT_DB_APP_USER:pqt_app}
+    password: ${PQT_DB_APP_PASSWORD}
+    hikari:
+      maximum-pool-size: 20
+      connection-timeout: 5000
+  kafka:
+    bootstrap-servers: ${PQT_KAFKA_BOOTSTRAP}
+    properties:
+      security.protocol: ${PQT_KAFKA_SECURITY_PROTOCOL:SASL_PLAINTEXT}
+      sasl.mechanism: SCRAM-SHA-256
+      sasl.jaas.config: org.apache.kafka.common.security.scram.ScramLoginModule required username="${PQT_KAFKA_USER}" password="${PQT_KAFKA_PASSWORD}";
+    producer:
+      acks: all
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        compression.type: zstd
+        delivery.timeout.ms: 30000
+    consumer:
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      isolation-level: read_committed
+      max-poll-records: 200
+    listener:
+      ack-mode: manual
+      observation-enabled: true
+    template:
+      observation-enabled: true
+  security:
+    oauth2:
+      client:
+        registration:
+          keycloak:
+            client-id: ${PQT_OIDC_CLIENT_ID:ops-console}
+            client-secret: ${PQT_OIDC_CLIENT_SECRET}
+            authorization-grant-type: authorization_code
+            redirect-uri: "${PQT_PUBLIC_URL:http://localhost:8080}/login/oauth2/code/{registrationId}"
+            scope: openid,profile,email
+        provider:
+          keycloak:
+            # Browser-facing endpoint goes through the gateway; back-channel calls stay on the internal network.
+            authorization-uri: ${PQT_OIDC_PUBLIC_ISSUER}/protocol/openid-connect/auth
+            token-uri: ${PQT_OIDC_INTERNAL_ISSUER}/protocol/openid-connect/token
+            jwk-set-uri: ${PQT_OIDC_INTERNAL_ISSUER}/protocol/openid-connect/certs
+            user-name-attribute: preferred_username
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${PQT_OIDC_INTERNAL_ISSUER}/protocol/openid-connect/certs
+
+# OpenAPI generated from the controllers (milestone E5). Served only on the management port,
+# which the gateway never routes: /actuator/openapi on :8081. The contract test diffs it with
+# services/event-core/openapi.yaml.
+springdoc:
+  use-management-port: true
+  packages-to-scan: com.pqt.eventcore
+  api-docs:
+    version: openapi_3_1
+
+management:
+  server:
+    port: 8081
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,openapi
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  metrics:
+    tags:
+      service: event-core
+  tracing:
+    sampling:
+      probability: ${PQT_TRACE_SAMPLING:1.0}
+  otlp:
+    tracing:
+      endpoint: ${PQT_OTLP_ENDPOINT:http://jaeger:4318/v1/traces}
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name},%X{traceId:-},%X{spanId:-}]"
+
+pqt:
+  ingest:
+    max-future-skew: PT5M
+    max-age: PT24H
+    max-batch-size: 500
+    max-event-bytes: 65536
+    max-batch-bytes: 1048576
+    rate-limit-per-second: ${PQT_INGEST_RATE_LIMIT:2000}
+    rate-limit-burst: ${PQT_INGEST_RATE_BURST:4000}
+    raw-concurrency: 3
+    sim-source-prefix: "urn:pqt:sim:"
+    # OAuth client id -> CloudEvents source prefixes it may publish.
+    client-sources:
+      "[store-sim]": ["urn:pqt:sim:"]
+      "[edge-demo]": ["urn:pqt:edge:store-001"]
+    # Sources accepted from the raw Kafka topic (writes to it are restricted by Kafka ACLs).
+    raw-topic-sources: ["urn:pqt:sim:", "urn:pqt:edge:"]
+  topics:
+    raw: ${PQT_TOPIC_RAW:store.events.raw}
+    validated: ${PQT_TOPIC_VALIDATED:store.events.v1}
+    dlq: ${PQT_TOPIC_DLQ:store.events.dlq}
+    incidents: ${PQT_TOPIC_INCIDENTS:incidents.v1}
+    shadow: ${PQT_TOPIC_SHADOW:incidents.shadow.v1}
+    heartbeat: ${PQT_TOPIC_HEARTBEAT:rules.heartbeat.v1}
+  oidc:
+    public-issuer: ${PQT_OIDC_PUBLIC_ISSUER}
+    end-session-uri: ${PQT_OIDC_PUBLIC_ISSUER}/protocol/openid-connect/logout
+    post-logout-redirect-uri: ${PQT_PUBLIC_URL:http://localhost:8080}/
+    client-id: ${PQT_OIDC_CLIENT_ID:ops-console}
+  paths:
+    schemas: ${PQT_SCHEMAS_DIR:/app/schemas}
+    layouts: ${PQT_LAYOUTS_DIR:/app/layouts}
+  retention:
+    event-days: ${PQT_EVENT_RETENTION_DAYS:30}
+    outbox-hours: 72
+  pipeline:
+    heartbeat-stale-after: PT30S

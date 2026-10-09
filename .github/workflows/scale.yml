@@ -1,7 +1,7 @@
 name: scale
 # Milestone R5: the scale test. Manual only (it takes ~30 minutes of runner time). Results are
 # uploaded as an artifact and also committed to a new branch perf/scale-results-<run id>, from which
-# the numbers in pip/docs/perf/rules-engine.md are reviewed and merged by pull request.
+# the numbers in pqt/docs/perf/rules-engine.md are reviewed and merged by pull request.
 on:
   workflow_dispatch:
     inputs:
@@ -38,7 +38,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: pip
+        working-directory: pqt
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Free disk space
@@ -86,7 +86,7 @@ jobs:
         if: always()
         with:
           name: scale
-          path: pip/.work/reports/scale
+          path: pqt/.work/reports/scale
           if-no-files-found: warn
       - if: always()
         run: make down
