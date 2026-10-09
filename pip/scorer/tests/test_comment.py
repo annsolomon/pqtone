@@ -84,3 +84,10 @@ def test_cli_writes_the_comment(tmp_path):
     assert rc == 0
     text = out.read_text()
     assert "main@abc1234" in text and "https://example.invalid/run/1" in text
+
+
+def test_e2e_processing_latency_is_shown():
+    e2e = doc(result("e2e:register_delay", "R-QUEUE-001", 3, 0, 0))
+    e2e["metrics"] = {"processingLatencyMs": {"n": 6, "unmeasured": 0, "p50": 420, "p95": 1300, "max": 1500}}
+    md = render(doc(result("baseline", "R-QUEUE-001", 9, 0, 0)), BASE, e2e=e2e)
+    assert "p50 420 ms, p95 1300 ms, max 1500 ms over 6 incidents" in md

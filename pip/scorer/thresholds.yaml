@@ -17,3 +17,5 @@ confidence:                # milestone Q4, ADR-027: Wilson score intervals on pr
   z: 1.96                  # 95% two-sided
   minN: 20                 # from this many samples the interval is part of the gate...
   minLowerBound: 0.80      # ...and its lower bound must reach this; below minN it only warns
+e2e:                       # milestone Q2: live pipeline only (offline runs have no wall clock)
+  processingLatencyP95: PT10S  # stored event that moved the watermark past detection -> incident row

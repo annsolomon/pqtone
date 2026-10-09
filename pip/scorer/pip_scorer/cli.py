@@ -11,6 +11,7 @@ from pathlib import Path
 import yaml
 
 from .gates import check, confidence_for, dur_ms, gate_for, regressions
+from .latency import measure as measure_latency, processing_gate
 from .match import RuleScore, score
 from .report import write_reports
 
@@ -112,6 +113,7 @@ def cmd_e2e(a) -> int:
             "(extract(epoch from detected_at) * 1000)::bigint "
             "FROM pip.incident WHERE sim_run_id = %s", (run_id,)).fetchall()
         stored = conn.execute("SELECT count(*) FROM pip.event WHERE sim_run_id = %s", (run_id,)).fetchone()[0]
+        latency = measure_latency(conn, run_id, int(manifest["graceMs"]))
 
     incidents = [{"ruleId": r, "mode": mo, "storeId": s, "key": k, "detectedMs": int(d), "kind": "OPENED"}
                  for r, mo, s, k, d in rows]
@@ -128,11 +130,57 @@ def cmd_e2e(a) -> int:
                         "failures": failures, "warnings": warnings})
     expected = manifest["counts"]["cleanEvents"]
     extra = [] if stored == expected else [f"stored events {stored} != expected unique valid events {expected}"]
-    write_reports(a.out, results, extra)
+    limit = (thresholds.get("e2e") or {}).get("processingLatencyP95")
+    extra += processing_gate(latency, dur_ms(limit) if limit else None)
+    write_reports(a.out, results, extra, metrics={"processingLatencyMs": latency})
     print((Path(a.out) / "score.md").read_text())
     print(json.dumps({"runId": run_id, "storedEvents": stored, "expectedEvents": expected,
-                      "incidents": len(incidents)}))
+                      "incidents": len(incidents), "processingLatencyMs": latency}))
     return 0 if all(not r["failures"] for r in results) and not extra else 1
+
+
+def check_http(totals: dict, manifest: dict) -> list[str]:
+    """Milestone S4: every emitted event got an answer, and only the expected kinds."""
+    c = manifest["counts"]
+    out = []
+    if totals.get("accepted", 0) != c["cleanEvents"]:
+        out.append(f"accepted {totals.get('accepted', 0)} != unique valid events {c['cleanEvents']}")
+    if totals.get("duplicate", 0) != c.get("duplicates", 0):
+        out.append(f"duplicate {totals.get('duplicate', 0)} != injected duplicates {c.get('duplicates', 0)}")
+    if totals.get("invalid", 0) != c.get("malformed", 0):
+        out.append(f"invalid {totals.get('invalid', 0)} != injected malformed {c.get('malformed', 0)}")
+    unexpected = {k: v for k, v in totals.items() if k not in ("accepted", "duplicate", "invalid") and v}
+    if unexpected:
+        out.append(f"unexpected results {unexpected}")
+    if sum(totals.values()) != c["emittedEvents"]:
+        out.append(f"answered {sum(totals.values())} of {c['emittedEvents']} emitted events")
+    return out
+
+
+def cmd_stored(a) -> int:
+    """Milestone S4: wait until every unique valid event of a run is stored, exactly once."""
+    case = Path(a.case_dir)
+    manifest = json.loads((case / "manifest.json").read_text())
+    run_id, expected = manifest["runId"], manifest["counts"]["cleanEvents"]
+    problems: list[str] = []
+    results = case / "http_results.json"
+    if results.exists():
+        problems += check_http(json.loads(results.read_text()), manifest)
+    deadline = time.monotonic() + a.timeout
+    with _connect() as conn:
+        while True:
+            total, distinct = conn.execute(
+                "SELECT count(*), count(DISTINCT (source, id)) FROM pip.event WHERE sim_run_id = %s",
+                (run_id,)).fetchone()
+            if total >= expected or time.monotonic() > deadline:
+                break
+            time.sleep(2)
+    if total != expected:
+        problems.append(f"stored {total} != expected unique valid events {expected}")
+    if distinct != total:
+        problems.append(f"stored rows {total} but distinct (source, id) {distinct}")
+    print(json.dumps({"runId": run_id, "stored": total, "expected": expected, "problems": problems}))
+    return 1 if problems else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -150,6 +198,10 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("--timeout", type=int, default=600)
     e.add_argument("--out", required=True)
     e.set_defaults(fn=cmd_e2e)
+    st = sub.add_parser("stored", help="check a run's events are all stored exactly once (HTTP sink e2e)")
+    st.add_argument("--case-dir", required=True)
+    st.add_argument("--timeout", type=int, default=120)
+    st.set_defaults(fn=cmd_stored)
     a = p.parse_args(argv)
     return a.fn(a)
 
