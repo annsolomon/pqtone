@@ -165,7 +165,11 @@ paths:
         "412": {description: Stale If-Match}
         "428": {description: If-Match missing}
   /api/admin/audit:
-    get: {summary: Recent audit entries (admin), security: [{session: []}], responses: {"200": {description: OK}}}
+    get:
+      summary: Recent audit entries (admin)
+      security: [{session: []}]
+      parameters: [{name: limit, in: query, schema: {type: integer, maximum: 500, default: 100}}]
+      responses: {"200": {description: OK}}
   /api/admin/audit/verify:
     get: {summary: Recompute the hash chain (admin), security: [{session: []}], responses: {"200": {description: "{valid, rows, brokenAtSeq?}"}}}
   /logout:

@@ -67,7 +67,7 @@ So this tier starts with **Stage 0: make it green**.
 | ✅ E2 | **Schema evolution.** Add `store.queue.length` v1.1.0 with an optional `estimatedWaitSeconds` field. Add a CI script `scripts/schema-compat.py` that fails if a new version removes or renames a field, tightens a type, or adds a required field. Register both versions; producers may send either. | Compat script in CI; a test proves v1.0.0 and v1.1.0 events are both accepted; a deliberately breaking v1.2.0 fails CI. | 🧠 Compat rules |
 | E3 | **Flyway discipline.** Add `V5__incident_assignee.sql` (nullable column, grant, index). Practise the expand → migrate → contract pattern. Write a rollback note. Add a test that migrations apply cleanly to an empty DB and to a DB at V4. | Both paths green in CI. | |
 | ✅ E4 | **Testcontainers integration tests.** Repository and ingest tests against real Postgres 16 and Redpanda in `mvn verify`, using Docker-in-Docker in the devcontainer and in CI. | Covered: dedup race (two concurrent identical inserts → one accepted, one duplicate); conflict path; outbox relay with Kafka down → backlog drains when it returns. | 🧠 The race test |
-| E5 | **Contract tests.** Generate the OpenAPI doc from code (springdoc) and diff it against `openapi.yaml` in CI. | Drift fails the build. | |
+| ✅ E5 | **Contract tests.** Generate the OpenAPI doc from code (springdoc) and diff it against `openapi.yaml` in CI. | Drift fails the build. |  |
 
 ---
 
@@ -79,7 +79,7 @@ So this tier starts with **Stage 0: make it green**.
 
 | # | Milestone | Done when |
 |---|---|---|
-| S1 | **Read the model.** Draw the discrete-event loop (heap, scheduler, RNG streams) in `docs/learn/store-sim.md`. Explain why four child RNG streams keep runs stable when you add a new random draw. 🧠 | Doc written. |
+| ✅ S1 | **Read the model.** Draw the discrete-event loop (heap, scheduler, RNG streams) in `docs/learn/store-sim.md`. Explain why four child RNG streams keep runs stable when you add a new random draw. 🧠 | Doc written. |
 | S2 | **Second store layout** (`store-002`: two queues, an extra zone) and a multi-store scenario. Rules and console must handle more than one store. | The offline matrix includes multi-store; the console store picker works. |
 | S3 | **Scenario authoring guide** plus 3 new scenarios: `staff_shortage`, `flash_sale`, `closing_time`. | Each produces ground truth; scorer thresholds hold. |
 | S4 | **HTTP sink e2e** through the gateway with OAuth client credentials (it exists but is untested end to end). | `make e2e-http-sim` stores 100% of events. |
@@ -106,7 +106,7 @@ So this tier starts with **Stage 0: make it green**.
 |---|---|---|---|
 | ✅ R1 | **Explain the watermark.** Write `docs/learn/watermarks.md`: stream time vs event time vs wall time, why grace exists, what "late" means here vs Flink. Include a worked example from the `late_beyond_grace` scenario. | Doc written; you can predict which events get dropped in a hand-made sequence. Note: docs/learn/watermarks.md; its 12-event sequence is executed by WatermarkLatenessTest | 🧠 You write |
 | ✅ R2 | **Windowed rule R-FOOT-001**: footfall spike. Count `zone.entered` per zone in 5-minute tumbling windows (`TimeWindows.ofSizeAndGrace`). Alert when a window exceeds 2× the trailing hour's mean. Use `suppress(untilWindowCloses)` so each window emits once. Add it to the Python reference and to the scorer. | Offline matrix and e2e green with the new rule; JUnit tests for window boundaries and late records. | 🧠 The windowing code |
-| R3 | **Compare both approaches** in an ADR: native windows + suppress vs the custom reorder buffer. Cover memory, determinism and latency. | `docs/adr/011-windowing.md`. | |
+| ✅ R3 | **Compare both approaches** in an ADR: native windows + suppress vs the custom reorder buffer. Cover memory, determinism and latency. | `docs/adr/011-windowing.md`. |  |
 | R4 | **Rule versioning and hot reload.** A `rules.yaml` change bumps the rule version. The engine reloads via a compacted `rules.config.v1` topic instead of a restart. Incident ids include the major version (already true). | Changing a threshold in a running stack changes behaviour without a restart; old incidents keep their version. | |
 | R5 | **Scale test.** 50 simulated stores at 10× speed; measure throughput, state size, p95 processing lag. Raise partition count and threads; document the limits. | `docs/perf/rules-engine.md` with numbers and graphs. | |
 | R6 | **Shadow → enforce promotion flow.** An admin sees shadow precision and recall from the latest e2e score in the console and promotes a rule through a PR template. No UI toggle; changes go through review. | Documented flow; console shows the shadow score. | |
@@ -143,7 +143,7 @@ So this tier starts with **Stage 0: make it green**.
 |---|---|---|
 | ✅ Q1 | **PR comment.** The CI job posts `score.md` as a sticky PR comment, with a delta against `baseline.json`. | Visible on a test PR. |
 | ✅ Q2 | **Wall-clock processing latency** in e2e: ingest → incident row, p50 and p95. Add it to thresholds. | Reported; a gate is added. Note: ADR-029 |
-| Q3 | **Baseline update flow.** On `main`, CI uploads `baseline.candidate.json`. A maintainer runs `make baseline-accept`, which opens a PR. Never auto-update the baseline. | Documented and scripted. |
+| ✅ Q3 | **Baseline update flow.** On `main`, CI uploads `baseline.candidate.json`. A maintainer runs `make baseline-accept`, which opens a PR. Never auto-update the baseline. | Documented and scripted. Note: make baseline-accept, RB-09 |
 | ✅ Q4 | **Confidence intervals.** Wilson intervals on precision and recall so small samples (2 absence incidents) aren't read as certainty. Gates use the lower bound when n ≥ 20, otherwise they warn. | Shown in the report. Note: Gate semantics in ADR-027 |
 | ✅ Q5 | **Hungarian matching** (to match the architecture doc) with property tests comparing it to brute force on small cases. 🧠 | Tests pass; ADR notes the change. Note: ADR-028 |
 
