@@ -5,7 +5,8 @@ COPY schemas /src/schemas
 COPY services/event-core/pom.xml /src/services/event-core/pom.xml
 WORKDIR /src/services/event-core
 COPY services/event-core/src ./src
-RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp verify
+# Integration tests need Docker, which an image build does not have; make test-it runs them.
+RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp -DskipITs verify
 
 # glibc base: the zstd native library used by the Kafka client needs it.
 FROM eclipse-temurin:21-jre

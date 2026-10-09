@@ -74,6 +74,12 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
           df -h /
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: pip/services/*/pom.xml
       - name: make all
         run: make all SEED=42 2>&1 | tee "$RUNNER_TEMP/make-all.log"
       - name: Quality report
