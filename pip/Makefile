@@ -49,7 +49,7 @@ e2e: e2e-pipeline e2e-http e2e-http-sim e2e-db e2e-ui e2e-hot-reload ## Live end
 e2e-pipeline: ## Simulate SCENARIO through Kafka and score the incidents stored in PostgreSQL
 	rm -rf "$(WORK)/e2e" "$(WORK)/reports/e2e" && mkdir -p "$(WORK)/reports"
 	$(RUN) tools store-sim run --seed $(SEED) --scenario sim/scenarios/$(SCENARIO).yaml --out /work/e2e --sink kafka
-	$(RUN) tools pip-scorer e2e --case-dir /work/e2e --out /work/reports/e2e --timeout 600
+	$(RUN) tools pip-scorer e2e --case-dir /work/e2e --out /work/reports/e2e --timeout 600 --record
 
 e2e-http: ## Security and API tests through the gateway (auth, RBAC, CSRF, ingest contract, review flow)
 	$(COMPOSE) run --rm e2e-http

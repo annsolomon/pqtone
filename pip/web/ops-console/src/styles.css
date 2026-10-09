@@ -240,3 +240,12 @@ th { font-size: var(--s-1); color: var(--ink-2); font-weight: 600; }
 .skip-link { position: absolute; left: 8px; top: -48px; z-index: 100; background: var(--ink); color: var(--shelf); padding: 8px 14px; border-radius: 4px; font-weight: 600; text-decoration: none; }
 .skip-link:focus { top: 8px; }
 #content:focus { outline: none; }
+
+/* ---------------------------------------------------------------- shadow scorecard (R6) */
+.scorecard { margin: 16px 0 24px; }
+.verdict { font-weight: 600; font-size: var(--s-1); }
+.verdict-ready { color: var(--live); }
+.verdict-wait { color: var(--ink-2); }
+.verdict-info { color: var(--ink-2); }
+.promote-how { margin-top: 10px; }
+.promote-how ol { padding-left: 20px; }

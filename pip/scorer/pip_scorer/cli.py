@@ -133,6 +133,15 @@ def cmd_e2e(a) -> int:
     limit = (thresholds.get("e2e") or {}).get("processingLatencyP95")
     extra += processing_gate(latency, dur_ms(limit) if limit else None)
     write_reports(a.out, results, extra, metrics={"processingLatencyMs": latency})
+    if a.record:
+        from .record import rows as score_rows, rule_versions, write as write_scores
+        import psycopg
+
+        data = score_rows(results, run_id=run_id, scenario=scenario, versions=rule_versions(a.rules),
+                          gates={r: (g.precision, g.recall) for r in RULES
+                                 for g in [gate_for(thresholds, scenario, r)]}, conf=conf)
+        with psycopg.connect(os.environ["PIP_DB_APP_DSN"], autocommit=True) as wconn:
+            print(f"recorded {write_scores(wconn, data)} rule scores for {run_id} in pip.rule_score")
     print((Path(a.out) / "score.md").read_text())
     print(json.dumps({"runId": run_id, "storedEvents": stored, "expectedEvents": expected,
                       "incidents": len(incidents), "processingLatencyMs": latency}))
@@ -197,6 +206,8 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("--thresholds", default="scorer/thresholds.yaml")
     e.add_argument("--timeout", type=int, default=600)
     e.add_argument("--out", required=True)
+    e.add_argument("--record", action="store_true", help="record the score per rule in pip.rule_score (R6)")
+    e.add_argument("--rules", default="config/rules.yaml", help="rules file the run was simulated with")
     e.set_defaults(fn=cmd_e2e)
     st = sub.add_parser("stored", help="check a run's events are all stored exactly once (HTTP sink e2e)")
     st.add_argument("--case-dir", required=True)

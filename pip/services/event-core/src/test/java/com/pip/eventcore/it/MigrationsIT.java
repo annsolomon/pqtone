@@ -26,6 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @Timeout(value = 5, unit = TimeUnit.MINUTES)
 class MigrationsIT {
+    /** The newest migration in db/migration. A new migration changes this on purpose (and adds its shape check). */
+    static final String LATEST = "6";
 
     static String latest(Db db) {
         return Flyway.configure().dataSource(db.container.getJdbcUrl(), "pip_migrator", db.migratorPassword)
@@ -46,16 +48,29 @@ class MigrationsIT {
                 "V5 grants only the new column");
     }
 
+    /** Milestone R6: pip.rule_score is append-only and pip_app may only insert and read it. */
+    static void assertV6Shape(JdbcTemplate su) {
+        assertEquals(Boolean.TRUE, su.queryForObject("SELECT has_table_privilege('pip_app', 'pip.rule_score', 'INSERT')", Boolean.class));
+        assertEquals(Boolean.TRUE, su.queryForObject("SELECT has_table_privilege('pip_app', 'pip.rule_score', 'SELECT')", Boolean.class));
+        assertEquals(Boolean.FALSE, su.queryForObject("SELECT has_table_privilege('pip_app', 'pip.rule_score', 'UPDATE')", Boolean.class));
+        assertEquals(Boolean.FALSE, su.queryForObject("SELECT has_table_privilege('pip_app', 'pip.rule_score', 'DELETE')", Boolean.class));
+        assertEquals(Boolean.TRUE, su.queryForObject("SELECT has_table_privilege('pip_read', 'pip.rule_score', 'SELECT')", Boolean.class));
+        assertEquals(2, su.queryForObject("""
+                SELECT count(*)::int FROM pg_trigger WHERE tgrelid = 'pip.rule_score'::regclass
+                   AND tgname IN ('rule_score_append_only', 'rule_score_no_truncate')""", Integer.class));
+    }
+
     @Test
     void anEmptyDatabaseMigratesToTheLatestVersion() throws Exception {
         try (Db db = new Db().start()) {
             db.migrate();
-            assertEquals("5", latest(db));
+            assertEquals(LATEST, latest(db));
             JdbcTemplate su = new JdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(
                     db.container.getJdbcUrl(), db.container.getUsername(), db.container.getPassword(), true));
             assertV5Shape(su);
+            assertV6Shape(su);
             db.migrate();   // running again is a no-op
-            assertEquals("5", latest(db));
+            assertEquals(LATEST, latest(db));
         }
     }
 
@@ -78,11 +93,12 @@ class MigrationsIT {
             List<Integer> before = app.queryForList("SELECT count(*)::int FROM pip.event", Integer.class);
 
             db.migrate();
-            assertEquals("5", latest(db));
+            assertEquals(LATEST, latest(db));
 
             JdbcTemplate su = new JdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(
                     db.container.getJdbcUrl(), db.container.getUsername(), db.container.getPassword(), true));
             assertV5Shape(su);
+            assertV6Shape(su);
             assertEquals(before, app.queryForList("SELECT count(*)::int FROM pip.event", Integer.class), "events untouched");
             assertNull(app.queryForObject("SELECT assignee FROM pip.incident WHERE incident_id = ?", String.class, incident),
                     "existing incidents are unassigned");
