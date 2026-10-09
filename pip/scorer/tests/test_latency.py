@@ -50,3 +50,31 @@ def test_report_shows_the_processing_latency(tmp_path):
     md = (tmp_path / "score.md").read_text()
     assert "Processing latency (ingest -> incident row): p50 1.5s, p95 2.5s, max 2.5s over 2 incidents" in md
     assert '"processingLatencyMs"' in (tmp_path / "score.json").read_text()
+
+
+def test_cli_module_resolves_every_name_it_uses():
+    # Regression: a missing import only failed at the end of a 15-minute e2e run.
+    import ast
+    import builtins
+    from pathlib import Path
+
+    tree = ast.parse(Path("scorer/pip_scorer/cli.py").read_text())
+    defined = set(dir(builtins))
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            defined |= {(a.asname or a.name).split(".")[0] for a in node.names}
+        elif isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            defined.add(node.name)
+            defined |= {a.arg for a in node.args.args} if isinstance(node, ast.FunctionDef) else set()
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            defined.add(node.id)
+        elif isinstance(node, (ast.comprehension,)):
+            for t in ast.walk(node.target):
+                if isinstance(t, ast.Name):
+                    defined.add(t.id)
+        elif isinstance(node, ast.arg):
+            defined.add(node.arg)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            defined.add(node.name)
+    used = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+    assert used - defined == set()

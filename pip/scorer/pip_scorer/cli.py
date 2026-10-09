@@ -11,6 +11,7 @@ from pathlib import Path
 import yaml
 
 from .gates import dur_ms, evaluate, gate_for, regressions
+from .latency import measure as measure_latency, processing_gate
 from .match import RuleScore, score
 from .report import write_reports
 
