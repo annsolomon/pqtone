@@ -1,0 +1,19 @@
+# Shape of a measured profile, with made-up numbers. Tier 2 milestone N1 writes the real one
+# from labelled clips; the sample sizes (n) say how much evidence stands behind each figure.
+apiVersion: noise.pip/v1
+name: example
+description: Illustrative values only. Not measured.
+measuredFrom: {clips: 0, trackMinutes: 0, cameras: [cam1], notes: Example shape; replace with N1 output.}
+detection:
+  missRate: {base: 0.03, perPersonInZone: 0.01, max: 0.25}
+  falsePositivesPerMinute: 0.2
+  phantomTrackDurationMs: {kind: lognormal, mu: 7.6, sigma: 0.6, n: 0}
+tracking:
+  idSwitchesPerTrackMinute: 0.05
+  fragmentation: {probability: 0.04, extraTracks: {kind: empirical, values: [1, 2], weights: [0.85, 0.15], n: 0}}
+timing:
+  entryJitterMs: {kind: normal, mean: 0, sd: 400, n: 0}
+  exitJitterMs: {kind: normal, mean: 0, sd: 600, n: 0}
+queueCountError: {kind: empirical, values: [-1, 0, 1], weights: [0.08, 0.86, 0.06], n: 0}
+zones:
+  checkout: {missRate: {base: 0.05, perPersonInZone: 0.015, max: 0.3}}

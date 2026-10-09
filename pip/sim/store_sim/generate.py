@@ -11,6 +11,7 @@ from . import SIM_VERSION
 from .config import RuleSet, load_layout, load_rules, load_scenario, parse_duration_ms, sha256_bytes, sha256_file
 from .events import canonical, iso_ms, make_event, parse_iso_ms
 from .faults import inject
+from . import vision_noise
 from .model import StoreModel
 from .reference import RefEngine
 
@@ -26,8 +27,12 @@ class RunOutput:
     manifest: dict
 
 
-def run_id_for(seed: int, scenario_bytes: bytes, layout_bytes: bytes, rules_bytes: bytes) -> str:
-    h = sha256_bytes(b"|".join([str(seed).encode(), scenario_bytes, layout_bytes, rules_bytes, SIM_VERSION.encode()]))
+def run_id_for(seed: int, scenario_bytes: bytes, layout_bytes: bytes, rules_bytes: bytes,
+               noise_sha256: str | None = None) -> str:
+    parts = [str(seed).encode(), scenario_bytes, layout_bytes, rules_bytes, SIM_VERSION.encode()]
+    if noise_sha256:  # only when faults.vision is set, so every existing run id stays the same
+        parts.append(noise_sha256.encode())
+    h = sha256_bytes(b"|".join(parts))
     return f"run-{h[:12]}"
 
 
@@ -35,8 +40,9 @@ def simulate(*, seed: int, layout_path: str, scenario_path: str, rules_path: str
     layout = load_layout(layout_path)
     scenario = load_scenario(scenario_path)
     rules: RuleSet = load_rules(rules_path)
+    noise = vision_noise.load(scenario_path, scenario.get("faults", {}).get("vision"))
     run_id = run_id_for(seed, Path(scenario_path).read_bytes(), Path(layout_path).read_bytes(),
-                        Path(rules_path).read_bytes())
+                        Path(rules_path).read_bytes(), noise.sha256 if noise else None)
     epoch_ms = parse_iso_ms(scenario.get("epoch", DEFAULT_EPOCH))
 
     model = StoreModel(layout, scenario, seed)
@@ -60,14 +66,21 @@ def simulate(*, seed: int, layout_path: str, scenario_path: str, rules_path: str
                    "storeId": store_id, "simRunId": run_id, "key": inc["key"],
                    "onsetMs": inc["onsetMs"], "atMs": inc["detectedMs"], "at": iso_ms(inc["detectedMs"])})
 
+    # Perception noise first (what the camera would have reported), then transport faults on top.
+    # Its own RNG stream, so adding vision noise never shifts the transport-fault draws.
+    vision_rng = np.random.default_rng(np.random.SeedSequence([seed, 0x51D0]))
+    perceived, vision_counts = vision_noise.apply(clean, noise, vision_rng)
     fault_rng = np.random.default_rng(np.random.SeedSequence([seed, 0xFA017]))
-    emitted, counts = inject(clean, scenario.get("faults", {}), fault_rng)
+    emitted, counts = inject(perceived, {k: v for k, v in scenario.get("faults", {}).items() if k != "vision"},
+                             fault_rng)
+    counts.update(vision_counts)
 
     manifest = {
         "simVersion": SIM_VERSION, "seed": seed, "runId": run_id, "storeId": store_id,
         "scenario": scenario.get("name", Path(scenario_path).stem),
         "layoutSha256": sha256_file(layout_path), "scenarioSha256": sha256_file(scenario_path),
         "rulesSha256": sha256_file(rules_path),
+        **({"visionNoise": {"profile": noise.name, "sha256": noise.sha256}} if noise else {}),
         "epoch": iso_ms(epoch_ms), "durationMs": parse_duration_ms(scenario["duration"]),
         "endMs": epoch_ms + model.end_ms, "horizonMs": horizon, "graceMs": rules.grace_ms,
         "counts": {"cleanEvents": len(clean), "emittedEvents": len(emitted), "shoppers": model.n_shoppers,
