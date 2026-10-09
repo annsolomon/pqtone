@@ -12,7 +12,20 @@ import json
 import sys
 from pathlib import Path
 
-COLORS = ["#1F5FBF", "#0B7A75", "#B86E00", "#A3243B", "#5B4B8A", "#4A5565"]
+# Nine distinguishable series: colour first, then a dash pattern once colours repeat.
+COLORS = ["#1F5FBF", "#0B7A75", "#B86E00", "#A3243B", "#5B4B8A", "#4A5565", "#2E8B3D", "#C2477F", "#7A5A00"]
+DASHES = ["", "6 3", "2 3"]
+
+
+def nice_max(v: float) -> float:
+    if v <= 0:
+        return 1.0
+    import math
+    p = 10 ** math.floor(math.log10(v))
+    for m in (1, 2, 2.5, 5, 10):
+        if m * p >= v:
+            return m * p
+    return 10 * p
 
 
 def merge(result: Path, state_kb: str, memory: str) -> None:
@@ -28,10 +41,10 @@ def rates(samples: list[dict], key: str) -> list[tuple[float, float]]:
 
 
 def svg_chart(series: dict[str, list[tuple[float, float]]], title: str, y_label: str, width=720, height=260) -> str:
-    pl, pr, pt, pb = 56, 150, 28, 36
+    pl, pr, pt, pb = 70, 150, 28, 36
     xs = [x for pts in series.values() for x, _ in pts] or [0, 1]
     ys = [y for pts in series.values() for _, y in pts] or [0, 1]
-    x1, y1 = max(xs) or 1, (max(ys) or 1) * 1.1
+    x1, y1 = max(xs) or 1, nice_max(max(ys) or 1)
     sx = lambda x: pl + x / x1 * (width - pl - pr)
     sy = lambda y: height - pb - y / y1 * (height - pt - pb)
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" role="img" aria-label="{title}" '
@@ -49,11 +62,13 @@ def svg_chart(series: dict[str, list[tuple[float, float]]], title: str, y_label:
                f'text-anchor="middle" fill="#4A5565">{y_label}</text>')
     for n, (name, pts) in enumerate(series.items()):
         c = COLORS[n % len(COLORS)]
+        dash = DASHES[(n // len(COLORS)) % len(DASHES)]
+        da = f' stroke-dasharray="{dash}"' if dash else ""
         if pts:
             d = " ".join(f"{'M' if i == 0 else 'L'}{sx(x):.1f},{sy(y):.1f}" for i, (x, y) in enumerate(pts))
-            out.append(f'<path d="{d}" fill="none" stroke="{c}" stroke-width="2"/>')
+            out.append(f'<path d="{d}" fill="none" stroke="{c}" stroke-width="2"{da}/>')
         ly = pt + 14 + n * 16
-        out.append(f'<line x1="{width - pr + 12}" x2="{width - pr + 28}" y1="{ly - 4}" y2="{ly - 4}" stroke="{c}" stroke-width="2"/>'
+        out.append(f'<line x1="{width - pr + 12}" x2="{width - pr + 28}" y1="{ly - 4}" y2="{ly - 4}" stroke="{c}" stroke-width="2"{da}/>'
                    f'<text x="{width - pr + 34}" y="{ly}" fill="#1C2430">{name}</text>')
     out.append("</svg>")
     return "\n".join(out) + "\n"

@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 260" role="img" aria-label="Backlog: events produced but not yet processed by rules-engine" font-family="system-ui, sans-serif" font-size="11">
+<rect width="720" height="260" fill="#fff"/>
+<text x="70" y="16" font-size="13" font-weight="600" fill="#1C2430">Backlog: events produced but not yet processed by rules-engine</text>
+<line x1="70" x2="570" y1="224.0" y2="224.0" stroke="#EEF1F4"/><text x="64" y="228.0" text-anchor="end" fill="#4A5565">0</text>
+<line x1="70" x2="570" y1="184.8" y2="184.8" stroke="#EEF1F4"/><text x="64" y="188.8" text-anchor="end" fill="#4A5565">20,000</text>
+<line x1="70" x2="570" y1="145.6" y2="145.6" stroke="#EEF1F4"/><text x="64" y="149.6" text-anchor="end" fill="#4A5565">40,000</text>
+<line x1="70" x2="570" y1="106.4" y2="106.4" stroke="#EEF1F4"/><text x="64" y="110.4" text-anchor="end" fill="#4A5565">60,000</text>
+<line x1="70" x2="570" y1="67.2" y2="67.2" stroke="#EEF1F4"/><text x="64" y="71.2" text-anchor="end" fill="#4A5565">80,000</text>
+<line x1="70" x2="570" y1="28.0" y2="28.0" stroke="#EEF1F4"/><text x="64" y="32.0" text-anchor="end" fill="#4A5565">100,000</text>
+<text x="70.0" y="240" text-anchor="middle" fill="#4A5565">0 s</text>
+<text x="170.0" y="240" text-anchor="middle" fill="#4A5565">76 s</text>
+<text x="270.0" y="240" text-anchor="middle" fill="#4A5565">151 s</text>
+<text x="370.0" y="240" text-anchor="middle" fill="#4A5565">227 s</text>
+<text x="470.0" y="240" text-anchor="middle" fill="#4A5565">302 s</text>
+<text x="570.0" y="240" text-anchor="middle" fill="#4A5565">378 s</text>
+<text x="14" y="126" transform="rotate(-90 14 126)" text-anchor="middle" fill="#4A5565">events</text>
+<path d="M70.0,223.8 L76.7,223.9 L83.4,223.9 L90.1,224.0 L96.7,224.0 L103.5,224.0 L110.1,224.0 L116.7,224.0 L123.5,224.0 L130.1,224.0 L136.7,224.0 L143.5,224.0 L150.1,223.9 L156.7,224.0 L163.4,224.0 L170.1,223.9 L176.7,223.9 L183.4,223.9 L190.0,224.0 L196.7,223.9 L203.4,224.0 L210.0,223.9 L216.6,223.9 L223.4,223.9 L230.0,223.9 L236.8,223.9 L243.4,223.8 L250.1,223.8 L256.7,223.8 L263.5,223.9 L270.1,223.9 L276.9,223.8 L283.5,223.7 L290.1,223.9 L296.8,223.9 L303.5,223.8 L310.2,224.0 L316.8,223.9 L323.6,223.9 L330.2,224.0 L336.8,223.9 L343.6,223.9 L350.2,224.0 L356.8,224.0 L363.5,223.9 L370.2,223.9 L376.8,223.9 L383.5,224.0 L390.1,224.0 L396.8,224.0 L403.5,224.0 L410.1,224.0 L416.7,223.9 L423.5,223.9 L430.1,223.9 L436.7,223.9 L443.5,224.0 L450.1,224.0 L456.7,223.9 L463.5,224.0 L470.1,224.0 L476.7,224.0 L483.4,224.0 L490.1,224.0 L496.7,224.0 L503.4,224.0 L510.0,224.0 L516.7,224.0 L523.4,224.0 L530.0,224.0 L536.6,224.0 L543.3,224.0 L550.0,224.0 L556.6,224.0 L563.3,224.0 L570.0,224.0" fill="none" stroke="#1F5FBF" stroke-width="2"/>
+<line x1="582" x2="598" y1="38" y2="38" stroke="#1F5FBF" stroke-width="2"/><text x="604" y="42" fill="#1C2430">s50-x10-t2</text>
+<path d="M70.0,223.8 L76.7,223.0 L83.5,222.5 L90.4,221.4 L97.1,220.4 L104.0,219.0 L110.8,220.0 L117.5,220.8 L124.3,220.8 L131.0,221.8 L137.8,223.4 L144.4,223.8 L151.1,223.6 L157.7,223.8 L164.5,223.9 L171.1,223.8 L177.7,224.0 L184.5,224.0 L191.1,224.0 L197.7,224.0" fill="none" stroke="#0B7A75" stroke-width="2"/>
+<line x1="582" x2="598" y1="54" y2="54" stroke="#0B7A75" stroke-width="2"/><text x="604" y="58" fill="#1C2430">s50-x40-t1</text>
+<path d="M70.0,223.8 L76.7,223.8 L83.5,223.6 L90.1,223.7 L97.0,223.2 L103.7,223.2 L110.5,222.8 L117.2,222.8 L124.0,223.2 L130.9,222.8 L137.6,223.1 L144.4,223.3 L151.1,223.7 L157.7,223.8 L164.5,223.8 L171.1,223.8 L177.7,223.9 L184.5,224.0 L191.1,224.0 L197.7,224.0" fill="none" stroke="#B86E00" stroke-width="2"/>
+<line x1="582" x2="598" y1="70" y2="70" stroke="#B86E00" stroke-width="2"/><text x="604" y="74" fill="#1C2430">s50-x40-t2</text>
+<path d="M70.1,223.8 L76.7,223.8 L83.5,223.6 L90.1,223.4 L96.9,223.4 L103.6,223.1 L110.4,223.0 L117.1,223.2 L123.9,223.6 L130.6,223.3 L137.4,223.4 L144.0,223.8 L150.7,223.7 L157.6,223.5 L164.2,223.8 L171.0,223.7 L177.6,223.9 L184.3,223.9 L191.0,224.0 L197.6,224.0 L204.3,224.0" fill="none" stroke="#A3243B" stroke-width="2"/>
+<line x1="582" x2="598" y1="86" y2="86" stroke="#A3243B" stroke-width="2"/><text x="604" y="90" fill="#1C2430">s50-x40-t4</text>
+<path d="M70.1,223.8 L76.7,207.8 L83.5,174.0 L90.1,147.7 L96.9,145.9 L103.6,160.0 L110.4,179.1 L117.1,198.8 L123.9,217.0 L130.6,224.0" fill="none" stroke="#5B4B8A" stroke-width="2"/>
+<line x1="582" x2="598" y1="102" y2="102" stroke="#5B4B8A" stroke-width="2"/><text x="604" y="106" fill="#1C2430">s50-x160-t2</text>
+<path d="M70.1,222.9 L76.9,116.3 L83.5,110.9 L90.2,129.5 L97.0,146.0 L103.7,165.0 L110.5,184.6 L117.1,204.6 L123.9,221.8 L130.6,224.0 L137.2,224.0" fill="none" stroke="#4A5565" stroke-width="2"/>
+<line x1="582" x2="598" y1="118" y2="118" stroke="#4A5565" stroke-width="2"/><text x="604" y="122" fill="#1C2430">s50-x640-t2</text>
+<path d="M70.0,223.5 L76.9,132.0 L83.8,103.0 L90.8,119.1 L97.7,134.4 L104.3,146.6 L111.0,163.4 L117.9,179.8 L124.7,197.9 L131.5,215.1 L138.2,224.0 L144.8,224.0" fill="none" stroke="#2E8B3D" stroke-width="2"/>
+<line x1="582" x2="598" y1="134" y2="134" stroke="#2E8B3D" stroke-width="2"/><text x="604" y="138" fill="#1C2430">s50-x640-t4</text>
+<path d="M70.1,222.2 L76.9,135.9 L83.8,97.2 L90.9,112.1 L97.7,125.2 L104.4,141.7 L111.2,159.6 L117.9,177.2 L124.7,195.2 L131.5,213.1 L138.2,224.0 L144.9,224.0" fill="none" stroke="#C2477F" stroke-width="2"/>
+<line x1="582" x2="598" y1="150" y2="150" stroke="#C2477F" stroke-width="2"/><text x="604" y="154" fill="#1C2430">s50-x2560-t2</text>
+<path d="M70.1,221.7 L77.0,129.1 L84.0,98.7 L90.9,110.7 L97.8,124.9 L104.5,140.0 L111.4,156.1 L118.2,173.6 L124.9,191.7 L131.7,208.4 L138.3,223.0 L145.0,224.0" fill="none" stroke="#7A5A00" stroke-width="2"/>
+<line x1="582" x2="598" y1="166" y2="166" stroke="#7A5A00" stroke-width="2"/><text x="604" y="170" fill="#1C2430">s50-x2560-t4</text>
+</svg>
