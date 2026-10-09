@@ -5,7 +5,7 @@
 > - Wall-clock punctuation drives only the liveness heartbeat and idle-state eviction.
 >
 > **Scorer.**
-> - Matching is greedy one-to-one by smallest time distance inside the match window, not Hungarian (§10.1).
+> - Matching is Hungarian one-to-one inside the match window, without the greedy fallback (§10.1, ADR-028).
 > - Latency is measured in event time. Wall-clock processing latency is not reported yet.
 >
 > **Internal transport security.**
@@ -432,10 +432,11 @@ A worked example with a hand-made sequence is in `docs/learn/watermarks.md`.
 | `R-QUEUE-001` | Threshold | `queue.length ≥ N` continuously for `≥ sustain`. Opens incident. Clears when `length ≤ N − hysteresis` for `≥ clear_sustain` (prevents flapping) | Per `(store, queue)`: breach start, current state |
 | `R-DWELL-001` | Dwell | Track in a configured zone longer than `limit` between `zone.entered` and `zone.exited`. Session TTL closes sessions with no exit | Per `(store, track, zone)`: entry time |
 | `R-ABS-001` | Absence | When `R-QUEUE-001` opens for a store, expect `register.opened` for that store within **300 s** event time. If none, open an escalation incident. Cancelled if the queue clears first | Per `store`: pending expectations with deadlines |
+| `R-FOOT-001` | Windowed | Count `zone.entered` per configured zone in 5-minute tumbling windows (Kafka Streams `TimeWindows.ofSizeAndGrace`, `suppress(untilWindowCloses)`). A closed window is a spike when a full hour of history exists, `count ≥ minCount` and `count > factor × mean(previous 12 windows)`; consecutive spike windows are one incident, resolved by the first normal window | Window store per store; per `(store, run)`: trailing counts and open incidents |
 
 ### 8.4 Rule configuration
 
-`services/rules-engine/rules.yaml`, versioned in Git, changed only by PR with review:
+`config/rules.yaml`, versioned in Git, changed only by PR with review:
 
 ```yaml
 - id: R-ABS-001
@@ -509,7 +510,7 @@ Transitions are validated server-side. Each transition writes `incident_review` 
 Per rule class, per store and key:
 
 - An incident **matches** a ground-truth episode if its event-time onset falls within `[gt.onset − tolerance_before, gt.onset + max_latency]`.
-- One-to-one assignment (Hungarian algorithm on time distance; greedy fallback for large sets).
+- One-to-one assignment by the Hungarian algorithm (`scorer/pip_scorer/assignment.py`): the most matches first, then the least total time distance. Groups are one (rule, store, key), so they stay small and no greedy fallback is needed (ADR-028).
 - Unmatched incidents = false positives. Unmatched episodes = false negatives.
 
 ### 10.2 Metrics

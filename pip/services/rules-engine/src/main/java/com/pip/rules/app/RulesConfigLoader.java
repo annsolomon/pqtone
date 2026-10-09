@@ -3,6 +3,7 @@ package com.pip.rules.app;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.pip.rules.domain.FootfallConfig;
 import com.pip.rules.domain.RuleConfig;
 
 import java.io.IOException;
@@ -10,8 +11,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /** Loads config/rules.yaml into a typed, validated RuleConfig. Fails fast on anything odd. */
@@ -47,6 +51,32 @@ public final class RulesConfigLoader {
                 dur(qp.path("clearSustain")),
                 meta(d), zones, dur(dp.path("limit")), dur(dp.path("sessionTtl")),
                 meta(a), dur(ap.path("within")), ap.path("expect").asText());
+    }
+
+    /**
+     * R-FOOT-001, the windowed footfall rule, if configured. Its window grace is the global
+     * grace, so out-of-order handling is the same as for the other rules.
+     */
+    public static Optional<FootfallConfig> loadFootfall(Path path) throws IOException {
+        JsonNode root = new ObjectMapper(new YAMLFactory()).readTree(Files.readAllBytes(path));
+        for (JsonNode r : root.path("rules")) {
+            if (!"R-FOOT-001".equals(r.path("id").asText())) continue;
+            String mode = r.path("mode").asText();
+            if (!MODES.contains(mode)) throw new IllegalArgumentException("rule R-FOOT-001 has invalid mode " + mode);
+            JsonNode p = r.path("params");
+            List<String> zones = new ArrayList<>();
+            p.path("zones").forEach(z -> zones.add(z.asText()));
+            long window = dur(p.path("window"));
+            long history = dur(p.path("history"));
+            if (window <= 0 || history % window != 0) {
+                throw new IllegalArgumentException("R-FOOT-001: history must be a whole number of windows");
+            }
+            JsonNode factor = p.get("factor");
+            if (factor == null || !factor.isNumber()) throw new IllegalArgumentException("bad factor");
+            return Optional.of(new FootfallConfig(meta(r), zones, window, (int) (history / window),
+                    factor.asDouble(), positiveInt(p, "minCount"), dur(root.path("grace"))));
+        }
+        return Optional.empty();
     }
 
     private static JsonNode require(Map<String, JsonNode> rules, String id) {

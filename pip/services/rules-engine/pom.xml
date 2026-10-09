@@ -44,6 +44,13 @@
       <artifactId>kafka-streams</artifactId>
       <version>${kafka.version}</version>
     </dependency>
+    <!-- Compile scope on purpose: the offline runner drives the production footfall topology
+         (R-FOOT-001 windows) through TopologyTestDriver. Apache-2.0, same project as kafka-streams. -->
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>kafka-streams-test-utils</artifactId>
+      <version>${kafka.version}</version>
+    </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
@@ -75,12 +82,6 @@
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
       <version>${junit.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.kafka</groupId>
-      <artifactId>kafka-streams-test-utils</artifactId>
-      <version>${kafka.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

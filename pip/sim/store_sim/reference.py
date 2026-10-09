@@ -131,3 +131,73 @@ class RefEngine:
 
     def finish(self, horizon_ms: int) -> None:
         self._fire_until(horizon_ms, inclusive=True)
+
+
+class FootfallRef:
+    """Reference for R-FOOT-001, the windowed footfall-spike rule.
+
+    rules-engine implements it with Kafka Streams windows (FootfallTopology): tumbling windows
+    of `window` aligned to the epoch, counting zone.entered per zone; a window is final once
+    stream time reaches window end + grace (suppress untilWindowCloses); final windows are
+    evaluated in order per (store, run) by FootfallSpikeDetector:
+
+      * baseline = mean of the previous `history` windows of the run (0 where a zone had no entry);
+      * spike    = a full history exists, count >= minCount and count * H > factor * sum(history);
+      * a spike opens an incident (onset = window start, detected = window end) unless one is
+        already open for the zone; the first non-spike window resolves it.
+
+    This runs over the clean, in-order stream, so every window is complete.
+    """
+
+    def __init__(self, rules: RuleSet):
+        self.r = rules
+        self.counts: dict[int, dict[str, int]] = {}
+        self.windows: set[int] = set()
+        self.last_t: int | None = None
+        self.store_id = None
+        self.run_id = None
+        self.out: list[dict] = []
+
+    def process(self, ev: dict) -> None:
+        if not self.r.foot_on:
+            return
+        t = ev["t"]
+        self.store_id, self.run_id = ev["storeId"], ev["simRunId"]
+        start = t - t % self.r.foot_window_ms
+        self.windows.add(start)
+        self.last_t = t if self.last_t is None else max(self.last_t, t)
+        if ev["type"] == "com.pip.store.zone.entered" and ev["data"]["zoneId"] in self.r.foot_zones:
+            zone_counts = self.counts.setdefault(start, {})
+            zone_counts[ev["data"]["zoneId"]] = zone_counts.get(ev["data"]["zoneId"], 0) + 1
+
+    def finish(self) -> None:
+        """Evaluate every window that closed by the end of input (end + grace <= last event time)."""
+        if self.last_t is None:
+            return
+        r, size, h = self.r, self.r.foot_window_ms, self.r.foot_history_windows
+        history: dict[str, list[int]] = {z: [] for z in r.foot_zones}
+        open_onset: dict[str, int] = {}
+        for start in sorted(self.windows):
+            end = start + size
+            if end + r.grace_ms > self.last_t:
+                break
+            counts = self.counts.get(start, {})
+            for zone in r.foot_zones:
+                c = counts.get(zone, 0)
+                past = history[zone]
+                spike = len(past) == h and c >= r.foot_min_count and c * h > r.foot_factor * sum(past)
+                if spike and zone not in open_onset:
+                    open_onset[zone] = start
+                    self._emit("OPENED", zone, start, end, c, sum(past) / h)
+                elif not spike and zone in open_onset:
+                    self._emit("RESOLVED", zone, open_onset.pop(zone), end, c, sum(past) / h if past else 0.0)
+                past.append(c)
+                if len(past) > h:
+                    past.pop(0)
+
+    def _emit(self, kind: str, zone: str, onset: int, detected: int, count: int, mean: float) -> None:
+        self.out.append({
+            "ruleId": "R-FOOT-001", "ruleVersion": self.r.versions["R-FOOT-001"], "mode": self.r.modes["R-FOOT-001"],
+            "kind": kind, "storeId": self.store_id, "simRunId": self.run_id, "key": zone,
+            "onsetMs": onset, "detectedMs": detected, "evidence": [], "count": count, "baseline": mean,
+        })

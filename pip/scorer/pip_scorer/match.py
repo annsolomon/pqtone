@@ -4,6 +4,8 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from .assignment import max_matching_min_distance
+
 
 @dataclass
 class RuleScore:
@@ -59,8 +61,9 @@ class RuleScore:
 
 def score(ground_truth: list[dict], incidents: list[dict], *, tolerance_before_ms: int,
           max_latency_ms: int, rule_ids: list[str]) -> dict[str, RuleScore]:
-    """Greedy one-to-one assignment by smallest time distance within the match window.
+    """Optimal one-to-one assignment within the match window (Hungarian, ADR-028).
 
+    Per group: as many matches as possible, then the smallest total |detected - ground truth|.
     Only OPENED incidents count as detections. Groups are (ruleId, storeId, key).
     """
     gt_groups: dict[tuple, list[dict]] = defaultdict(list)
@@ -77,21 +80,18 @@ def score(ground_truth: list[dict], incidents: list[dict], *, tolerance_before_m
         rule = group[0]
         s = scores.setdefault(rule, RuleScore(rule))
         gts, incs = gt_groups.get(group, []), inc_groups.get(group, [])
-        pairs = []
+        allowed: dict[tuple[int, int], int] = {}
         for gi, g in enumerate(gts):
             for ii, inc in enumerate(incs):
                 delta = inc["detectedMs"] - g["atMs"]
                 if -tolerance_before_ms <= delta <= max_latency_ms:
-                    pairs.append((abs(delta), g["atMs"], gi, ii, delta))
-        pairs.sort()
+                    allowed[(gi, ii)] = abs(delta)
         used_g, used_i = set(), set()
-        for _, _, gi, ii, delta in pairs:
-            if gi in used_g or ii in used_i:
-                continue
+        for gi, ii in max_matching_min_distance(len(gts), len(incs), allowed):
             used_g.add(gi)
             used_i.add(ii)
             s.tp += 1
-            s.latencies_ms.append(delta)
+            s.latencies_ms.append(incs[ii]["detectedMs"] - gts[gi]["atMs"])
         for gi, g in enumerate(gts):
             if gi not in used_g:
                 s.fn += 1
