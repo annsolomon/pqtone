@@ -351,6 +351,7 @@ services:
       PIP_BASE_URL: http://localhost:8080
       PIP_PUBLIC_URL: ${PIP_PUBLIC_URL}
       PIP_REVIEWER_PASSWORD: ${PIP_REVIEWER_PASSWORD}
+      PIP_ADMIN_PASSWORD: ${PIP_ADMIN_PASSWORD}
       PIP_UI_REPORTS: /work/reports/ui
       PIP_UI_TIMEOUT_S: "300"
     volumes:
