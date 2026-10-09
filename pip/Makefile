@@ -132,7 +132,7 @@ clean: ## Stop and delete all data, generated secrets and reports
 	-$(COMPOSE) --profile tools down -v --remove-orphans
 	rm -rf .work deploy/keycloak/generated .env
 
-.PHONY: openapi-check dev-setup test-fast schema-compat test-it baseline-accept
+.PHONY: openapi-check dev-setup test-fast schema-compat test-it baseline-accept scale scale-ladder
 dev-setup: ## One-time, no Docker: Python venv with sim + scorer, and web dependencies
 	python3 -m venv .venv
 	.venv/bin/pip install -q -e './sim[test]' -e './scorer[test]'
@@ -153,3 +153,29 @@ test-fast: ## No Docker, under 3 min: Java unit tests, Python tests, web typeche
 	cd services/rules-engine && mvn -B -q -ntp verify
 	.venv/bin/pytest -q sim/tests scorer/tests scripts/tests
 	cd web/ops-console && npm run -s typecheck && npm test --silent
+
+# ---------------------------------------------------------------- milestone R5: scale test
+STORES   ?= 50
+SPEED    ?= 10
+DURATION ?= PT30M
+THREADS  ?= 2
+LABEL    ?= s$(STORES)-x$(SPEED)-t$(THREADS)
+
+scale: ## R5: one scale run against the running stack (STORES=50 SPEED=10 DURATION=PT30M THREADS=2); report in .work/reports/scale
+	mkdir -p "$(WORK)/reports/scale"
+	PIP_STREAM_THREADS=$(THREADS) $(COMPOSE) up -d --no-deps rules-engine
+	COMPOSE="$(COMPOSE)" ./scripts/wait-healthy.sh
+	$(RUN) -e PIP_STREAM_THREADS_REPORTED=$(THREADS) tools python scripts/scale.py \
+	  --stores $(STORES) --speed $(SPEED) --duration $(DURATION) --seed $(SEED) --label $(LABEL) --out /work/reports/scale
+	@state_kb=$$($(COMPOSE) exec -T rules-engine du -sk /var/lib/rules-engine/state | cut -f1); \
+	  mem=$$(docker stats --no-stream --format '{{.MemUsage}}' $$($(COMPOSE) ps -q rules-engine) | cut -d/ -f1 | tr -d ' '); \
+	  python3 scripts/scale_report.py merge "$(WORK)/reports/scale/$(LABEL)/result.json" "$$state_kb" "$$mem"
+
+scale-ladder: ## R5: the documented ladder (threads 1/2/4 at 40x; speeds 10/40/160x at 2 threads), then the report
+	$(MAKE) scale THREADS=1 SPEED=40
+	$(MAKE) scale THREADS=2 SPEED=40
+	$(MAKE) scale THREADS=4 SPEED=40
+	$(MAKE) scale THREADS=2 SPEED=10
+	$(MAKE) scale THREADS=2 SPEED=160
+	PIP_STREAM_THREADS=2 $(COMPOSE) up -d --no-deps rules-engine
+	python3 scripts/scale_report.py report "$(WORK)/reports/scale" "$(WORK)/reports/scale/rules-engine.md"

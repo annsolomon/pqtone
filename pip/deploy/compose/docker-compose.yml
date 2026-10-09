@@ -212,6 +212,7 @@ services:
       PIP_RULES_FILE: /config/rules.yaml
       PIP_REPLICATION_FACTOR: "1"
       PIP_STANDBY_REPLICAS: "0"
+      PIP_STREAM_THREADS: ${PIP_STREAM_THREADS:-2}
     volumes:
       - ../../config/rules.yaml:/config/rules.yaml:ro
       - rules-state:/var/lib/rules-engine/state

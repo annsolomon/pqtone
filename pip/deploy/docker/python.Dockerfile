@@ -18,6 +18,8 @@ COPY tests tests
 # The OpenAPI contract test (milestone E5) needs the committed spec and the comparer.
 COPY services/event-core/openapi.yaml services/event-core/openapi.yaml
 COPY scripts/openapi_surface.py scripts/openapi_surface.py
+# The R5 scale harness (make scale).
+COPY scripts/scale.py scripts/scale.py
 RUN python -m pytest -q -p no:cacheprovider sim/tests scorer/tests
 RUN useradd --system --uid 10001 --no-create-home app
 USER 10001
