@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pip.local/store/queue.length/1.2.0",
+  "title": "com.pip.store.queue.length data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "queueId",
+    "length",
+    "estimatedWaitSeconds"
+  ],
+  "properties": {
+    "queueId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,64}$"
+    },
+    "length": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "estimatedWaitSeconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 86400,
+      "description": "Optional estimate of how long a person joining now would wait, in seconds."
+    }
+  }
+}
