@@ -67,7 +67,7 @@ So this tier starts with **Stage 0: make it green**.
 | ✅ E2 | **Schema evolution.** Add `store.queue.length` v1.1.0 with an optional `estimatedWaitSeconds` field. Add a CI script `scripts/schema-compat.py` that fails if a new version removes or renames a field, tightens a type, or adds a required field. Register both versions; producers may send either. | Compat script in CI; a test proves v1.0.0 and v1.1.0 events are both accepted; a deliberately breaking v1.2.0 fails CI. | 🧠 Compat rules |
 | E3 | **Flyway discipline.** Add `V5__incident_assignee.sql` (nullable column, grant, index). Practise the expand → migrate → contract pattern. Write a rollback note. Add a test that migrations apply cleanly to an empty DB and to a DB at V4. | Both paths green in CI. | |
 | ✅ E4 | **Testcontainers integration tests.** Repository and ingest tests against real Postgres 16 and Redpanda in `mvn verify`, using Docker-in-Docker in the devcontainer and in CI. | Covered: dedup race (two concurrent identical inserts → one accepted, one duplicate); conflict path; outbox relay with Kafka down → backlog drains when it returns. | 🧠 The race test |
-| E5 | **Contract tests.** Generate the OpenAPI doc from code (springdoc) and diff it against `openapi.yaml` in CI. | Drift fails the build. | |
+| ✅ E5 | **Contract tests.** Generate the OpenAPI doc from code (springdoc) and diff it against `openapi.yaml` in CI. | Drift fails the build. |  |
 
 ---
 
