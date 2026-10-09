@@ -86,3 +86,26 @@ export interface PipelineHealth {
   lastHeartbeatAt: string | null;
   staleAfterSeconds: number;
 }
+
+/** Milestone C5: GET /api/admin/review-metrics. */
+export interface RuleReviewMetrics {
+  ruleId: string;
+  incidents: number;
+  acted: number;
+  decided: number;
+  confirmed: number;
+  dismissed: number;
+  undecided: number;
+  confirmRate: number | null;
+  confirmRateLow: number | null;
+  confirmRateHigh: number | null;
+  timeToActionP50Seconds: number | null;
+  timeToActionP90Seconds: number | null;
+  dismissReasons: Record<string, number>;
+}
+
+export interface ReviewMetrics {
+  days: number;
+  generatedAt: string;
+  rules: RuleReviewMetrics[];
+}

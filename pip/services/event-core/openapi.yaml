@@ -32,6 +32,30 @@ components:
         errors: {type: array, items: {type: string}}
     CloudEvent:
       $ref: ../../schemas/envelope.schema.json
+    ReviewMetrics:
+      type: object
+      required: [days, generatedAt, rules]
+      properties:
+        days: {type: integer}
+        generatedAt: {type: string, format: date-time}
+        rules:
+          type: array
+          items:
+            type: object
+            properties:
+              ruleId: {type: string}
+              incidents: {type: integer}
+              acted: {type: integer, description: Incidents with at least one review action}
+              decided: {type: integer, description: Incidents whose latest decision is confirm or dismiss}
+              confirmed: {type: integer}
+              dismissed: {type: integer}
+              undecided: {type: integer}
+              confirmRate: {type: number, nullable: true}
+              confirmRateLow: {type: number, nullable: true, description: 95% Wilson lower bound; the conservative precision estimate}
+              confirmRateHigh: {type: number, nullable: true}
+              timeToActionP50Seconds: {type: number, nullable: true}
+              timeToActionP90Seconds: {type: number, nullable: true}
+              dismissReasons: {type: object, additionalProperties: {type: integer}}
     IngestResult:
       type: object
       properties:
@@ -170,6 +194,22 @@ paths:
       security: [{session: []}]
       parameters: [{name: limit, in: query, schema: {type: integer, maximum: 500, default: 100}}]
       responses: {"200": {description: OK}}
+  /api/admin/review-metrics:
+    get:
+      summary: >-
+        Review metrics per rule for enforce incidents created in the last `days` (milestone C5): time from the
+        incident reaching the console to the first review action (p50, p90, wall clock), confirm rate over
+        decided incidents with a 95% Wilson interval, undecided count and dismiss reasons. Admin only.
+      security: [{session: []}]
+      parameters: [{name: days, in: query, schema: {type: integer, minimum: 1, maximum: 90, default: 30}}]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ReviewMetrics"}
+        "400": {description: days outside 1..90}
+        "403": {description: Admins only}
   /api/admin/audit/verify:
     get: {summary: Recompute the hash chain (admin), security: [{session: []}], responses: {"200": {description: "{valid, rows, brokenAtSeq?}"}}}
   /logout:

@@ -83,6 +83,27 @@ def test_dismiss_requires_a_reason_and_operator_cannot_confirm():
     assert r.status_code == 200 and r.json()["status"] == "DISMISSED"
 
 
+def test_review_metrics_are_admin_only_and_count_decisions():
+    """Milestone C5. Runs after the review-flow tests above, which confirm and dismiss incidents."""
+    assert login("reviewer").get("/api/admin/review-metrics").status_code == 403
+    a = login("admin")
+    assert a.get("/api/admin/review-metrics?days=0").status_code == 400
+    assert a.get("/api/admin/review-metrics?days=91").status_code == 400
+    r = a.get("/api/admin/review-metrics?days=7")
+    assert r.status_code == 200, r.text
+    m = r.json()
+    assert m["days"] == 7
+    rules = {x["ruleId"]: x for x in m["rules"]}
+    assert "R-QUEUE-001" in rules, "the pipeline run raised queue incidents"
+    q = rules["R-QUEUE-001"]
+    assert q["incidents"] >= q["acted"] >= q["decided"] == q["confirmed"] + q["dismissed"]
+    assert q["undecided"] == q["incidents"] - q["decided"]
+    if q["decided"]:
+        assert q["confirmRateLow"] <= q["confirmRate"] <= q["confirmRateHigh"]
+        assert q["timeToActionP50Seconds"] is not None and q["timeToActionP50Seconds"] >= 0
+    assert "reviewer" not in r.text, "reviewer names are not part of the metrics"
+
+
 def test_audit_chain_is_intact_and_admin_only():
     assert login("reviewer").get("/api/admin/audit/verify").status_code == 403
     verdict = login("admin").get("/api/admin/audit/verify").json()
