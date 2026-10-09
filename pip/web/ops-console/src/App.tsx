@@ -4,6 +4,7 @@ import { AlertProvider } from "./alerts/AlertProvider";
 import { ToastStack } from "./alerts/ToastStack";
 import { ApiError, get, loginUrl } from "./api";
 import { HealthBanner } from "./components/HealthBanner";
+import { ShadowScorecard } from "./components/ShadowScorecard";
 import { TopBar } from "./components/TopBar";
 import { LiveProvider } from "./live";
 import { AuditPage } from "./pages/AuditPage";
@@ -54,7 +55,7 @@ export function App() {
             {admin && <Route path="/shadow" element={
               <IncidentListPage title="Shadow rules" query="mode=shadow&limit=200"
                 intro="Shadow rules run silently so their accuracy can be measured before they alert anyone. Nothing here notifies staff."
-                empty="No shadow incidents yet." />} />}
+                empty="No shadow incidents yet."><ShadowScorecard /></IncidentListPage>} />}
             {admin && <Route path="/audit" element={<AuditPage />} />}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

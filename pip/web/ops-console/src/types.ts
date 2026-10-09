@@ -115,3 +115,33 @@ export interface IncidentTimelineData {
   markers: TimelineMarker[];
   truncated: boolean;
 }
+
+/** Milestone R6: GET /api/admin/rule-scores. */
+export interface RuleScore {
+  ruleId: string;
+  ruleVersion: string;
+  mode: "enforce" | "shadow";
+  runs: number;
+  lastMeasuredAt: string;
+  lastRunId: string;
+  lastScenario: string;
+  tp: number;
+  fp: number;
+  fn: number;
+  precision: number | null;
+  recall: number | null;
+  precisionLow: number | null;
+  recallLow: number | null;
+  precisionMin: number;
+  recallMin: number;
+  minN: number | null;
+  minLowerBound: number | null;
+  ready: boolean;
+  reasons: string[];
+}
+
+export interface RuleScores {
+  windowDays: number;
+  generatedAt: string;
+  rules: RuleScore[];
+}

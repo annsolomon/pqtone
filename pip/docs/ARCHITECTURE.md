@@ -464,6 +464,7 @@ R-FOOT-001's window, history and zones are structural and still need a restart.
 - Shadow rules run the same code path on the same input.
 - Output goes to `incidents.shadow.v1`. Shadow incidents are persisted but never enter the operator review queue; admins see them in a separate Shadow view.
 - **Promotion to enforce requires**: scorer results meeting thresholds across the full scenario matrix, plus a documented review in the PR that flips `mode`.
+- **Live evidence (milestone R6).** Every end-to-end run records its score per rule in `pip.rule_score` (append-only, one row per run and rule, written by `pip-scorer e2e --record` as `pip_app`). `GET /api/admin/rule-scores` accumulates the current version's rows over 30 days and gives each shadow rule a verdict with the scorer's own gate: point thresholds, at least `minN` samples, Wilson lower bounds at or above `minLowerBound`. The Shadow view shows it with no promote button: promotion is a pull request from the `rule-promotion` template (RB-11), which raises the rule version (R4).
 
 ### 8.6 Incident identity
 

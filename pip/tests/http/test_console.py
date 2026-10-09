@@ -142,6 +142,22 @@ def test_shadow_timeline_is_admin_only():
     assert login("reviewer").get(path).status_code == 404
 
 
+def test_rule_scores_are_recorded_after_the_live_run_and_admin_only():
+    """Milestone R6: make e2e-pipeline records the run's score per rule (pip-scorer e2e --record)."""
+    assert login("reviewer").get("/api/admin/rule-scores").status_code == 403
+    r = login("admin").get("/api/admin/rule-scores")
+    assert r.status_code == 200, r.text
+    rules = {x["ruleId"]: x for x in r.json()["rules"]}
+    assert "R-QUEUE-001" in rules and rules["R-QUEUE-001"]["mode"] == "enforce"
+    assert rules["R-QUEUE-001"]["ready"] is False and "already enforce" in rules["R-QUEUE-001"]["reasons"]
+    shadow = [x for x in rules.values() if x["mode"] == "shadow"]
+    assert shadow, "the shadow rule R-ABS-001 is scored too"
+    for x in rules.values():
+        assert x["runs"] >= 1 and x["tp"] >= 0 and x["fp"] >= 0 and x["fn"] >= 0
+        if x["precision"] is not None and x["precisionLow"] is not None:
+            assert x["precisionLow"] <= x["precision"]
+
+
 def test_live_stream_says_hello():
     v = login("viewer")
     with v.s.get(f"{BASE}/api/stream", stream=True, timeout=15, headers={"Accept": "text/event-stream"}) as r:

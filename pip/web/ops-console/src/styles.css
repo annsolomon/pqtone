@@ -228,3 +228,12 @@ th { font-size: var(--s-1); color: var(--ink-2); font-weight: 600; }
 .tl-table { margin-top: 8px; }
 .tl-table table { border-collapse: collapse; margin: 8px 0; width: auto; }
 .tl-table th, .tl-table td { padding: 2px 12px 2px 0; text-align: left; }
+
+/* ---------------------------------------------------------------- shadow scorecard (R6) */
+.scorecard { margin: 16px 0 24px; }
+.verdict { font-weight: 600; font-size: var(--s-1); }
+.verdict-ready { color: var(--live); }
+.verdict-wait { color: var(--ink-2); }
+.verdict-info { color: var(--ink-2); }
+.promote-how { margin-top: 10px; }
+.promote-how ol { padding-left: 20px; }
