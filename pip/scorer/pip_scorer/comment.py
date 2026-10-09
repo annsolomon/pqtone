@@ -55,6 +55,10 @@ def _section(title: str, doc: dict, baseline: dict, *, changes: bool) -> list[st
         out += ["### Changes against the baseline", ""]
         out += (HEADER + [_row(r, baseline) for r in diff]) if diff else ["No change against the baseline."]
         out.append("")
+    lat = doc.get("metrics", {}).get("processingLatencyMs")
+    if lat and lat.get("n"):
+        out += [f"Processing latency (ingest -> incident row, milestone Q2): p50 {lat['p50']} ms, "
+                f"p95 {lat['p95']} ms, max {lat['max']} ms over {lat['n']} incidents", ""]
     if doc.get("otherFailures"):
         out += ["Other failures:", ""] + [f"- {f}" for f in doc["otherFailures"]] + [""]
     out += [f"<details><summary>All {len(results)} rows</summary>", "", *HEADER,

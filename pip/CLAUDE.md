@@ -28,6 +28,7 @@ First time in a Codespace: `make dev-setup`. Console mode: `scripts/mode.sh code
 - Ask before adding a dependency, and state its licence. AGPL, SSPL, BSL or non-commercial licences need an ADR.
 - Least privilege everywhere (DB roles, Kafka ACLs, container caps). No secrets in code. `.env` is generated and never read into output.
 - SQL: parameterised only. Migrations are Flyway, forward-only, expand → migrate → contract.
+- An API change updates `services/event-core/openapi.yaml` in the same PR; the e2e contract test (`make openapi-check`) fails on drift.
 - Java 21 / Spring Boot 3; Python 3.12 with type hints; React + strict TypeScript.
 - Conventional commits. One milestone per branch. Don't push; the user pushes.
 

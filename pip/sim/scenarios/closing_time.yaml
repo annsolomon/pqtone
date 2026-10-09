@@ -1,0 +1,15 @@
+name: closing_time
+description: >
+  The last hour before closing: arrivals taper off to zero, the last shoppers drain through
+  checkout and idle registers close quickly. Nothing should alert falsely while the store
+  empties, and every incident opened earlier should resolve.
+duration: PT1H30M
+arrivals:
+  - {from: PT0S,  to: PT30M, perHour: 120}
+  - {from: PT30M, to: PT60M, perHour: 50}
+  - {from: PT60M, to: PT75M, perHour: 15}
+  - {from: PT75M, to: PT1H30M, perHour: 0}
+staffing:
+  initialOpen: 3
+  minOpen: 1
+  closeAfterIdle: PT120S

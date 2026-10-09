@@ -12,10 +12,12 @@ SCENARIO ?= register_delay
 SEED     ?= $(shell date +%s)
 # The browser demo always needs a fresh run (a repeated seed is deduplicated away), so it never uses SEED.
 UI_SEED  ?= $(shell echo $$(( $$(date +%s) + 7919 )))
+# Same for the HTTP sink run, which must not collide with the Kafka run's event ids.
+HTTP_SEED ?= $(shell echo $$(( $$(date +%s) + 104729 )))
 export DOCKER_BUILDKIT := 1
 export COMPOSE_DOCKER_CLI_BUILD := 1
 
-.PHONY: all help bootstrap build offline up e2e e2e-pipeline e2e-http e2e-db e2e-ui summary sim down clean logs ps
+.PHONY: all help bootstrap build offline up e2e e2e-pipeline e2e-http e2e-http-sim e2e-db e2e-ui summary sim down clean logs ps
 
 all: bootstrap build test-it offline up e2e summary ## Build + unit tests, integration tests, offline quality gate, start the stack, live end-to-end tests, summary
 
@@ -40,7 +42,7 @@ up: bootstrap ## Start the stack and wait until it is healthy
 	$(COMPOSE) up -d
 	COMPOSE="$(COMPOSE)" ./scripts/wait-healthy.sh
 
-e2e: e2e-pipeline e2e-http e2e-db e2e-ui ## Live end-to-end tests against the running stack
+e2e: e2e-pipeline e2e-http e2e-http-sim e2e-db e2e-ui ## Live end-to-end tests against the running stack
 
 e2e-pipeline: ## Simulate SCENARIO through Kafka and score the incidents stored in PostgreSQL
 	rm -rf "$(WORK)/e2e" "$(WORK)/reports/e2e" && mkdir -p "$(WORK)/reports"
@@ -49,6 +51,18 @@ e2e-pipeline: ## Simulate SCENARIO through Kafka and score the incidents stored 
 
 e2e-http: ## Security and API tests through the gateway (auth, RBAC, CSRF, ingest contract, review flow)
 	$(COMPOSE) run --rm e2e-http
+
+e2e-http-sim: ## The simulator's HTTP sink through the gateway with OAuth client credentials; every event stored once
+	rm -rf "$(WORK)/http-sim" && mkdir -p "$(WORK)/reports"
+	$(COMPOSE) run --rm e2e-http sh -c 'PIP_CLIENT_SECRET="$$PIP_SIM_CLIENT_SECRET" \
+	  PIP_CLIENT_ID=store-sim \
+	  PIP_TOKEN_URL=http://localhost:8080/auth/realms/pip/protocol/openid-connect/token \
+	  PIP_INGEST_URL=http://localhost:8080/v1/events \
+	  store-sim run --seed $(HTTP_SEED) --scenario sim/scenarios/duplicates.yaml --out /work/http-sim --sink http'
+	$(RUN) tools pip-scorer stored --case-dir /work/http-sim --timeout 180
+
+openapi-check: ## Diff the running event-core's generated OpenAPI with services/event-core/openapi.yaml (E5)
+	$(COMPOSE) run --rm e2e-http python -m pytest -q -p no:cacheprovider tests/http/test_openapi_contract.py
 
 e2e-db: ## Database guarantees (append-only, least privilege, TLS-only)
 	$(RUN) tools python -m pytest -q -p no:cacheprovider tests/db --junitxml=/work/reports/e2e-db.xml
@@ -91,7 +105,7 @@ clean: ## Stop and delete all data, generated secrets and reports
 	-$(COMPOSE) --profile tools down -v --remove-orphans
 	rm -rf .work deploy/keycloak/generated .env
 
-.PHONY: dev-setup test-fast schema-compat test-it
+.PHONY: openapi-check dev-setup test-fast schema-compat test-it baseline-accept
 dev-setup: ## One-time, no Docker: Python venv with sim + scorer, and web dependencies
 	python3 -m venv .venv
 	.venv/bin/pip install -q -e './sim[test]' -e './scorer[test]'
@@ -99,6 +113,9 @@ dev-setup: ## One-time, no Docker: Python venv with sim + scorer, and web depend
 
 test-it: ## Integration tests (Testcontainers: PostgreSQL 16, Redpanda); needs Docker and JDK 21
 	cd services/event-core && mvn -B -ntp -DskipUTs verify
+
+baseline-accept: ## Open a PR proposing the latest green main run's quality baseline (needs gh; RB-09)
+	./scripts/baseline-accept.sh
 
 schema-compat: ## Fail if a schema version would reject data an older version accepted
 	.venv/bin/python scripts/schema-compat.py

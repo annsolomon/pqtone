@@ -202,3 +202,88 @@ def test_footfall_spike_scenario_has_one_entrance_spike_per_seed():
     for seed in (11, 42, 1337):
         gt = [g for g in run("footfall_spike", seed).ground_truth if g["ruleId"] == "R-FOOT-001"]
         assert [g["key"] for g in gt] == ["entrance"], (seed, gt)
+
+
+@pytest.mark.parametrize("scenario, expected", [
+    ("staff_shortage", {"R-QUEUE-001", "R-ABS-001"}),
+    ("flash_sale", {"R-QUEUE-001", "R-FOOT-001"}),
+    ("closing_time", {"R-QUEUE-001"}),
+])
+def test_new_scenarios_produce_the_ground_truth_they_describe(scenario, expected):
+    """Milestone S3. Every matrix seed must exercise the rules the scenario is about."""
+    for seed in (11, 42, 1337):
+        out = run(scenario, seed)
+        rules = {g["ruleId"] for g in out.ground_truth}
+        assert expected <= rules, (scenario, seed, rules)
+
+
+def test_staff_shortage_never_opens_a_register():
+    out = run("staff_shortage")
+    assert not [e for e in out.clean if e["type"].endswith("register.opened")]
+    assert {e["data"]["openRegisters"] for e in out.clean if e["type"].endswith("queue.length")} == {1}
+
+
+def test_closing_time_ends_empty_with_one_register_and_nothing_open():
+    out = run("closing_time")
+    last = [e["data"] for e in out.clean if e["type"].endswith("queue.length")][-1]
+    assert last == {"queueId": "checkout-1", "length": 0, "openRegisters": 1}
+    rules = load_rules(RULES)
+    ref = RefEngine(rules)
+    for ev in out.clean:
+        ref.process({"t": parse_iso_ms(ev["time"]), "type": ev["type"], "storeId": "store-001",
+                     "simRunId": out.run_id, "id": ev["id"], "data": ev["data"]})
+    ref.finish(out.manifest["horizonMs"])
+    opened = Counter(i["ruleId"] for i in ref.out if i["kind"] == "OPENED")
+    resolved = Counter(i["ruleId"] for i in ref.out if i["kind"] == "RESOLVED")
+    assert opened == resolved, "every incident opened before closing resolves"
+
+
+@pytest.mark.parametrize("bad, message", [
+    ({"staffing": {"reactonMax": "PT60S"}}, "unknown key staffing.reactonMax"),
+    ({"arrival": []}, "unknown key 'arrival'"),
+    ({"faults": {"dupes": {"rate": 0.1}}}, "unknown key faults.dupes"),
+    ({"arrivals": [{"from": "PT0S", "to": "PT1H"}]}, "arrivals[0] needs from, to and a perHour >= 0"),
+    ({"arrivals": [{"from": "PT0S", "to": "PT1H", "perHour": 0}]}, "at least one segment needs perHour > 0"),
+])
+def test_scenario_typos_are_rejected(bad, message, tmp_path):
+    from store_sim.config import load_scenario
+    import yaml as _yaml
+    sc = {"name": "x", "duration": "PT1H", "arrivals": [{"from": "PT0S", "to": "PT1H", "perHour": 60}]}
+    sc.update(bad)
+    p = tmp_path / "x.yaml"
+    p.write_text(_yaml.safe_dump(sc))
+    with pytest.raises(ValueError, match=message.replace("[", r"\[").replace("]", r"\]")):
+        load_scenario(p)
+
+
+def test_every_shipped_scenario_passes_the_key_check():
+    from store_sim.config import load_scenario
+    for p in sorted(Path("sim/scenarios").glob("*.yaml")):
+        load_scenario(p)
+
+
+def test_an_extra_draw_in_one_stream_leaves_the_others_alone():
+    """docs/learn/store-sim.md: separate RNG streams confine a model change to what it touches."""
+    import yaml as _yaml
+
+    from store_sim.model import StoreModel
+
+    layout = json.loads(Path(LAYOUT).read_text())
+    scenario = _yaml.safe_load(Path("sim/scenarios/rush_hour.yaml").read_text())
+
+    class ExtraServiceDraw(StoreModel):
+        def _lognormal_ms(self, rng, median_s, sigma):
+            if rng is self.r_svc:
+                rng.random()  # a new random draw, as if the model had grown a feature at the registers
+            return super()._lognormal_ms(rng, median_s, sigma)
+
+    def shopping(records):
+        # Everything decided by the arrival and movement streams: who arrives when, where they go.
+        return [(r.t_ms, r.short_type, r.data.get("zoneId"), r.data.get("trackId")) for r in records
+                if r.short_type in ("zone.entered", "zone.exited") and r.data.get("zoneId") != "checkout"]
+
+    base = StoreModel(layout, scenario, seed=7).run()
+    changed = ExtraServiceDraw(layout, scenario, seed=7).run()
+    assert shopping(changed) == shopping(base)
+    service_exits = lambda recs: [r.t_ms for r in recs if r.short_type == "zone.exited" and r.data["zoneId"] == "checkout"]
+    assert service_exits(changed) != service_exits(base), "the change itself must show up at the registers"
