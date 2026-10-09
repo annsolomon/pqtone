@@ -90,7 +90,42 @@ def load_layout(path: str | Path) -> dict:
     return json.loads(Path(path).read_text())
 
 
+SCENARIO_KEYS = {
+    None: {"name", "description", "duration", "epoch", "arrivals", "shoppers", "staffing", "faults"},
+    "shoppers": {"checkoutProbability", "fittingRoomProbability", "fittingRoomMedianSeconds",
+                 "fittingRoomSigma", "serviceMedianSeconds"},
+    "staffing": {"initialOpen", "minOpen", "maxOpen", "openAtQueueLength", "reactionMin", "reactionMax",
+                 "closeAfterIdle"},
+    "faults": {"outOfOrder", "late", "duplicates", "malformed", "vision"},
+}
+
+
+def check_scenario(sc: dict) -> None:
+    """Reject unknown keys: a typo ("reactionMax" as "reactonMax") would otherwise be ignored silently."""
+    if not isinstance(sc, dict):
+        raise ValueError("a scenario is a YAML mapping")
+    problems = [f"unknown key {k!r}" for k in sc if k not in SCENARIO_KEYS[None]]
+    for section in ("shoppers", "staffing", "faults"):
+        for k in (sc.get(section) or {}):
+            if k not in SCENARIO_KEYS[section]:
+                problems.append(f"unknown key {section}.{k}")
+    for k in ("duration", "arrivals"):
+        if k not in sc:
+            problems.append(f"missing {k}")
+    rates = []
+    for i, seg in enumerate(sc.get("arrivals") or []):
+        if not isinstance(seg, dict) or set(seg) != {"from", "to", "perHour"} or float(seg["perHour"]) < 0:
+            problems.append(f"arrivals[{i}] needs from, to and a perHour >= 0")
+        else:
+            rates.append(float(seg["perHour"]))
+    if rates and max(rates) <= 0:
+        problems.append("arrivals: at least one segment needs perHour > 0")
+    if problems:
+        raise ValueError("invalid scenario: " + "; ".join(problems))
+
+
 def load_scenario(path: str | Path) -> dict:
     sc = yaml.safe_load(Path(path).read_text())
+    check_scenario(sc)
     sc.setdefault("faults", {})
     return sc

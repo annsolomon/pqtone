@@ -70,6 +70,8 @@ class StoreModel:
         self.react_min_ms = parse_duration_ms(staff_cfg.get("reactionMin", "PT60S"))
         self.react_max_ms = parse_duration_ms(staff_cfg.get("reactionMax", "PT200S"))
         self.close_after_ms = parse_duration_ms(staff_cfg.get("closeAfterIdle", "PT300S"))
+        # How many registers can ever be staffed (staff_shortage). Default: all of them.
+        self.max_open = int(staff_cfg.get("maxOpen", len(layout["registers"])))
 
         self.registers = [Register(r["id"]) for r in layout["registers"]]
         for r in self.registers[: self.initial_open]:
@@ -235,7 +237,8 @@ class StoreModel:
             self.queue_empty_since = None
         elif self.queue_empty_since is None:
             self.queue_empty_since = t
-        if q >= self.open_threshold and not self.pending_open and any(not r.open for r in self.registers):
+        if (q >= self.open_threshold and not self.pending_open and any(not r.open for r in self.registers)
+                and self._open_count() < self.max_open):
             self.pending_open = True
             delay = int(float(self.r_staff.uniform(self.react_min_ms, self.react_max_ms)))
             self._at(t + delay, self._open_register)
