@@ -1,4 +1,4 @@
-import type { LiveEvent, StoreState } from "./types";
+import type { Layout, LiveEvent, StoreState } from "./types";
 
 /** Applies live events to the floor read model. Pure, so it is unit-tested. */
 export function applyEvents(state: StoreState, events: LiveEvent[]): StoreState {
@@ -43,4 +43,10 @@ export function queueTrail(n: number, box: { x: number; y: number; w: number; h:
     out.push({ x, y });
   }
   return out;
+}
+
+/** Milestone S2: the registers that serve a queue (a register without queueId serves the first queue). */
+export function registersOf(layout: Layout, queueId: string): { id: string; queueId?: string }[] {
+  const first = layout.queues[0]?.id;
+  return layout.registers.filter((r) => (r.queueId ?? first) === queueId);
 }

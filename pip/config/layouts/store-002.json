@@ -1,0 +1,28 @@
+{
+  "storeId": "store-002",
+  "name": "Demo store 002",
+  "width": 1000,
+  "height": 640,
+  "zones": [
+    {"id": "entrance",      "name": "Entrance",      "x": 20,  "y": 520, "w": 450, "h": 100, "kind": "entrance"},
+    {"id": "produce",       "name": "Produce",       "x": 20,  "y": 20,  "w": 220, "h": 220, "kind": "sales", "weight": 0.25},
+    {"id": "bakery",        "name": "Bakery",        "x": 260, "y": 20,  "w": 200, "h": 220, "kind": "sales", "weight": 0.15},
+    {"id": "grocery",       "name": "Grocery",       "x": 480, "y": 20,  "w": 240, "h": 220, "kind": "sales", "weight": 0.30},
+    {"id": "household",     "name": "Household",     "x": 490, "y": 260, "w": 230, "h": 360, "kind": "sales", "weight": 0.10},
+    {"id": "apparel",       "name": "Apparel",       "x": 20,  "y": 260, "w": 260, "h": 240, "kind": "sales", "weight": 0.20},
+    {"id": "fitting-rooms", "name": "Fitting rooms", "x": 300, "y": 260, "w": 170, "h": 240, "kind": "monitored"},
+    {"id": "checkout-a",    "name": "Checkout A",    "x": 740, "y": 20,  "w": 240, "h": 290, "kind": "checkout"},
+    {"id": "checkout-b",    "name": "Checkout B",    "x": 740, "y": 330, "w": 240, "h": 290, "kind": "checkout"}
+  ],
+  "dwellMedianSeconds": {"produce": 150, "bakery": 120, "grocery": 240, "household": 180, "apparel": 360},
+  "queues": [
+    {"id": "checkout-1", "zoneId": "checkout-a"},
+    {"id": "checkout-2", "zoneId": "checkout-b"}
+  ],
+  "registers": [
+    {"id": "reg-1", "queueId": "checkout-1"},
+    {"id": "reg-2", "queueId": "checkout-1"},
+    {"id": "reg-3", "queueId": "checkout-2"},
+    {"id": "reg-4", "queueId": "checkout-2"}
+  ]
+}

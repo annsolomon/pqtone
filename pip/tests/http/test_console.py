@@ -34,6 +34,18 @@ def test_viewer_can_read_but_not_act_or_see_shadow():
     assert r.status_code == 403
 
 
+def test_every_store_layout_is_listed_and_served():
+    """Milestone S2: a second store with two checkout lines."""
+    v = login("viewer")
+    stores = v.get("/api/stores").json()
+    assert [s["storeId"] for s in stores] == ["store-001", "store-002"]
+    layout = v.get("/api/stores/store-002/layout").json()
+    assert [q["id"] for q in layout["queues"]] == ["checkout-1", "checkout-2"]
+    assert {r["queueId"] for r in layout["registers"]} == {"checkout-1", "checkout-2"}
+    assert v.get("/api/stores/store-002/state").status_code == 200
+    assert v.get("/api/stores/store-999/layout").status_code == 404
+
+
 def test_state_changing_requests_need_csrf():
     r = login("reviewer").post("/api/incidents/00000000-0000-0000-0000-000000000000/actions",
                                json={"action": "confirm"}, headers={"If-Match": '"1"'}, csrf=False)

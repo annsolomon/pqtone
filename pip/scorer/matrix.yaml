@@ -9,6 +9,8 @@ scenarios:
   - staff_shortage
   - flash_sale
   - closing_time
+  - two_queues
+  - multi_store
   - duplicates
   - out_of_order
   - late_beyond_grace
