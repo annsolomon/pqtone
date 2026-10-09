@@ -10,7 +10,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from playwright.sync_api import Page
+from playwright.sync_api import BrowserContext, Page
 
 AXE_JS = Path(os.environ.get("PIP_AXE_JS", "/opt/axe/axe.min.js"))
 # WCAG 2.2 A and AA plus axe best practices. Only serious and critical findings fail the gate;
@@ -23,9 +23,15 @@ BLOCKING = {"serious", "critical"}
 class AxeReport:
     pages: dict[str, list[dict]] = field(default_factory=dict)
 
+    @staticmethod
+    def install(context: BrowserContext) -> None:
+        """Load axe into every page of the context. An init script is not subject to the console's
+        Content-Security-Policy (script-src 'self'), so the policy stays enforced during the scan."""
+        context.add_init_script(path=str(AXE_JS))
+
     def scan(self, page: Page, name: str) -> list[dict]:
         if not page.evaluate("() => typeof window.axe !== 'undefined'"):
-            page.add_script_tag(content=AXE_JS.read_text(encoding="utf-8"))
+            raise RuntimeError("axe is not loaded: call AxeReport.install(context) before opening pages")
         result = page.evaluate(
             """async (tags) => {
                 const r = await window.axe.run(document, { runOnly: { type: "tag", values: tags }, resultTypes: ["violations"] });

@@ -48,6 +48,7 @@ def _settle(page: Page) -> None:
 
 def test_console_pages_have_no_serious_accessibility_violations(browser):
     context = browser.new_context(viewport={"width": 1440, "height": 900})
+    AxeReport.install(context)
     page = context.new_page()
     try:
         sign_in(page, "admin", os.environ["PIP_ADMIN_PASSWORD"])
