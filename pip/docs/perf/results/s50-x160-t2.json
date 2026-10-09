@@ -1,6 +1,6 @@
 {
   "label": "s50-x160-t2",
-  "runId": "run-1b5ee7318dd3",
+  "runId": "run-a33a0082afdf",
   "stores": 50,
   "speed": 160.0,
   "duration": "PT30M",
@@ -11,43 +11,43 @@
   "simulatedHours": 0.5,
   "streamThreads": "2",
   "events": {
-    "clean": 74291,
-    "emitted": 74291,
-    "stored": 74291,
+    "clean": 74924,
+    "emitted": 74924,
+    "stored": 74924,
     "complete": true
   },
   "seconds": {
     "send": 23.3,
-    "drained": 45.7
+    "drained": 29.4
   },
   "drainTimedOut": false,
   "throughput": {
-    "producedAvg": 3194.0,
-    "storedAvg": 1624.2,
-    "storedPeak": 1944.9,
-    "rulesPeak": 1972.9
+    "producedAvg": 3221.6,
+    "storedAvg": 2549.0,
+    "storedPeak": 3250.4,
+    "rulesPeak": 3307.1
   },
   "lag": {
-    "backlogMax": 39855.0,
+    "backlogMax": 18300.0,
     "recordsLagMax": 0.0
   },
   "processingLatencyMs": {
-    "n": 75,
+    "n": 71,
     "unmeasured": 0,
-    "p50": 337,
-    "p95": 537,
-    "max": 789
+    "p50": 273,
+    "p95": 374,
+    "max": 462
   },
   "quality": {
     "R-ABS-001": {
       "precision": 1.0,
       "recall": 1.0,
-      "gt": 2
+      "gt": 3
     },
     "R-DWELL-001": {
       "precision": 1.0,
       "recall": 1.0,
-      "gt": 15
+      "gt": 10
     },
     "R-FOOT-001": {
       "precision": 1.0,
@@ -60,90 +60,84 @@
       "gt": 58
     }
   },
+  "unmatched": {},
+  "incidentsArrivedAfterScoring": 0,
   "samples": [
     {
-      "t": 0.1,
-      "produced": 122,
-      "stored": 68,
+      "t": 0.0,
+      "produced": 111,
+      "stored": 56,
       "received": 0.0,
-      "backlog": 122.0,
+      "backlog": 111.0,
       "lagMax": 0.0
     },
     {
       "t": 5.1,
-      "produced": 15588,
-      "stored": 8048,
-      "received": 7299.0,
-      "backlog": 8289.0,
+      "produced": 15815,
+      "stored": 14082,
+      "received": 13102.0,
+      "backlog": 2713.0,
       "lagMax": 0.0
     },
     {
       "t": 10.2,
-      "produced": 41064,
-      "stored": 15941,
-      "received": 15537.0,
-      "backlog": 25527.0,
+      "produced": 41569,
+      "stored": 30338,
+      "received": 29968.0,
+      "backlog": 11601.0,
       "lagMax": 0.0
     },
     {
-      "t": 15.2,
-      "produced": 62603,
-      "stored": 23913,
-      "received": 23681.0,
-      "backlog": 38922.0,
+      "t": 15.3,
+      "produced": 63794,
+      "stored": 46237,
+      "received": 45494.0,
+      "backlog": 18300.0,
       "lagMax": 0.0
     },
     {
       "t": 20.3,
-      "produced": 72061,
-      "stored": 32848,
-      "received": 32206.0,
-      "backlog": 39855.0,
+      "produced": 72700,
+      "stored": 62489,
+      "received": 61877.0,
+      "backlog": 10823.0,
       "lagMax": 0.0
     },
     {
       "t": 25.4,
-      "produced": 74291,
-      "stored": 42249,
-      "received": 41643.0,
-      "backlog": 32648.0,
+      "produced": 74924,
+      "stored": 74924,
+      "received": 74924.0,
+      "backlog": 0,
       "lagMax": 0.0
     },
     {
-      "t": 30.5,
-      "produced": 74291,
-      "stored": 51806,
-      "received": 51377.0,
-      "backlog": 22914.0,
+      "t": 30.4,
+      "produced": 74924,
+      "stored": 74924,
+      "received": 74924.0,
+      "backlog": 0,
       "lagMax": 0.0
     },
     {
-      "t": 35.6,
-      "produced": 74291,
-      "stored": 61725,
-      "received": 61439.0,
-      "backlog": 12852.0,
+      "t": 35.4,
+      "produced": 74924,
+      "stored": 74924,
+      "received": 74924.0,
+      "backlog": 0,
       "lagMax": 0.0
     },
     {
-      "t": 40.7,
-      "produced": 74291,
-      "stored": 71012,
-      "received": 70717.0,
-      "backlog": 3574.0,
-      "lagMax": 0.0
-    },
-    {
-      "t": 45.8,
-      "produced": 74291,
-      "stored": 74291,
-      "received": 74291.0,
+      "t": 40.5,
+      "produced": 74924,
+      "stored": 74924,
+      "received": 74924.0,
       "backlog": 0,
       "lagMax": 0.0
     }
   ],
   "rulesEngine": {
-    "stateKb": 200264,
-    "memory": "586.9MiB"
+    "stateKb": 204136,
+    "memory": "702.2MiB"
   }
 }
