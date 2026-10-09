@@ -3,6 +3,8 @@ FROM maven:3.9.9-eclipse-temurin-21 AS build
 WORKDIR /src/services/rules-engine
 COPY services/rules-engine/pom.xml ./pom.xml
 COPY services/rules-engine/src ./src
+# Tests read the repository's rules file (../../config/rules.yaml), as they do in make test-fast.
+COPY config/rules.yaml /src/config/rules.yaml
 RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp verify
 
 # glibc base: RocksDB and zstd native libraries do not load on Alpine/musl.

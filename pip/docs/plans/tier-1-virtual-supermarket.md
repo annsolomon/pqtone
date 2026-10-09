@@ -65,7 +65,7 @@ So this tier starts with **Stage 0: make it green**.
 |---|---|---|---|
 | ✅ E1 | **Trace a request end to end.** Use the debugger plus Jaeger to follow one HTTP event: filter chain → controller → validator → transaction → outbox → Kafka. Write `docs/learn/event-core-request-path.md` in your own words. | Doc exists; you can explain each Spring bean involved. Note: Doc from the code; the debugger/Jaeger walk-through is in its last section | 🧠 You write |
 | ✅ E2 | **Schema evolution.** Add `store.queue.length` v1.1.0 with an optional `estimatedWaitSeconds` field. Add a CI script `scripts/schema-compat.py` that fails if a new version removes or renames a field, tightens a type, or adds a required field. Register both versions; producers may send either. | Compat script in CI; a test proves v1.0.0 and v1.1.0 events are both accepted; a deliberately breaking v1.2.0 fails CI. | 🧠 Compat rules |
-| E3 | **Flyway discipline.** Add `V5__incident_assignee.sql` (nullable column, grant, index). Practise the expand → migrate → contract pattern. Write a rollback note. Add a test that migrations apply cleanly to an empty DB and to a DB at V4. | Both paths green in CI. | |
+| ✅ E3 | **Flyway discipline.** Add `V5__incident_assignee.sql` (nullable column, grant, index). Practise the expand → migrate → contract pattern. Write a rollback note. Add a test that migrations apply cleanly to an empty DB and to a DB at V4. | Both paths green in CI. |  |
 | ✅ E4 | **Testcontainers integration tests.** Repository and ingest tests against real Postgres 16 and Redpanda in `mvn verify`, using Docker-in-Docker in the devcontainer and in CI. | Covered: dedup race (two concurrent identical inserts → one accepted, one duplicate); conflict path; outbox relay with Kafka down → backlog drains when it returns. | 🧠 The race test |
 | ✅ E5 | **Contract tests.** Generate the OpenAPI doc from code (springdoc) and diff it against `openapi.yaml` in CI. | Drift fails the build. |  |
 
@@ -80,7 +80,7 @@ So this tier starts with **Stage 0: make it green**.
 | # | Milestone | Done when |
 |---|---|---|
 | ✅ S1 | **Read the model.** Draw the discrete-event loop (heap, scheduler, RNG streams) in `docs/learn/store-sim.md`. Explain why four child RNG streams keep runs stable when you add a new random draw. 🧠 | Doc written. |
-| S2 | **Second store layout** (`store-002`: two queues, an extra zone) and a multi-store scenario. Rules and console must handle more than one store. | The offline matrix includes multi-store; the console store picker works. |
+| ✅ S2 | **Second store layout** (`store-002`: two queues, an extra zone) and a multi-store scenario. Rules and console must handle more than one store. | The offline matrix includes multi-store; the console store picker works. |
 | ✅ S3 | **Scenario authoring guide** plus 3 new scenarios: `staff_shortage`, `flash_sale`, `closing_time`. | Each produces ground truth; scorer thresholds hold. Note: baseline rows added after the first CI run |
 | ✅ S4 | **HTTP sink e2e** through the gateway with OAuth client credentials (it exists but is untested end to end). | `make e2e-http-sim` stores 100% of events. |
 | ✅ S5 | **Noise hooks** (prepares for Tier 2): a `faults.vision` section accepting a noise profile file. Leave it as a no-op until Tier 2 fills it. | Schema for noise profiles exists; tests pass. |
@@ -107,7 +107,7 @@ So this tier starts with **Stage 0: make it green**.
 | ✅ R1 | **Explain the watermark.** Write `docs/learn/watermarks.md`: stream time vs event time vs wall time, why grace exists, what "late" means here vs Flink. Include a worked example from the `late_beyond_grace` scenario. | Doc written; you can predict which events get dropped in a hand-made sequence. Note: docs/learn/watermarks.md; its 12-event sequence is executed by WatermarkLatenessTest | 🧠 You write |
 | ✅ R2 | **Windowed rule R-FOOT-001**: footfall spike. Count `zone.entered` per zone in 5-minute tumbling windows (`TimeWindows.ofSizeAndGrace`). Alert when a window exceeds 2× the trailing hour's mean. Use `suppress(untilWindowCloses)` so each window emits once. Add it to the Python reference and to the scorer. | Offline matrix and e2e green with the new rule; JUnit tests for window boundaries and late records. | 🧠 The windowing code |
 | ✅ R3 | **Compare both approaches** in an ADR: native windows + suppress vs the custom reorder buffer. Cover memory, determinism and latency. | `docs/adr/011-windowing.md`. |  |
-| R4 | **Rule versioning and hot reload.** A `rules.yaml` change bumps the rule version. The engine reloads via a compacted `rules.config.v1` topic instead of a restart. Incident ids include the major version (already true). | Changing a threshold in a running stack changes behaviour without a restart; old incidents keep their version. | |
+| ✅ R4 | **Rule versioning and hot reload.** A `rules.yaml` change bumps the rule version. The engine reloads via a compacted `rules.config.v1` topic instead of a restart. Incident ids include the major version (already true). | Changing a threshold in a running stack changes behaviour without a restart; old incidents keep their version. Note: ADR-030, make e2e-hot-reload |  |
 | R5 | **Scale test.** 50 simulated stores at 10× speed; measure throughput, state size, p95 processing lag. Raise partition count and threads; document the limits. | `docs/perf/rules-engine.md` with numbers and graphs. | |
 | R6 | **Shadow → enforce promotion flow.** An admin sees shadow precision and recall from the latest e2e score in the console and promotes a rule through a PR template. No UI toggle; changes go through review. | Documented flow; console shows the shadow score. | |
 
@@ -127,9 +127,9 @@ So this tier starts with **Stage 0: make it green**.
 |---|---|---|
 | ✅ C1 | **Alert you can't miss.** When a new enforce incident opens, show a toast and the zone outline animation, plus an optional browser Notification (permission asked from a user gesture) and a sound toggle. | Manual check, plus a unit test of the alert reducer. Note: alertReducer + 14 unit tests; toast, zone pulse, opt-in sound and desktop notification; the C2 Playwright test checks the toast in the browser |
 | ✅ C2 | **Playwright demo test** (this is the "Done when"). A `tests/ui` container logs in as reviewer, starts `make sim` with `register_delay`, waits until the queue counter reaches 6 or more, sees the incident appear in the rail, opens it and confirms it. Records a video artifact. | Green in `make all` and CI; the video is uploaded. Note: tests/ui/test_demo.py via make e2e-ui; video uploaded as the ui-demo CI artifact |
-| C3 | **Accessibility pass.** axe-core in Playwright: 0 serious violations. Keyboard-only review flow. The map has a table alternative. | axe report in CI. |
-| C4 | **Timeline view.** Per-incident chart of queue length and open registers around onset (from `/api/events`). Explains *why* it fired. | Reviewers can see the evidence on the detail page. |
-| C5 | **Review metrics.** Time-to-ack, confirm rate per rule, shown to admins. Feeds the precision estimate for real sites in Tier 2. | Admin page shows them. |
+| ✅ C3 | **Accessibility pass.** axe-core in Playwright: 0 serious violations. Keyboard-only review flow. The map has a table alternative. | axe report in CI. |
+| ✅ C4 | **Timeline view.** Per-incident chart of queue length and open registers around onset (from `/api/events`). Explains *why* it fired. | Reviewers can see the evidence on the detail page. |
+| ✅ C5 | **Review metrics.** Time-to-ack, confirm rate per rule, shown to admins. Feeds the precision estimate for real sites in Tier 2. | Admin page shows them. |
 
 🧠 Write the C1 alert reducer and its tests yourself; it is a good, small React state exercise.
 

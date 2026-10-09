@@ -3,6 +3,7 @@ import { useAlerts } from "../alerts/AlertProvider";
 import { get } from "../api";
 import { EventTicker } from "../components/EventTicker";
 import { FloorMap } from "../components/FloorMap";
+import { FloorTable } from "../components/FloorTable";
 import { IncidentRail } from "../components/IncidentRail";
 import { applyEvents } from "../floor";
 import { useLive } from "../live";
@@ -101,6 +102,7 @@ export function FloorPage() {
         <div className="floor-main">
           {layout && state ? <FloorMap layout={layout} state={state} incidents={incidents} threshold={threshold} pulsing={pulsing} />
             : <div className="floor placeholder" aria-busy="true" />}
+          {layout && state && <FloorTable layout={layout} state={state} incidents={incidents} />}
           <EventTicker events={ticker} skipped={skipped} />
         </div>
         <IncidentRail incidents={incidents} />

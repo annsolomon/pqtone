@@ -38,6 +38,8 @@ topic store.events.dlq     3 -c retention.ms=$((30 * DAY))
 topic incidents.v1         6 -c retention.ms=$((90 * DAY))
 topic incidents.shadow.v1  6 -c retention.ms=$((90 * DAY))
 topic rules.heartbeat.v1   3 -c retention.ms=$DAY
+# Milestone R4: the active rules document, one record per key; compaction keeps only the latest.
+topic rules.config.v1      1 -c cleanup.policy=compact
 
 acl() { rpk security acl create "$@" "${SU[@]}" >/dev/null; }
 
@@ -53,7 +55,7 @@ acl --allow-principal User:event-core --operation read,describe --group event-co
 acl --allow-principal User:event-core --operation idempotent_write --cluster
 
 # rules-engine: reads validated, writes incidents/heartbeat, owns its internal topics and transactions.
-acl --allow-principal User:rules-engine --operation read,describe --topic store.events.v1
+acl --allow-principal User:rules-engine --operation read,describe --topic store.events.v1 --topic rules.config.v1
 acl --allow-principal User:rules-engine --operation write,describe --topic incidents.v1 --topic incidents.shadow.v1 --topic rules.heartbeat.v1
 acl --allow-principal User:rules-engine --operation all --topic rules-engine --resource-pattern-type prefixed
 acl --allow-principal User:rules-engine --operation all --group rules-engine --resource-pattern-type prefixed

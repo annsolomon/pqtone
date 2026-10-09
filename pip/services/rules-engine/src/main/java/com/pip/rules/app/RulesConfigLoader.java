@@ -25,8 +25,14 @@ public final class RulesConfigLoader {
     private RulesConfigLoader() {
     }
 
+    static final ObjectMapper YAML = new ObjectMapper(new YAMLFactory());
+
     public static RuleConfig load(Path path) throws IOException {
-        JsonNode root = new ObjectMapper(new YAMLFactory()).readTree(Files.readAllBytes(path));
+        return fromTree(YAML.readTree(Files.readAllBytes(path)));
+    }
+
+    /** The core rules from an already parsed rules.yaml (or the same document as JSON). */
+    public static RuleConfig fromTree(JsonNode root) {
         Map<String, JsonNode> rules = new HashMap<>();
         for (JsonNode r : root.path("rules")) {
             String id = r.path("id").asText();
@@ -58,7 +64,10 @@ public final class RulesConfigLoader {
      * grace, so out-of-order handling is the same as for the other rules.
      */
     public static Optional<FootfallConfig> loadFootfall(Path path) throws IOException {
-        JsonNode root = new ObjectMapper(new YAMLFactory()).readTree(Files.readAllBytes(path));
+        return footfallFromTree(YAML.readTree(Files.readAllBytes(path)));
+    }
+
+    public static Optional<FootfallConfig> footfallFromTree(JsonNode root) {
         for (JsonNode r : root.path("rules")) {
             if (!"R-FOOT-001".equals(r.path("id").asText())) continue;
             String mode = r.path("mode").asText();

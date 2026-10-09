@@ -48,6 +48,12 @@ jobs:
           cache-dependency-path: pip/web/ops-console/package-lock.json
       - name: Schema compatibility (every catalog version accepts what the previous one accepted)
         run: python3 scripts/schema-compat.py
+      - name: Rule versions (a changed rule needs a higher version, milestone R4)
+        run: |
+          git fetch -q --depth=1 origin main
+          git show "FETCH_HEAD:$(git rev-parse --show-prefix)config/rules.yaml" > "$RUNNER_TEMP/main-rules.yaml"
+          pip install -q pyyaml==6.0.2
+          python3 scripts/rules-version-check.py "$RUNNER_TEMP/main-rules.yaml" config/rules.yaml
       - name: make test-fast
         run: |
           make dev-setup 2>&1 | tee "$RUNNER_TEMP/test-fast.log"
@@ -85,11 +91,16 @@ jobs:
       - name: Quality report
         if: always()
         run: |
-          for f in .work/reports/offline/score.md .work/reports/e2e/score.md; do
+          for f in .work/reports/offline/score.md .work/reports/e2e/score.md .work/reports/ui/axe.md; do
             if [ -f "$f" ]; then cat "$f" >> "$GITHUB_STEP_SUMMARY"; fi
           done
           python3 ../.github/scripts/score-annotate.py "offline score" .work/reports/offline/score.json
           python3 ../.github/scripts/score-annotate.py "e2e score" .work/reports/e2e/score.json
+      - name: Test counts
+        if: always()
+        run: |
+          python3 ../.github/scripts/test-summary.py "e2e test counts" .work/reports
+          python3 ../.github/scripts/test-summary.py "integration test counts" services/event-core/target/failsafe-reports
       - name: Scan event-core image
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
