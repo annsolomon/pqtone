@@ -29,7 +29,7 @@ rules:
       within: PT300S
   - id: R-FOOT-001
     version: 1.0.0
-    mode: shadow           # promoted to enforce only after the offline and e2e scores pass (milestone R2)
+    mode: enforce          # promoted from shadow after the offline and e2e scores passed (CI run 37853464719, milestone R2)
     severity: low
     params:
       zones: [entrance]    # footfall = people entering the store; any zone id from the layout works

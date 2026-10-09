@@ -57,7 +57,7 @@
 - [x] C1 Alert toast
 - [x] C2 Playwright demo test
 - [x] C3 R1 Watermarks doc
-- [ ] C4 R2 Windowed footfall rule
+- [x] C4 R2 Windowed footfall rule
 - [ ] C5 E2 Schema versioning and compat check
 - [ ] C6 Q1 Scorer PR comment
 - [ ] C7 Gate checked, demo script written, tag `v0.1.0`
