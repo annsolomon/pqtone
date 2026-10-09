@@ -83,7 +83,7 @@ So this tier starts with **Stage 0: make it green**.
 | S2 | **Second store layout** (`store-002`: two queues, an extra zone) and a multi-store scenario. Rules and console must handle more than one store. | The offline matrix includes multi-store; the console store picker works. |
 | S3 | **Scenario authoring guide** plus 3 new scenarios: `staff_shortage`, `flash_sale`, `closing_time`. | Each produces ground truth; scorer thresholds hold. |
 | S4 | **HTTP sink e2e** through the gateway with OAuth client credentials (it exists but is untested end to end). | `make e2e-http-sim` stores 100% of events. |
-| S5 | **Noise hooks** (prepares for Tier 2): a `faults.vision` section accepting a noise profile file. Leave it as a no-op until Tier 2 fills it. | Schema for noise profiles exists; tests pass. |
+| ✅ S5 | **Noise hooks** (prepares for Tier 2): a `faults.vision` section accepting a noise profile file. Leave it as a no-op until Tier 2 fills it. | Schema for noise profiles exists; tests pass. |
 
 ---
 
@@ -141,10 +141,10 @@ So this tier starts with **Stage 0: make it green**.
 
 | # | Milestone | Done when |
 |---|---|---|
-| Q1 | **PR comment.** The CI job posts `score.md` as a sticky PR comment, with a delta against `baseline.json`. | Visible on a test PR. |
+| ✅ Q1 | **PR comment.** The CI job posts `score.md` as a sticky PR comment, with a delta against `baseline.json`. | Visible on a test PR. |
 | Q2 | **Wall-clock processing latency** in e2e: ingest → incident row, p50 and p95. Add it to thresholds. | Reported; a gate is added. |
 | Q3 | **Baseline update flow.** On `main`, CI uploads `baseline.candidate.json`. A maintainer runs `make baseline-accept`, which opens a PR. Never auto-update the baseline. | Documented and scripted. |
-| Q4 | **Confidence intervals.** Wilson intervals on precision and recall so small samples (2 absence incidents) aren't read as certainty. Gates use the lower bound when n ≥ 20, otherwise they warn. | Shown in the report. |
+| ✅ Q4 | **Confidence intervals.** Wilson intervals on precision and recall so small samples (2 absence incidents) aren't read as certainty. Gates use the lower bound when n ≥ 20, otherwise they warn. | Shown in the report. Note: Gate semantics in ADR-027 |
 | Q5 | **Hungarian matching** (to match the architecture doc) with property tests comparing it to brute force on small cases. 🧠 | Tests pass; ADR notes the change. |
 
 ---

@@ -8,10 +8,11 @@ dependencies = [
   "PyYAML==6.0.2",
   "confluent-kafka==2.6.0",
   "requests==2.32.3",
+  "jsonschema==4.23.0",
 ]
 
 [project.optional-dependencies]
-test = ["pytest==8.3.3", "jsonschema==4.23.0"]
+test = ["pytest==8.3.3"]
 
 [project.scripts]
 store-sim = "store_sim.cli:main"
@@ -22,3 +23,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["store_sim*"]
+
+[tool.setuptools.package-data]
+store_sim = ["*.schema.json"]

@@ -136,6 +136,49 @@ jobs:
       - if: always()
         run: make down
 
+  # Milestone Q1: one sticky PR comment with the score and its delta against the base branch's
+  # baseline. A separate job so only it holds pull-requests: write. Fork PRs get a read-only
+  # token, so they are skipped; pushes to main never comment.
+  score-comment:
+    name: score comment
+    needs: pipeline
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true   # a missing artifact still gets a comment saying so
+        with:
+          name: reports
+          path: ${{ runner.temp }}/reports
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Render and post the comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.base_ref }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          base_sha="$(git rev-parse --short "origin/$BASE_REF")"
+          git show "origin/$BASE_REF:pip/scorer/baseline.json" > "$RUNNER_TEMP/baseline.json"
+          PYTHONPATH=pip/scorer python3 -m pip_scorer.comment \
+            --offline "$RUNNER_TEMP/reports/offline/score.json" \
+            --e2e "$RUNNER_TEMP/reports/e2e/score.json" \
+            --baseline "$RUNNER_TEMP/baseline.json" \
+            --baseline-ref "$BASE_REF@$base_sha" \
+            --run-url "$RUN_URL" \
+            --out "$RUNNER_TEMP/comment.md"
+          .github/scripts/sticky-comment.sh "$PR" "$RUNNER_TEMP/comment.md"
+
   secrets:
     name: secret scan
     runs-on: ubuntu-24.04
