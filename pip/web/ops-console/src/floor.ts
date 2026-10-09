@@ -96,9 +96,15 @@ export function floorRows(layout: Layout, state: StoreState, incidents: Incident
       zoneName: layout.zones.find((z) => z.id === q.zoneId)?.name ?? q.zoneId,
       waiting: st?.length ?? 0,
       openRegisters: st?.openRegisters ?? 0,
-      registers: layout.registers.length,
+      registers: registersOf(layout, q.id).length,
       alert: alerting.get(q.zoneId) ?? null,
     };
   });
   return { zones, queues };
+}
+
+/** Milestone S2: the registers that serve a queue (a register without queueId serves the first queue). */
+export function registersOf(layout: Layout, queueId: string): { id: string; queueId?: string }[] {
+  const first = layout.queues[0]?.id;
+  return layout.registers.filter((r) => (r.queueId ?? first) === queueId);
 }

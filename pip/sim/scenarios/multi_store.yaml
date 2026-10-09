@@ -1,0 +1,16 @@
+name: multi_store
+description: >-
+  Two stores in one run (milestone S2): store-001 (one line, four registers) and store-002 (two lines).
+  Events of both stores are interleaved in time order; rules keep state per (store, run), so an
+  incident in one store never depends on the other. store-001 keeps the run's seed and behaves
+  exactly as it would alone.
+stores: [store-001, store-002]
+duration: PT2H
+arrivals:
+  - {from: PT0S,  to: PT40M, perHour: 120}
+  - {from: PT40M, to: PT80M, perHour: 220}
+  - {from: PT80M, to: PT2H,  perHour: 110}
+staffing:
+  initialOpen: 1
+  reactionMin: PT200S
+  reactionMax: PT380S

@@ -23,7 +23,8 @@ export interface Layout {
   height: number;
   zones: Zone[];
   queues: { id: string; zoneId: string }[];
-  registers: { id: string }[];
+  /** queueId: the queue the register serves (milestone S2); absent = the first queue. */
+  registers: { id: string; queueId?: string }[];
 }
 
 export interface QueueState {
