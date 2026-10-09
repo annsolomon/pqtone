@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from .gates import dur_ms, evaluate, gate_for, regressions
+from .gates import check, confidence_for, dur_ms, gate_for, regressions
 from .match import RuleScore, score
 from .report import write_reports
 
@@ -32,6 +32,7 @@ def _rule_modes(gt: list[dict], incidents: list[dict]) -> dict[str, str]:
 
 def cmd_offline(a) -> int:
     thresholds = yaml.safe_load(Path(a.thresholds).read_text())
+    conf = confidence_for(thresholds)
     m = thresholds["matching"]
     before, max_lat = dur_ms(m["toleranceBefore"]), dur_ms(m["maxLatency"])
     cases = json.loads((Path(a.matrix_dir) / "cases.json").read_text())
@@ -54,10 +55,10 @@ def cmd_offline(a) -> int:
     results, current = [], {}
     for scenario, rules in agg.items():
         for rule, s in rules.items():
-            sd = s.to_dict()
-            failures = evaluate(scenario, sd, gate_for(thresholds, scenario, rule))
+            sd = s.to_dict(conf.z)
+            failures, warnings = check(scenario, sd, gate_for(thresholds, scenario, rule), conf)
             results.append({"scenario": scenario, "ruleId": rule, "mode": modes.get(rule, ""), "score": sd,
-                            "failures": failures,
+                            "failures": failures, "warnings": warnings,
                             "examples": {"missed": s.unmatched_gt[:3], "spurious": s.unmatched_incidents[:3]}})
             current.setdefault(scenario, {})[rule] = {"precision": sd["precision"], "recall": sd["recall"]}
 
@@ -79,6 +80,7 @@ def _connect():
 
 def cmd_e2e(a) -> int:
     thresholds = yaml.safe_load(Path(a.thresholds).read_text())
+    conf = confidence_for(thresholds)
     m = thresholds["matching"]
     case = Path(a.case_dir)
     manifest = json.loads((case / "manifest.json").read_text())
@@ -120,9 +122,10 @@ def cmd_e2e(a) -> int:
     modes = _rule_modes(gt, incidents)
     results = []
     for rule, s in per.items():
-        sd = s.to_dict()
+        sd = s.to_dict(conf.z)
+        failures, warnings = check(scenario, sd, gate_for(thresholds, scenario, rule), conf)
         results.append({"scenario": f"e2e:{scenario}", "ruleId": rule, "mode": modes.get(rule, ""), "score": sd,
-                        "failures": evaluate(scenario, sd, gate_for(thresholds, scenario, rule))})
+                        "failures": failures, "warnings": warnings})
     expected = manifest["counts"]["cleanEvents"]
     extra = [] if stored == expected else [f"stored events {stored} != expected unique valid events {expected}"]
     write_reports(a.out, results, extra)
