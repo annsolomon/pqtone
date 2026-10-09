@@ -1,0 +1,237 @@
+{
+  "label": "s50-x40-t4",
+  "runId": "run-900f8c30e021",
+  "stores": 50,
+  "speed": 40.0,
+  "duration": "PT30M",
+  "host": {
+    "cpus": 4,
+    "memGb": 15.6
+  },
+  "simulatedHours": 0.5,
+  "streamThreads": "4",
+  "events": {
+    "clean": 74173,
+    "emitted": 74173,
+    "stored": 74173,
+    "complete": true
+  },
+  "seconds": {
+    "send": 93.0,
+    "drained": 99.1
+  },
+  "drainTimedOut": false,
+  "throughput": {
+    "producedAvg": 797.5,
+    "storedAvg": 748.3,
+    "storedPeak": 1422.4,
+    "rulesPeak": 1403.3
+  },
+  "lag": {
+    "backlogMax": 487.0,
+    "recordsLagMax": 7813.0
+  },
+  "processingLatencyMs": {
+    "n": 96,
+    "unmeasured": 0,
+    "p50": 310,
+    "p95": 537,
+    "max": 777
+  },
+  "quality": {
+    "R-ABS-001": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "gt": 6
+    },
+    "R-DWELL-001": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "gt": 29
+    },
+    "R-FOOT-001": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "gt": 0
+    },
+    "R-QUEUE-001": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "gt": 61
+    }
+  },
+  "samples": [
+    {
+      "t": 0.1,
+      "produced": 109,
+      "stored": 28,
+      "received": 0.0,
+      "backlog": 109.0,
+      "lagMax": 7813.0
+    },
+    {
+      "t": 5.1,
+      "produced": 2635,
+      "stored": 2623,
+      "received": 2539.0,
+      "backlog": 96.0,
+      "lagMax": 7813.0
+    },
+    {
+      "t": 10.2,
+      "produced": 6085,
+      "stored": 6056,
+      "received": 5858.0,
+      "backlog": 227.0,
+      "lagMax": 4771.0
+    },
+    {
+      "t": 15.2,
+      "produced": 10556,
+      "stored": 10534,
+      "received": 10273.0,
+      "backlog": 283.0,
+      "lagMax": 4771.0
+    },
+    {
+      "t": 20.3,
+      "produced": 15572,
+      "stored": 15549,
+      "received": 15244.0,
+      "backlog": 328.0,
+      "lagMax": 4771.0
+    },
+    {
+      "t": 25.4,
+      "produced": 21182,
+      "stored": 21108,
+      "received": 20704.0,
+      "backlog": 478.0,
+      "lagMax": 4771.0
+    },
+    {
+      "t": 30.5,
+      "produced": 27294,
+      "stored": 27212,
+      "received": 26807.0,
+      "backlog": 487.0,
+      "lagMax": 4771.0
+    },
+    {
+      "t": 35.6,
+      "produced": 34074,
+      "stored": 33856,
+      "received": 33660.0,
+      "backlog": 414.0,
+      "lagMax": 4771.0
+    },
+    {
+      "t": 40.7,
+      "produced": 40998,
+      "stored": 40940,
+      "received": 40782.0,
+      "backlog": 216.0,
+      "lagMax": 4771.0
+    },
+    {
+      "t": 45.8,
+      "produced": 48295,
+      "stored": 48194,
+      "received": 47939.0,
+      "backlog": 356.0,
+      "lagMax": 4771.0
+    },
+    {
+      "t": 50.9,
+      "produced": 54006,
+      "stored": 53973,
+      "received": 53716.0,
+      "backlog": 290.0,
+      "lagMax": 0.0
+    },
+    {
+      "t": 55.9,
+      "produced": 58858,
+      "stored": 58821,
+      "received": 58735.0,
+      "backlog": 123.0,
+      "lagMax": 0.0
+    },
+    {
+      "t": 61.0,
+      "produced": 62973,
+      "stored": 62962,
+      "received": 62839.0,
+      "backlog": 134.0,
+      "lagMax": 0.0
+    },
+    {
+      "t": 66.2,
+      "produced": 66369,
+      "stored": 66354,
+      "received": 66123.0,
+      "backlog": 246.0,
+      "lagMax": 0.0
+    },
+    {
+      "t": 71.2,
+      "produced": 68858,
+      "stored": 68852,
+      "received": 68757.0,
+      "backlog": 101.0,
+      "lagMax": 0.0
+    },
+    {
+      "t": 76.3,
+      "produced": 70796,
+      "stored": 70734,
+      "received": 70643.0,
+      "backlog": 153.0,
+      "lagMax": 0.0
+    },
+    {
+      "t": 81.3,
+      "produced": 72299,
+      "stored": 72293,
+      "received": 72237.0,
+      "backlog": 62.0,
+      "lagMax": 0.0
+    },
+    {
+      "t": 86.4,
+      "produced": 73391,
+      "stored": 73390,
+      "received": 73348.0,
+      "backlog": 43.0,
+      "lagMax": 0.0
+    },
+    {
+      "t": 91.4,
+      "produced": 74102,
+      "stored": 74101,
+      "received": 74083.0,
+      "backlog": 19.0,
+      "lagMax": 0.0
+    },
+    {
+      "t": 96.4,
+      "produced": 74173,
+      "stored": 74173,
+      "received": 74173.0,
+      "backlog": 0,
+      "lagMax": 0.0
+    },
+    {
+      "t": 101.5,
+      "produced": 74173,
+      "stored": 74173,
+      "received": 74173.0,
+      "backlog": 0,
+      "lagMax": 0.0
+    }
+  ],
+  "rulesEngine": {
+    "stateKb": 203980,
+    "memory": "630.2MiB"
+  }
+}
