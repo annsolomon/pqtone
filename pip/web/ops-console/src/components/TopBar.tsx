@@ -24,6 +24,7 @@ export function TopBar() {
         <NavLink to="/review">Review queue</NavLink>
         <NavLink to="/incidents">All incidents</NavLink>
         {admin && <NavLink to="/shadow">Shadow rules</NavLink>}
+        {admin && <NavLink to="/metrics">Review metrics</NavLink>}
         {admin && <NavLink to="/audit">Audit log</NavLink>}
       </nav>
       <div className="who">
