@@ -43,10 +43,15 @@ class RuleScore:
         idx = min(len(xs) - 1, max(0, int(round(pct / 100.0 * (len(xs) - 1)))))
         return xs[idx]
 
-    def to_dict(self) -> dict:
+    def to_dict(self, z: float = 1.96) -> dict:
+        from .gates import wilson  # local import: gates has no dependency on match
+        n_p, n_r = self.tp + self.fp, self.tp + self.fn
         return {
             "ruleId": self.rule_id, "tp": self.tp, "fp": self.fp, "fn": self.fn,
             "precision": round(self.precision, 4), "recall": round(self.recall, 4), "f1": round(self.f1, 4),
+            "nPrecision": n_p, "nRecall": n_r,
+            "precisionCI": [round(x, 4) for x in wilson(self.tp, n_p, z)],
+            "recallCI": [round(x, 4) for x in wilson(self.tp, n_r, z)],
             "latencyMs": {"p50": self.latency_pct(50), "p95": self.latency_pct(95),
                           "max": max(self.latencies_ms) if self.latencies_ms else None},
         }

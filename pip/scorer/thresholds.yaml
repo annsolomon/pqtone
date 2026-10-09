@@ -12,3 +12,7 @@ scenarios:
     "*": {precision: 0.50, recall: 0.50, latencyP95: PT120S}
 regression:
   maxDropPp: 2.0           # vs scorer/baseline.json when present
+confidence:                # milestone Q4, ADR-027: Wilson score intervals on precision and recall
+  z: 1.96                  # 95% two-sided
+  minN: 20                 # from this many samples the interval is part of the gate...
+  minLowerBound: 0.80      # ...and its lower bound must reach this; below minN it only warns
