@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 
 import pytest
 import requests
@@ -95,6 +96,27 @@ def test_dismiss_requires_a_reason_and_operator_cannot_confirm():
     assert r.status_code == 200 and r.json()["status"] == "DISMISSED"
 
 
+def test_review_metrics_are_admin_only_and_count_decisions():
+    """Milestone C5. Runs after the review-flow tests above, which confirm and dismiss incidents."""
+    assert login("reviewer").get("/api/admin/review-metrics").status_code == 403
+    a = login("admin")
+    assert a.get("/api/admin/review-metrics?days=0").status_code == 400
+    assert a.get("/api/admin/review-metrics?days=91").status_code == 400
+    r = a.get("/api/admin/review-metrics?days=7")
+    assert r.status_code == 200, r.text
+    m = r.json()
+    assert m["days"] == 7
+    rules = {x["ruleId"]: x for x in m["rules"]}
+    assert "R-QUEUE-001" in rules, "the pipeline run raised queue incidents"
+    q = rules["R-QUEUE-001"]
+    assert q["incidents"] >= q["acted"] >= q["decided"] == q["confirmed"] + q["dismissed"]
+    assert q["undecided"] == q["incidents"] - q["decided"]
+    if q["decided"]:
+        assert q["confirmRateLow"] <= q["confirmRate"] <= q["confirmRateHigh"]
+        assert q["timeToActionP50Seconds"] is not None and q["timeToActionP50Seconds"] >= 0
+    assert "reviewer" not in r.text, "reviewer names are not part of the metrics"
+
+
 def test_audit_chain_is_intact_and_admin_only():
     assert login("reviewer").get("/api/admin/audit/verify").status_code == 403
     verdict = login("admin").get("/api/admin/audit/verify").json()
@@ -110,6 +132,47 @@ def test_admin_sees_shadow_incidents_and_they_are_read_only():
     etag = a.get(path).headers["ETag"]
     r = a.post(f"{path}/actions", json={"action": "confirm"}, headers={"If-Match": etag})
     assert r.status_code == 409 and r.json()["code"] == "shadow-read-only"
+
+
+def _ts(iso: str) -> datetime:
+    return datetime.fromisoformat(iso.replace("Z", "+00:00"))
+
+
+def test_incident_timeline_shows_the_breach_and_no_track_ids():
+    """Milestone C4: the detail page's evidence comes from the stored events, in event time."""
+    v = login("viewer")
+    deadline = time.time() + 60
+    queue_incidents = []
+    while time.time() < deadline and not queue_incidents:
+        items = v.get("/api/incidents?mode=enforce&ruleId=R-QUEUE-001&limit=20").json()
+        queue_incidents = [i for i in items if (i.get("subject") or "").startswith("queue:")]
+        if not queue_incidents:
+            time.sleep(3)
+    if not queue_incidents:
+        pytest.skip("no queue incidents; run make e2e-pipeline first")
+    inc = queue_incidents[0]
+    r = v.get(f"/api/incidents/{inc['incidentId']}/timeline")
+    assert r.status_code == 200, r.text
+    t = r.json()
+    assert t["kind"] == "queue" and t["target"] == inc["subject"].split(":", 1)[1]
+    at = {k: _ts(t[k]) for k in ("from", "onsetAt", "detectedAt", "to")}
+    assert at["from"] < at["onsetAt"] <= at["detectedAt"] <= at["to"]
+    assert t["series"], "a queue incident has queue-length events around it"
+    assert max(p["length"] for p in t["series"]) >= t["threshold"], "the breach is visible in the evidence"
+    times = [_ts(p["t"]) for p in t["series"]]
+    assert times == sorted(times)
+    assert "trk-" not in r.text
+    assert v.get("/api/incidents/00000000-0000-0000-0000-000000000000/timeline").status_code == 404
+
+
+def test_shadow_timeline_is_admin_only():
+    a = login("admin")
+    items = a.get("/api/incidents?mode=shadow").json()
+    if not items:
+        pytest.skip("no shadow incidents in this run")
+    path = f"/api/incidents/{items[0]['incidentId']}/timeline"
+    assert a.get(path).status_code == 200
+    assert login("reviewer").get(path).status_code == 404
 
 
 def test_live_stream_says_hello():

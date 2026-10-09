@@ -65,7 +65,7 @@ So this tier starts with **Stage 0: make it green**.
 |---|---|---|---|
 | ✅ E1 | **Trace a request end to end.** Use the debugger plus Jaeger to follow one HTTP event: filter chain → controller → validator → transaction → outbox → Kafka. Write `docs/learn/event-core-request-path.md` in your own words. | Doc exists; you can explain each Spring bean involved. Note: Doc from the code; the debugger/Jaeger walk-through is in its last section | 🧠 You write |
 | ✅ E2 | **Schema evolution.** Add `store.queue.length` v1.1.0 with an optional `estimatedWaitSeconds` field. Add a CI script `scripts/schema-compat.py` that fails if a new version removes or renames a field, tightens a type, or adds a required field. Register both versions; producers may send either. | Compat script in CI; a test proves v1.0.0 and v1.1.0 events are both accepted; a deliberately breaking v1.2.0 fails CI. | 🧠 Compat rules |
-| E3 | **Flyway discipline.** Add `V5__incident_assignee.sql` (nullable column, grant, index). Practise the expand → migrate → contract pattern. Write a rollback note. Add a test that migrations apply cleanly to an empty DB and to a DB at V4. | Both paths green in CI. | |
+| ✅ E3 | **Flyway discipline.** Add `V5__incident_assignee.sql` (nullable column, grant, index). Practise the expand → migrate → contract pattern. Write a rollback note. Add a test that migrations apply cleanly to an empty DB and to a DB at V4. | Both paths green in CI. |  |
 | ✅ E4 | **Testcontainers integration tests.** Repository and ingest tests against real Postgres 16 and Redpanda in `mvn verify`, using Docker-in-Docker in the devcontainer and in CI. | Covered: dedup race (two concurrent identical inserts → one accepted, one duplicate); conflict path; outbox relay with Kafka down → backlog drains when it returns. | 🧠 The race test |
 | ✅ E5 | **Contract tests.** Generate the OpenAPI doc from code (springdoc) and diff it against `openapi.yaml` in CI. | Drift fails the build. |  |
 
@@ -128,8 +128,8 @@ So this tier starts with **Stage 0: make it green**.
 | ✅ C1 | **Alert you can't miss.** When a new enforce incident opens, show a toast and the zone outline animation, plus an optional browser Notification (permission asked from a user gesture) and a sound toggle. | Manual check, plus a unit test of the alert reducer. Note: alertReducer + 14 unit tests; toast, zone pulse, opt-in sound and desktop notification; the C2 Playwright test checks the toast in the browser |
 | ✅ C2 | **Playwright demo test** (this is the "Done when"). A `tests/ui` container logs in as reviewer, starts `make sim` with `register_delay`, waits until the queue counter reaches 6 or more, sees the incident appear in the rail, opens it and confirms it. Records a video artifact. | Green in `make all` and CI; the video is uploaded. Note: tests/ui/test_demo.py via make e2e-ui; video uploaded as the ui-demo CI artifact |
 | C3 | **Accessibility pass.** axe-core in Playwright: 0 serious violations. Keyboard-only review flow. The map has a table alternative. | axe report in CI. |
-| C4 | **Timeline view.** Per-incident chart of queue length and open registers around onset (from `/api/events`). Explains *why* it fired. | Reviewers can see the evidence on the detail page. |
-| C5 | **Review metrics.** Time-to-ack, confirm rate per rule, shown to admins. Feeds the precision estimate for real sites in Tier 2. | Admin page shows them. |
+| ✅ C4 | **Timeline view.** Per-incident chart of queue length and open registers around onset (from `/api/events`). Explains *why* it fired. | Reviewers can see the evidence on the detail page. |
+| ✅ C5 | **Review metrics.** Time-to-ack, confirm rate per rule, shown to admins. Feeds the precision estimate for real sites in Tier 2. | Admin page shows them. |
 
 🧠 Write the C1 alert reducer and its tests yourself; it is a good, small React state exercise.
 
