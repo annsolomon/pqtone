@@ -1,0 +1,16 @@
+name: flash_sale
+description: >
+  A 15-minute flash sale announced at 75 minutes: footfall more than triples and almost
+  everyone buys, then traffic falls back. Exercises the footfall spike (R-FOOT-001), queue
+  build-up (R-QUEUE-001) and a normal staff response.
+duration: PT2H30M
+arrivals:
+  - {from: PT0S,  to: PT75M,   perHour: 110}
+  - {from: PT75M, to: PT90M,   perHour: 420}
+  - {from: PT90M, to: PT2H30M, perHour: 110}
+shoppers:
+  checkoutProbability: 0.95
+staffing:
+  initialOpen: 2
+  reactionMin: PT60S
+  reactionMax: PT180S

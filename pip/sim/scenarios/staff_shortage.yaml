@@ -1,0 +1,18 @@
+name: staff_shortage
+description: >
+  One cashier on shift and nobody to call in: a single register is open all day and no second
+  one can be staffed (maxOpen 1). Customers come in waves, so the queue builds, drains and builds
+  again. Every build-up should raise R-QUEUE-001, and because no register can open, R-ABS-001
+  should follow each one.
+duration: PT2H15M
+arrivals:
+  - {from: PT0S,    to: PT15M,   perHour: 115}
+  - {from: PT15M,   to: PT45M,   perHour: 10}
+  - {from: PT45M,   to: PT60M,   perHour: 115}
+  - {from: PT60M,   to: PT90M,   perHour: 10}
+  - {from: PT90M,   to: PT105M,  perHour: 115}
+  - {from: PT105M,  to: PT2H15M, perHour: 10}
+staffing:
+  initialOpen: 1
+  minOpen: 1
+  maxOpen: 1

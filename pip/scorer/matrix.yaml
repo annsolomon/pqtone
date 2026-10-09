@@ -6,6 +6,9 @@ scenarios:
   - register_delay
   - restricted_dwell
   - footfall_spike
+  - staff_shortage
+  - flash_sale
+  - closing_time
   - duplicates
   - out_of_order
   - late_beyond_grace
