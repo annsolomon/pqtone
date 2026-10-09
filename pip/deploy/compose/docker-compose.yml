@@ -94,6 +94,11 @@ services:
       - -locations=filesystem:/flyway/sql
       - -connectRetries=30
       - -validateMigrationNaming=true
+      # Session-level advisory lock: Flyway's default transactional lock keeps a transaction open,
+      # and CREATE INDEX CONCURRENTLY (V5) waits for every open transaction, so it would hang forever.
+      - -postgresql.transactional.lock=false
+      # Fail fast instead of queueing behind application traffic (docs/learn/migrations.md).
+      - -initSql=SET lock_timeout = '60s'
       - migrate
     volumes:
       - ../../services/event-core/src/main/resources/db/migration:/flyway/sql:ro

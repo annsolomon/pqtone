@@ -10,6 +10,7 @@ import { AuditPage } from "./pages/AuditPage";
 import { FloorPage } from "./pages/FloorPage";
 import { IncidentDetailPage } from "./pages/IncidentDetailPage";
 import { IncidentListPage } from "./pages/IncidentListPage";
+import { ReviewMetricsPage } from "./pages/ReviewMetricsPage";
 import { SessionContext, hasRole } from "./session";
 import type { Me } from "./types";
 
@@ -58,6 +59,7 @@ export function App() {
                   intro="Shadow rules run silently so their accuracy can be measured before they alert anyone. Nothing here notifies staff."
                   empty="No shadow incidents yet." />} />}
               {admin && <Route path="/audit" element={<AuditPage />} />}
+              {admin && <Route path="/metrics" element={<ReviewMetricsPage />} />}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>

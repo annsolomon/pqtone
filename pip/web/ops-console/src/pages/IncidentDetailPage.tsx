@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ApiError, request } from "../api";
 import { dateTime, duration, ruleName, statusLabel } from "../format";
+import { IncidentTimeline } from "../components/IncidentTimeline";
 import { hasRole, useMe } from "../session";
 import type { Incident, Review } from "../types";
 
@@ -92,6 +93,8 @@ export function IncidentDetailPage() {
         <div><dt>Rule</dt><dd>{incident.ruleId} v{incident.ruleVersion}</dd></div>
         <div><dt>Evidence</dt><dd className="small">{incident.evidence.length ? incident.evidence.join(", ") : "–"}</dd></div>
       </dl>
+
+      <IncidentTimeline incidentId={incident.incidentId} version={incident.version} />
 
       {(canAck || canReview || canClose) && (
         <section className="actions" aria-label="Review actions">
