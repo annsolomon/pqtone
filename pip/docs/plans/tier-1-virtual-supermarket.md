@@ -79,7 +79,7 @@ So this tier starts with **Stage 0: make it green**.
 
 | # | Milestone | Done when |
 |---|---|---|
-| S1 | **Read the model.** Draw the discrete-event loop (heap, scheduler, RNG streams) in `docs/learn/store-sim.md`. Explain why four child RNG streams keep runs stable when you add a new random draw. 🧠 | Doc written. |
+| ✅ S1 | **Read the model.** Draw the discrete-event loop (heap, scheduler, RNG streams) in `docs/learn/store-sim.md`. Explain why four child RNG streams keep runs stable when you add a new random draw. 🧠 | Doc written. |
 | S2 | **Second store layout** (`store-002`: two queues, an extra zone) and a multi-store scenario. Rules and console must handle more than one store. | The offline matrix includes multi-store; the console store picker works. |
 | S3 | **Scenario authoring guide** plus 3 new scenarios: `staff_shortage`, `flash_sale`, `closing_time`. | Each produces ground truth; scorer thresholds hold. |
 | S4 | **HTTP sink e2e** through the gateway with OAuth client credentials (it exists but is untested end to end). | `make e2e-http-sim` stores 100% of events. |
