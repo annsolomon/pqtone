@@ -105,7 +105,7 @@ So this tier starts with **Stage 0: make it green**.
 | # | Milestone | Done when | 🧠 |
 |---|---|---|---|
 | ✅ R1 | **Explain the watermark.** Write `docs/learn/watermarks.md`: stream time vs event time vs wall time, why grace exists, what "late" means here vs Flink. Include a worked example from the `late_beyond_grace` scenario. | Doc written; you can predict which events get dropped in a hand-made sequence. Note: docs/learn/watermarks.md; its 12-event sequence is executed by WatermarkLatenessTest | 🧠 You write |
-| R2 | **Windowed rule R-FOOT-001**: footfall spike. Count `zone.entered` per zone in 5-minute tumbling windows (`TimeWindows.ofSizeAndGrace`). Alert when a window exceeds 2× the trailing hour's mean. Use `suppress(untilWindowCloses)` so each window emits once. Add it to the Python reference and to the scorer. | Offline matrix and e2e green with the new rule; JUnit tests for window boundaries and late records. | 🧠 The windowing code |
+| ✅ R2 | **Windowed rule R-FOOT-001**: footfall spike. Count `zone.entered` per zone in 5-minute tumbling windows (`TimeWindows.ofSizeAndGrace`). Alert when a window exceeds 2× the trailing hour's mean. Use `suppress(untilWindowCloses)` so each window emits once. Add it to the Python reference and to the scorer. | Offline matrix and e2e green with the new rule; JUnit tests for window boundaries and late records. | 🧠 The windowing code |
 | R3 | **Compare both approaches** in an ADR: native windows + suppress vs the custom reorder buffer. Cover memory, determinism and latency. | `docs/adr/011-windowing.md`. | |
 | R4 | **Rule versioning and hot reload.** A `rules.yaml` change bumps the rule version. The engine reloads via a compacted `rules.config.v1` topic instead of a restart. Incident ids include the major version (already true). | Changing a threshold in a running stack changes behaviour without a restart; old incidents keep their version. | |
 | R5 | **Scale test.** 50 simulated stores at 10× speed; measure throughput, state size, p95 processing lag. Raise partition count and threads; document the limits. | `docs/perf/rules-engine.md` with numbers and graphs. | |
@@ -141,7 +141,7 @@ So this tier starts with **Stage 0: make it green**.
 
 | # | Milestone | Done when |
 |---|---|---|
-| Q1 | **PR comment.** The CI job posts `score.md` as a sticky PR comment, with a delta against `baseline.json`. | Visible on a test PR. |
+| ✅ Q1 | **PR comment.** The CI job posts `score.md` as a sticky PR comment, with a delta against `baseline.json`. | Visible on a test PR. |
 | Q2 | **Wall-clock processing latency** in e2e: ingest → incident row, p50 and p95. Add it to thresholds. | Reported; a gate is added. |
 | Q3 | **Baseline update flow.** On `main`, CI uploads `baseline.candidate.json`. A maintainer runs `make baseline-accept`, which opens a PR. Never auto-update the baseline. | Documented and scripted. |
 | ✅ Q4 | **Confidence intervals.** Wilson intervals on precision and recall so small samples (2 absence incidents) aren't read as certainty. Gates use the lower bound when n ≥ 20, otherwise they warn. | Shown in the report. Note: Gate semantics in ADR-027 |

@@ -135,6 +135,75 @@ def test_reference_absence_cancelled_by_register_opening():
     assert [o["ruleId"] for o in ref.out] == ["R-QUEUE-001"]
 
 
+# ---------------------------------------------------------------- R-FOOT-001 (windowed footfall spike)
+from store_sim.reference import FootfallRef  # noqa: E402
+
+W = 300_000  # 5-minute windows
+
+
+def _entries(ref: FootfallRef, window: int, n: int, zone: str = "entrance") -> None:
+    """n zone.entered events inside window number `window`, plus a tick at its start."""
+    start = window * W
+    ref.process(_ev(start, "com.pip.store.clock.tick", {"seq": window}, f"t{window}"))
+    for k in range(n):
+        ref.process(_ev(start + 1_000 + k, "com.pip.store.zone.entered", {"zoneId": zone, "trackId": f"trk-{k}"}, f"{window}-{k}"))
+
+
+def _foot(windows: list[int], close_last: bool = True) -> list[tuple[str, int, int]]:
+    rules = load_rules(RULES)
+    assert rules.foot_zones == ("entrance",) and rules.foot_history_windows == 12
+    ref = FootfallRef(rules)
+    for i, n in enumerate(windows):
+        _entries(ref, i, n)
+    if close_last:  # a tick far enough past the last window's end + grace closes it
+        last_end = len(windows) * W
+        ref.process(_ev(last_end + rules.grace_ms, "com.pip.store.clock.tick", {"seq": 999}, "close"))
+    ref.finish()
+    return [(o["kind"], o["onsetMs"] // W, o["detectedMs"] // W) for o in ref.out]
+
+
+def test_footfall_spike_opens_after_a_full_hour_and_resolves_on_the_next_quiet_window():
+    assert _foot([5] * 12 + [11, 5]) == [("OPENED", 12, 13), ("RESOLVED", 12, 14)]
+
+
+def test_footfall_spike_needs_a_full_hour_of_history():
+    assert _foot([5] * 11 + [40]) == []
+
+
+def test_footfall_spike_is_strictly_more_than_factor_times_the_mean_and_at_least_min_count():
+    assert _foot([5] * 12 + [10]) == []          # exactly 2x the mean is not a spike
+    assert _foot([2] * 12 + [9]) == []           # 4.5x the mean but below minCount 10
+    assert _foot([2] * 12 + [10]) == [("OPENED", 12, 13)]
+
+
+def test_footfall_consecutive_spike_windows_are_one_incident():
+    out = _foot([5] * 12 + [20, 30, 5])
+    assert out == [("OPENED", 12, 13), ("RESOLVED", 12, 15)]
+
+
+def test_footfall_window_is_only_final_once_stream_time_passes_end_plus_grace():
+    assert _foot([5] * 12 + [20], close_last=False) == []
+    assert _foot([5] * 12 + [20], close_last=True) == [("OPENED", 12, 13)]
+
+
+def test_footfall_counts_only_configured_zones():
+    rules = load_rules(RULES)
+    ref = FootfallRef(rules)
+    for i in range(13):
+        _entries(ref, i, 5)
+    for k in range(50):
+        ref.process(_ev(12 * W + 2_000 + k, "com.pip.store.zone.entered", {"zoneId": "produce", "trackId": f"p{k}"}, f"p{k}"))
+    ref.process(_ev(14 * W, "com.pip.store.clock.tick", {"seq": 99}, "close"))
+    ref.finish()
+    assert ref.out == []
+
+
+def test_footfall_spike_scenario_has_one_entrance_spike_per_seed():
+    for seed in (11, 42, 1337):
+        gt = [g for g in run("footfall_spike", seed).ground_truth if g["ruleId"] == "R-FOOT-001"]
+        assert [g["key"] for g in gt] == ["entrance"], (seed, gt)
+
+
 def test_an_extra_draw_in_one_stream_leaves_the_others_alone():
     """docs/learn/store-sim.md: separate RNG streams confine a model change to what it touches."""
     import yaml as _yaml

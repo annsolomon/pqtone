@@ -432,10 +432,11 @@ A worked example with a hand-made sequence is in `docs/learn/watermarks.md`.
 | `R-QUEUE-001` | Threshold | `queue.length ≥ N` continuously for `≥ sustain`. Opens incident. Clears when `length ≤ N − hysteresis` for `≥ clear_sustain` (prevents flapping) | Per `(store, queue)`: breach start, current state |
 | `R-DWELL-001` | Dwell | Track in a configured zone longer than `limit` between `zone.entered` and `zone.exited`. Session TTL closes sessions with no exit | Per `(store, track, zone)`: entry time |
 | `R-ABS-001` | Absence | When `R-QUEUE-001` opens for a store, expect `register.opened` for that store within **300 s** event time. If none, open an escalation incident. Cancelled if the queue clears first | Per `store`: pending expectations with deadlines |
+| `R-FOOT-001` | Windowed | Count `zone.entered` per configured zone in 5-minute tumbling windows (Kafka Streams `TimeWindows.ofSizeAndGrace`, `suppress(untilWindowCloses)`). A closed window is a spike when a full hour of history exists, `count ≥ minCount` and `count > factor × mean(previous 12 windows)`; consecutive spike windows are one incident, resolved by the first normal window | Window store per store; per `(store, run)`: trailing counts and open incidents |
 
 ### 8.4 Rule configuration
 
-`services/rules-engine/rules.yaml`, versioned in Git, changed only by PR with review:
+`config/rules.yaml`, versioned in Git, changed only by PR with review:
 
 ```yaml
 - id: R-ABS-001

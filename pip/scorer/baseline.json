@@ -8,6 +8,10 @@
       "precision": 1.0,
       "recall": 1.0
     },
+    "R-FOOT-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
     "R-QUEUE-001": {
       "precision": 1.0,
       "recall": 1.0
@@ -19,6 +23,28 @@
       "recall": 1.0
     },
     "R-DWELL-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-FOOT-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-QUEUE-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
+  "footfall_spike": {
+    "R-ABS-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-DWELL-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-FOOT-001": {
       "precision": 1.0,
       "recall": 1.0
     },
@@ -36,6 +62,10 @@
       "precision": 0.6667,
       "recall": 1.0
     },
+    "R-FOOT-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
     "R-QUEUE-001": {
       "precision": 1.0,
       "recall": 1.0
@@ -47,6 +77,10 @@
       "recall": 1.0
     },
     "R-DWELL-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-FOOT-001": {
       "precision": 1.0,
       "recall": 1.0
     },
@@ -64,6 +98,10 @@
       "precision": 1.0,
       "recall": 1.0
     },
+    "R-FOOT-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
     "R-QUEUE-001": {
       "precision": 1.0,
       "recall": 1.0
@@ -75,6 +113,10 @@
       "recall": 1.0
     },
     "R-DWELL-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-FOOT-001": {
       "precision": 1.0,
       "recall": 1.0
     },
@@ -92,6 +134,10 @@
       "precision": 1.0,
       "recall": 1.0
     },
+    "R-FOOT-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
     "R-QUEUE-001": {
       "precision": 1.0,
       "recall": 1.0
@@ -103,6 +149,10 @@
       "recall": 1.0
     },
     "R-DWELL-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-FOOT-001": {
       "precision": 1.0,
       "recall": 1.0
     },
