@@ -1,0 +1,15 @@
+name: two_queues
+description: >-
+  Store 002 (milestone S2): two checkout lines, each with its own two registers. Shoppers join the
+  shorter staffed line. One register per line at the start and slow staff reactions, so either line
+  can breach R-QUEUE-001 on its own; queue incidents are keyed by queue id.
+stores: [store-002]
+duration: PT2H
+arrivals:
+  - {from: PT0S,  to: PT30M, perHour: 120}
+  - {from: PT30M, to: PT80M, perHour: 260}
+  - {from: PT80M, to: PT2H,  perHour: 120}
+staffing:
+  initialOpen: 1
+  reactionMin: PT240S
+  reactionMax: PT420S

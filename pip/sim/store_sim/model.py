@@ -21,9 +21,20 @@ HARD_CAP_MS = 30 * 60_000
 @dataclass
 class Register:
     id: str
+    queue_id: str = ""
     open: bool = False
     closing: bool = False
     busy: str | None = None
+
+
+@dataclass
+class Queue:
+    """One checkout line and the registers that serve it (milestone S2: a store may have several)."""
+    id: str
+    zone_id: str
+    waiting: list[str] = field(default_factory=list)
+    pending_open: bool = False
+    empty_since: int | None = 0
 
 
 @dataclass
@@ -40,7 +51,6 @@ class StoreModel:
         self.layout = layout
         self.sc = scenario
         self.store_id = layout["storeId"]
-        self.queue_id = layout["queues"][0]["id"]
         self.duration_ms = parse_duration_ms(scenario["duration"])
 
         ss = np.random.SeedSequence(seed)
@@ -70,20 +80,28 @@ class StoreModel:
         self.react_min_ms = parse_duration_ms(staff_cfg.get("reactionMin", "PT60S"))
         self.react_max_ms = parse_duration_ms(staff_cfg.get("reactionMax", "PT200S"))
         self.close_after_ms = parse_duration_ms(staff_cfg.get("closeAfterIdle", "PT300S"))
-        # How many registers can ever be staffed (staff_shortage). Default: all of them.
-        self.max_open = int(staff_cfg.get("maxOpen", len(layout["registers"])))
+        # How many registers per queue can ever be staffed (staff_shortage). Default: all of them (set below).
 
-        self.registers = [Register(r["id"]) for r in layout["registers"]]
-        for r in self.registers[: self.initial_open]:
-            r.open = True
+        # Each register serves one queue (layout "queueId"; default: the first queue). Staffing
+        # parameters apply per queue, so a one-queue layout behaves exactly as before S2.
+        self.queues = [Queue(q["id"], q["zoneId"]) for q in layout["queues"]]
+        if not self.queues:
+            raise ValueError("layout needs at least one queue")
+        known = {q.id for q in self.queues}
+        self.registers = [Register(r["id"], r.get("queueId", self.queues[0].id)) for r in layout["registers"]]
+        for r in self.registers:
+            if r.queue_id not in known:
+                raise ValueError(f"register {r.id} serves unknown queue {r.queue_id}")
+        for q in self.queues:
+            for r in self._registers_of(q)[: self.initial_open]:
+                r.open = True
+        self.max_open = int(staff_cfg.get("maxOpen", max(len(self._registers_of(q)) for q in self.queues)))
+        self.zone_ids = {z["id"] for z in layout["zones"]}
 
         self._heap: list = []
         self._hseq = 0
         self._order = 0
         self.records: list[Record] = []
-        self.queue: list[str] = []
-        self.pending_open = False
-        self.queue_empty_since: int | None = 0
         self.n_shoppers = 0
 
     # ---------------------------------------------------------------- scheduler
@@ -99,7 +117,8 @@ class StoreModel:
         for t in self._arrival_times():
             self._at(t, self._arrive)
         self._at(0, self._staff_check)
-        self._emit_queue_length(0)
+        for q in self.queues:
+            self._emit_queue_length(0, q)
         cap = self.duration_ms + HARD_CAP_MS
         last_activity = 0
         while self._heap:
@@ -157,7 +176,7 @@ class StoreModel:
         for _ in range(visits):
             zone = str(self.r_move.choice(self.sales_ids, p=self.sales_p))
             plan.append(zone)
-            if zone == "apparel" and float(self.r_move.random()) < self.fitting_prob:
+            if zone == "apparel" and "fitting-rooms" in self.zone_ids and float(self.r_move.random()) < self.fitting_prob:
                 plan.append("fitting-rooms")
         buys = float(self.r_move.random()) < self.checkout_prob
         self._emit(t, "zone.entered", f"track:{trk}", {"zoneId": "entrance", "trackId": trk})
@@ -180,76 +199,98 @@ class StoreModel:
             self._at(t + self._walk_ms(), self._join_checkout, trk)
 
     # ---------------------------------------------------------------- checkout
-    def _open_count(self) -> int:
-        return sum(1 for r in self.registers if r.open)
+    def _registers_of(self, q: Queue) -> list[Register]:
+        return [r for r in self.registers if r.queue_id == q.id]
 
-    def _emit_queue_length(self, t: int) -> None:
-        self._emit(t, "queue.length", f"queue:{self.queue_id}",
-                   {"queueId": self.queue_id, "length": len(self.queue), "openRegisters": self._open_count()})
+    def _queue_of(self, reg: Register) -> Queue:
+        return next(q for q in self.queues if q.id == reg.queue_id)
+
+    def _open_count(self, q: Queue) -> int:
+        return sum(1 for r in self._registers_of(q) if r.open)
+
+    def _emit_queue_length(self, t: int, q: Queue) -> None:
+        self._emit(t, "queue.length", f"queue:{q.id}",
+                   {"queueId": q.id, "length": len(q.waiting), "openRegisters": self._open_count(q)})
+
+    def _choose_queue(self) -> Queue:
+        """Shoppers join the shortest line with an open register (ties: layout order). No random draw,
+        so a one-queue store consumes exactly the same random numbers as before S2."""
+        if len(self.queues) == 1:
+            return self.queues[0]
+        staffed = [q for q in self.queues if self._open_count(q) > 0] or self.queues
+        return min(staffed, key=lambda q: (len(q.waiting), self.queues.index(q)))
 
     def _join_checkout(self, t: int, trk: str) -> None:
-        self._emit(t, "zone.entered", f"track:{trk}", {"zoneId": "checkout", "trackId": trk})
-        self.queue.append(trk)
-        self._emit(t, "queue.joined", f"queue:{self.queue_id}", {"queueId": self.queue_id, "trackId": trk})
-        self._emit_queue_length(t)
-        self._try_serve(t)
+        q = self._choose_queue()
+        self._emit(t, "zone.entered", f"track:{trk}", {"zoneId": q.zone_id, "trackId": trk})
+        q.waiting.append(trk)
+        self._emit(t, "queue.joined", f"queue:{q.id}", {"queueId": q.id, "trackId": trk})
+        self._emit_queue_length(t, q)
+        self._try_serve(t, q)
 
-    def _try_serve(self, t: int) -> None:
-        for reg in self.registers:
-            if reg.open and not reg.closing and reg.busy is None and self.queue:
-                trk = self.queue.pop(0)
+    def _try_serve(self, t: int, q: Queue) -> None:
+        for reg in self._registers_of(q):
+            if reg.open and not reg.closing and reg.busy is None and q.waiting:
+                trk = q.waiting.pop(0)
                 reg.busy = trk
-                self._emit(t, "queue.left", f"queue:{self.queue_id}",
-                           {"queueId": self.queue_id, "trackId": trk, "served": True})
-                self._emit_queue_length(t)
+                self._emit(t, "queue.left", f"queue:{q.id}",
+                           {"queueId": q.id, "trackId": trk, "served": True})
+                self._emit_queue_length(t, q)
                 svc = self._lognormal_ms(self.r_svc, self.service_median_s, 0.4)
                 self._at(t + svc, self._finish_service, reg.id)
 
     def _finish_service(self, t: int, reg_id: str) -> None:
         reg = next(r for r in self.registers if r.id == reg_id)
+        q = self._queue_of(reg)
         trk = reg.busy
         reg.busy = None
-        self._emit(t, "zone.exited", f"track:{trk}", {"zoneId": "checkout", "trackId": trk})
+        self._emit(t, "zone.exited", f"track:{trk}", {"zoneId": q.zone_id, "trackId": trk})
         if reg.closing:
             self._close(t, reg)
-        self._try_serve(t)
+        self._try_serve(t, q)
 
     # ---------------------------------------------------------------- staffing
     def _close(self, t: int, reg: Register) -> None:
         reg.open = False
         reg.closing = False
         self._emit(t, "register.closed", f"register:{reg.id}", {"registerId": reg.id})
-        self._emit_queue_length(t)
+        self._emit_queue_length(t, self._queue_of(reg))
 
-    def _open_register(self, t: int) -> None:
-        self.pending_open = False
-        reg = next((r for r in self.registers if not r.open), None)
+    def _open_register(self, t: int, queue_id: str) -> None:
+        q = next(x for x in self.queues if x.id == queue_id)
+        q.pending_open = False
+        reg = next((r for r in self._registers_of(q) if not r.open), None)
         if reg is None:
             return
         reg.open = True
         self._emit(t, "register.opened", f"register:{reg.id}", {"registerId": reg.id})
-        self._emit_queue_length(t)
-        self._try_serve(t)
+        self._emit_queue_length(t, q)
+        self._try_serve(t, q)
 
     def _staff_check(self, t: int) -> None:
-        q = len(self.queue)
-        if q > 0:
-            self.queue_empty_since = None
-        elif self.queue_empty_since is None:
-            self.queue_empty_since = t
-        if (q >= self.open_threshold and not self.pending_open and any(not r.open for r in self.registers)
-                and self._open_count() < self.max_open):
-            self.pending_open = True
+        for q in self.queues:
+            self._staff_queue(t, q)
+        if t + 30_000 < self.duration_ms:
+            self._at(t + 30_000, self._staff_check)
+
+    def _staff_queue(self, t: int, q: Queue) -> None:
+        n = len(q.waiting)
+        regs = self._registers_of(q)
+        if n > 0:
+            q.empty_since = None
+        elif q.empty_since is None:
+            q.empty_since = t
+        if (n >= self.open_threshold and not q.pending_open and any(not r.open for r in regs)
+                and self._open_count(q) < self.max_open):
+            q.pending_open = True
             delay = int(float(self.r_staff.uniform(self.react_min_ms, self.react_max_ms)))
-            self._at(t + delay, self._open_register)
-        active = [r for r in self.registers if r.open and not r.closing]
-        if (q == 0 and self.queue_empty_since is not None
-                and t - self.queue_empty_since >= self.close_after_ms and len(active) > self.min_open):
+            self._at(t + delay, self._open_register, q.id)
+        active = [r for r in regs if r.open and not r.closing]
+        if (n == 0 and q.empty_since is not None
+                and t - q.empty_since >= self.close_after_ms and len(active) > self.min_open):
             reg = active[-1]
             if reg.busy is None:
                 self._close(t, reg)
             else:
                 reg.closing = True
-            self.queue_empty_since = t
-        if t + 30_000 < self.duration_ms:
-            self._at(t + 30_000, self._staff_check)
+            q.empty_since = t

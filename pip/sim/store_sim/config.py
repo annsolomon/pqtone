@@ -91,7 +91,7 @@ def load_layout(path: str | Path) -> dict:
 
 
 SCENARIO_KEYS = {
-    None: {"name", "description", "duration", "epoch", "arrivals", "shoppers", "staffing", "faults"},
+    None: {"name", "description", "duration", "epoch", "stores", "arrivals", "shoppers", "staffing", "faults"},
     "shoppers": {"checkoutProbability", "fittingRoomProbability", "fittingRoomMedianSeconds",
                  "fittingRoomSigma", "serviceMedianSeconds"},
     "staffing": {"initialOpen", "minOpen", "maxOpen", "openAtQueueLength", "reactionMin", "reactionMax",
@@ -112,6 +112,9 @@ def check_scenario(sc: dict) -> None:
     for k in ("duration", "arrivals"):
         if k not in sc:
             problems.append(f"missing {k}")
+    if "stores" in sc and (not isinstance(sc["stores"], list) or not sc["stores"]
+                           or not all(isinstance(x, str) for x in sc["stores"])):
+        problems.append("stores: a non-empty list of store ids")
     rates = []
     for i, seg in enumerate(sc.get("arrivals") or []):
         if not isinstance(seg, dict) or set(seg) != {"from", "to", "perHour"} or float(seg["perHour"]) < 0:

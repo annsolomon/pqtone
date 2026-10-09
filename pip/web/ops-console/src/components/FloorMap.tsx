@@ -1,4 +1,4 @@
-import { occupancyStrength, queueTrail } from "../floor";
+import { alertingZones, occupancyStrength, queueTrail, registersOf, zoneForIncident } from "../floor";
 import type { Incident, Layout, StoreState } from "../types";
 
 interface Props {
@@ -10,27 +10,13 @@ interface Props {
   pulsing?: Set<string>;
 }
 
-function zoneForIncident(inc: Incident, layout: Layout): string | null {
-  const s = inc.subject ?? "";
-  if (s.startsWith("zone:")) return s.slice(5);
-  if (s.startsWith("queue:")) return layout.queues.find((q) => q.id === s.slice(6))?.zoneId ?? null;
-  return null;
-}
-
 export function FloorMap({ layout, state, incidents, threshold, pulsing }: Props) {
-  const alerting = new Map<string, Incident["severity"]>();
+  const alerting = alertingZones(incidents, layout);
   const pulsingZones = new Set<string>();
   for (const inc of incidents) {
     const z = zoneForIncident(inc, layout);
-    if (!z) continue;
-    if (pulsing?.has(inc.incidentId)) pulsingZones.add(z);
-    const prev = alerting.get(z);
-    if (!prev || inc.severity === "high" || (inc.severity === "medium" && prev === "low")) alerting.set(z, inc.severity);
+    if (z && pulsing?.has(inc.incidentId)) pulsingZones.add(z);
   }
-  const queue = layout.queues[0];
-  const q = queue ? state.queues[queue.id] : undefined;
-  const checkout = queue ? layout.zones.find((z) => z.id === queue.zoneId) : undefined;
-
   return (
     <svg className="floor" viewBox={`0 0 ${layout.width} ${layout.height}`} role="img"
          aria-label={`Floor plan of ${layout.name} with live occupancy`}>
@@ -54,27 +40,36 @@ export function FloorMap({ layout, state, incidents, threshold, pulsing }: Props
           </g>
         );
       })}
-      {checkout && queue && (
-        <g className="queue">
-          {queueTrail(q?.length ?? 0, { x: checkout.x + 16, y: checkout.y + 92, w: checkout.w - 92, h: checkout.h - 108 }).map((p, i) => (
-            <circle key={i} cx={p.x} cy={p.y} r="7" className={i + 1 >= threshold ? "dot over" : "dot"} />
-          ))}
-          <text x={checkout.x + 14} y={checkout.y + 54} className="queue-count" data-testid="queue-count">
-            {q?.length ?? 0}
-            <tspan className="queue-unit"> waiting</tspan>
-          </text>
-          <text x={checkout.x + 14} y={checkout.y + 76} className="zone-note">Alert when {threshold} or more wait for a minute</text>
-          {layout.registers.map((r, i) => (
-            <g key={r.id}>
-              <rect x={checkout.x + checkout.w - 56} y={checkout.y + 96 + i * 52} width="40" height="36" rx="4"
-                    className={i < (q?.openRegisters ?? 0) ? "register open" : "register"} />
-              <text x={checkout.x + checkout.w - 36} y={checkout.y + 119 + i * 52} textAnchor="middle" className="register-label">
-                {i + 1}
-              </text>
-            </g>
-          ))}
-        </g>
-      )}
+      {layout.queues.map((queue) => {
+        const checkout = layout.zones.find((z) => z.id === queue.zoneId);
+        if (!checkout) return null;
+        const q = state.queues[queue.id];
+        const regs = registersOf(layout, queue.id);
+        const many = layout.queues.length > 1;
+        return (
+          <g key={queue.id} className="queue" data-queue={queue.id}>
+            {queueTrail(q?.length ?? 0, { x: checkout.x + 16, y: checkout.y + 92, w: checkout.w - 92, h: checkout.h - 108 }).map((p, i) => (
+              <circle key={i} cx={p.x} cy={p.y} r="7" className={i + 1 >= threshold ? "dot over" : "dot"} />
+            ))}
+            <text x={checkout.x + 14} y={checkout.y + 54} className="queue-count" data-testid="queue-count" data-queue={queue.id}>
+              {q?.length ?? 0}
+              <tspan className="queue-unit"> waiting</tspan>
+            </text>
+            <text x={checkout.x + 14} y={checkout.y + 76} className="zone-note">
+              {many ? `Alert at ${threshold}+ for 1 min` : `Alert when ${threshold} or more wait for a minute`}
+            </text>
+            {regs.map((r, i) => (
+              <g key={r.id}>
+                <rect x={checkout.x + checkout.w - 56} y={checkout.y + 96 + i * 52} width="40" height="36" rx="4"
+                      className={i < (q?.openRegisters ?? 0) ? "register open" : "register"} />
+                <text x={checkout.x + checkout.w - 36} y={checkout.y + 119 + i * 52} textAnchor="middle" className="register-label">
+                  {r.id.replace(/^reg-/, "")}
+                </text>
+              </g>
+            ))}
+          </g>
+        );
+      })}
     </svg>
   );
 }

@@ -80,7 +80,7 @@ So this tier starts with **Stage 0: make it green**.
 | # | Milestone | Done when |
 |---|---|---|
 | ✅ S1 | **Read the model.** Draw the discrete-event loop (heap, scheduler, RNG streams) in `docs/learn/store-sim.md`. Explain why four child RNG streams keep runs stable when you add a new random draw. 🧠 | Doc written. |
-| S2 | **Second store layout** (`store-002`: two queues, an extra zone) and a multi-store scenario. Rules and console must handle more than one store. | The offline matrix includes multi-store; the console store picker works. |
+| ✅ S2 | **Second store layout** (`store-002`: two queues, an extra zone) and a multi-store scenario. Rules and console must handle more than one store. | The offline matrix includes multi-store; the console store picker works. |
 | ✅ S3 | **Scenario authoring guide** plus 3 new scenarios: `staff_shortage`, `flash_sale`, `closing_time`. | Each produces ground truth; scorer thresholds hold. Note: baseline rows added after the first CI run |
 | ✅ S4 | **HTTP sink e2e** through the gateway with OAuth client credentials (it exists but is untested end to end). | `make e2e-http-sim` stores 100% of events. |
 | ✅ S5 | **Noise hooks** (prepares for Tier 2): a `faults.vision` section accepting a noise profile file. Leave it as a no-op until Tier 2 fills it. | Schema for noise profiles exists; tests pass. |
@@ -127,7 +127,7 @@ So this tier starts with **Stage 0: make it green**.
 |---|---|---|
 | ✅ C1 | **Alert you can't miss.** When a new enforce incident opens, show a toast and the zone outline animation, plus an optional browser Notification (permission asked from a user gesture) and a sound toggle. | Manual check, plus a unit test of the alert reducer. Note: alertReducer + 14 unit tests; toast, zone pulse, opt-in sound and desktop notification; the C2 Playwright test checks the toast in the browser |
 | ✅ C2 | **Playwright demo test** (this is the "Done when"). A `tests/ui` container logs in as reviewer, starts `make sim` with `register_delay`, waits until the queue counter reaches 6 or more, sees the incident appear in the rail, opens it and confirms it. Records a video artifact. | Green in `make all` and CI; the video is uploaded. Note: tests/ui/test_demo.py via make e2e-ui; video uploaded as the ui-demo CI artifact |
-| C3 | **Accessibility pass.** axe-core in Playwright: 0 serious violations. Keyboard-only review flow. The map has a table alternative. | axe report in CI. |
+| ✅ C3 | **Accessibility pass.** axe-core in Playwright: 0 serious violations. Keyboard-only review flow. The map has a table alternative. | axe report in CI. |
 | ✅ C4 | **Timeline view.** Per-incident chart of queue length and open registers around onset (from `/api/events`). Explains *why* it fired. | Reviewers can see the evidence on the detail page. |
 | ✅ C5 | **Review metrics.** Time-to-ack, confirm rate per rule, shown to admins. Feeds the precision estimate for real sites in Tier 2. | Admin page shows them. |
 
