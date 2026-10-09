@@ -11,7 +11,7 @@ export function EventTicker({ events, skipped }: { events: LiveEvent[]; skipped:
       {events.length === 0 ? (
         <p className="empty">No events yet. Start a simulation with <code>make sim</code> to watch the floor fill up.</p>
       ) : (
-        <ol className="ticker-list">
+        <ol className="ticker-list" tabIndex={0} aria-label="Latest events, newest first">
           {events.map((e) => (
             <li key={e.id}>
               <time>{clock(e.time)}</time>
