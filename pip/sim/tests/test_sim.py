@@ -202,3 +202,30 @@ def test_footfall_spike_scenario_has_one_entrance_spike_per_seed():
     for seed in (11, 42, 1337):
         gt = [g for g in run("footfall_spike", seed).ground_truth if g["ruleId"] == "R-FOOT-001"]
         assert [g["key"] for g in gt] == ["entrance"], (seed, gt)
+
+
+def test_an_extra_draw_in_one_stream_leaves_the_others_alone():
+    """docs/learn/store-sim.md: separate RNG streams confine a model change to what it touches."""
+    import yaml as _yaml
+
+    from store_sim.model import StoreModel
+
+    layout = json.loads(Path(LAYOUT).read_text())
+    scenario = _yaml.safe_load(Path("sim/scenarios/rush_hour.yaml").read_text())
+
+    class ExtraServiceDraw(StoreModel):
+        def _lognormal_ms(self, rng, median_s, sigma):
+            if rng is self.r_svc:
+                rng.random()  # a new random draw, as if the model had grown a feature at the registers
+            return super()._lognormal_ms(rng, median_s, sigma)
+
+    def shopping(records):
+        # Everything decided by the arrival and movement streams: who arrives when, where they go.
+        return [(r.t_ms, r.short_type, r.data.get("zoneId"), r.data.get("trackId")) for r in records
+                if r.short_type in ("zone.entered", "zone.exited") and r.data.get("zoneId") != "checkout"]
+
+    base = StoreModel(layout, scenario, seed=7).run()
+    changed = ExtraServiceDraw(layout, scenario, seed=7).run()
+    assert shopping(changed) == shopping(base)
+    service_exits = lambda recs: [r.t_ms for r in recs if r.short_type == "zone.exited" and r.data["zoneId"] == "checkout"]
+    assert service_exits(changed) != service_exits(base), "the change itself must show up at the registers"
