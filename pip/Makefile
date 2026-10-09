@@ -75,15 +75,16 @@ rules-reset: ## R4: drop the published rules; every engine goes back to config/r
 
 e2e-hot-reload: ## R4: change a threshold in the running stack without a restart; old incidents keep their version
 	rm -rf "$(WORK)/hot-reload" && mkdir -p "$(WORK)/hot-reload" "$(WORK)/reports"
-	@started=$$(docker inspect -f '{{.State.StartedAt}}' $$($(COMPOSE) ps -q rules-engine)); \
+	@started=$$(docker inspect -f '{{.State.StartedAt}}' $$($(COMPOSE) ps -q rules-engine)); rc=0; \
 	  $(RUN) tools python tests/hot_reload/check.py make-rules --out /work/hot-reload/rules.yaml --threshold 4 --version 1.1.0 && \
 	  $(RUN) tools python tests/hot_reload/check.py snapshot --out /work/hot-reload/before.json && \
 	  $(MAKE) --no-print-directory rules-publish RULES=.work/hot-reload/rules.yaml && \
 	  $(RUN) tools python tests/hot_reload/check.py wait-rules --version 1.1.0 --source topic && \
-	  $(RUN) tools store-sim run --seed $(HOT_SEED) --scenario sim/scenarios/register_delay.yaml \
+	  seed=$$($(RUN) tools python tests/hot_reload/check.py pick-seed --start $(HOT_SEED) --rules /work/hot-reload/rules.yaml) && \
+	  $(RUN) tools store-sim run --seed $$seed --scenario sim/scenarios/register_delay.yaml \
 	    --rules /work/hot-reload/rules.yaml --out /work/hot-reload/sim --sink kafka && \
 	  $(RUN) tools python tests/hot_reload/check.py verify --case-dir /work/hot-reload/sim \
-	    --rules /work/hot-reload/rules.yaml --snapshot /work/hot-reload/before.json; rc=$$?; \
+	    --rules /work/hot-reload/rules.yaml --snapshot /work/hot-reload/before.json || rc=1; \
 	  $(MAKE) --no-print-directory rules-reset && \
 	  $(RUN) tools python tests/hot_reload/check.py wait-rules --version 1.0.0 --source file || rc=1; \
 	  now=$$(docker inspect -f '{{.State.StartedAt}}' $$($(COMPOSE) ps -q rules-engine)); \
