@@ -150,13 +150,16 @@ def main() -> int:
                 break
         time.sleep(2)
     drained_s = time.monotonic() - send_start
-    last = -1
+    # Incidents reach Postgres through their own topic and consumer, so a watermark seen in the heartbeat
+    # can be ahead of the last incident row. Settle: the count must hold for SETTLE_S seconds.
+    settle_s, last, since = 15, -1, time.monotonic()
     while True:
         n_inc = conn.execute("SELECT count(*) FROM pip.incident WHERE sim_run_id = %s", (run.run_id,)).fetchone()[0]
-        if n_inc == last:
+        if n_inc != last:
+            last, since = n_inc, time.monotonic()
+        elif time.monotonic() - since >= settle_s:
             break
-        last = n_inc
-        time.sleep(4)
+        time.sleep(1)
     stop.set()
     th.join(10)
 
@@ -169,6 +172,12 @@ def main() -> int:
     m = yaml.safe_load(Path("scorer/thresholds.yaml").read_text())["matching"]
     scores = score(run.ground_truth, incidents, tolerance_before_ms=parse_duration_ms(m["toleranceBefore"]),
                    max_latency_ms=parse_duration_ms(m["maxLatency"]), rule_ids=RULES)
+    # Diagnostics: what was missed or spurious, and whether any incident arrived after scoring.
+    unmatched = {rule: {"missed": [{k: g.get(k) for k in ("storeId", "key", "onsetMs", "atMs")} for g in sc.unmatched_gt[:5]],
+                        "spurious": [{k: i.get(k) for k in ("storeId", "key", "detectedMs")} for i in sc.unmatched_incidents[:5]]}
+                 for rule, sc in sorted(scores.items()) if sc.unmatched_gt or sc.unmatched_incidents}
+    time.sleep(30)
+    late = conn.execute("SELECT count(*) FROM pip.incident WHERE sim_run_id = %s", (run.run_id,)).fetchone()[0] - len(incidents)
     latency = measure_latency(conn, run.run_id, rules.grace_ms)
     total_stored = stored(conn, run.run_id)
 
@@ -192,6 +201,7 @@ def main() -> int:
         "processingLatencyMs": latency,
         "quality": {rule: {"precision": round(s.precision, 4), "recall": round(s.recall, 4), "gt": s.tp + s.fn}
                     for rule, s in sorted(scores.items())},
+        "unmatched": unmatched, "incidentsArrivedAfterScoring": late,
         "samples": samples,
     }
     (out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
