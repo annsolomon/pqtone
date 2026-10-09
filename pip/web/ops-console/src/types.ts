@@ -87,6 +87,35 @@ export interface PipelineHealth {
   staleAfterSeconds: number;
 }
 
+/** Milestone C4: GET /api/incidents/{id}/timeline. */
+export interface TimelinePoint {
+  t: string;
+  length?: number;
+  openRegisters?: number | null;
+  entries?: number;
+}
+
+export interface TimelineMarker {
+  t: string;
+  kind: "register.opened" | "register.closed";
+  registerId: string;
+}
+
+export interface IncidentTimelineData {
+  incidentId: string;
+  from: string;
+  to: string;
+  onsetAt: string;
+  detectedAt: string;
+  resolvedAt: string | null;
+  threshold: number | null;
+  kind: "queue" | "zone" | "none";
+  target: string | null;
+  series: TimelinePoint[];
+  markers: TimelineMarker[];
+  truncated: boolean;
+}
+
 /** Milestone C5: GET /api/admin/review-metrics. */
 export interface RuleReviewMetrics {
   ruleId: string;

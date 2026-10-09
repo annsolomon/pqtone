@@ -38,9 +38,11 @@ public class IncidentController {
     }
 
     private final IncidentService service;
+    private final TimelineService timelines;
 
-    public IncidentController(IncidentService service) {
+    public IncidentController(IncidentService service, TimelineService timelines) {
         this.service = service;
+        this.timelines = timelines;
     }
 
     @GetMapping
@@ -65,12 +67,16 @@ public class IncidentController {
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('viewer')")
     public ResponseEntity<Map<String, Object>> get(@PathVariable UUID id, Authentication auth) {
-        IncidentView v = service.find(id).orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not-found", "incident not found"));
-        if ("shadow".equals(v.mode()) && !roles(auth).contains(Roles.ADMIN)) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "not-found", "incident not found");
-        }
+        IncidentView v = visible(id, auth);
         return ResponseEntity.ok().eTag("\"" + v.version() + "\"")
                 .body(Map.of("incident", v, "reviews", service.reviews(id)));
+    }
+
+    /** Milestone C4: the events around the incident, so a reviewer can see why it fired. Same visibility as GET. */
+    @GetMapping("/{id}/timeline")
+    @PreAuthorize("hasRole('viewer')")
+    public Map<String, Object> timeline(@PathVariable UUID id, Authentication auth) {
+        return timelines.timeline(visible(id, auth));
     }
 
     @PostMapping("/{id}/actions")
@@ -90,6 +96,15 @@ public class IncidentController {
         }
         IncidentView v = service.act(id, body.action(), body.reasonCode(), body.note(), version, auth.getName(), roles(auth));
         return ResponseEntity.ok().eTag("\"" + v.version() + "\"").body(v);
+    }
+
+    /** The incident if this user may see it; shadow incidents are admin-only and look absent to everyone else. */
+    private IncidentView visible(UUID id, Authentication auth) {
+        IncidentView v = service.find(id).orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not-found", "incident not found"));
+        if ("shadow".equals(v.mode()) && !roles(auth).contains(Roles.ADMIN)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "not-found", "incident not found");
+        }
+        return v;
     }
 
     static Set<String> roles(Authentication auth) {

@@ -32,6 +32,41 @@ components:
         errors: {type: array, items: {type: string}}
     CloudEvent:
       $ref: ../../schemas/envelope.schema.json
+    Timeline:
+      type: object
+      required: [incidentId, from, to, onsetAt, detectedAt, kind, series, markers, truncated]
+      properties:
+        incidentId: {type: string, format: uuid}
+        from: {type: string, format: date-time}
+        to: {type: string, format: date-time}
+        onsetAt: {type: string, format: date-time}
+        detectedAt: {type: string, format: date-time}
+        resolvedAt: {type: string, format: date-time, nullable: true}
+        threshold: {type: integer, nullable: true, description: Queue threshold the rule used, when it has one}
+        kind: {type: string, enum: [queue, zone, none]}
+        target: {type: string, nullable: true, description: Queue id or zone id}
+        series:
+          type: array
+          maxItems: 5000
+          description: Queue points (t, length, openRegisters) or zone buckets (t, entries); the first queue point carries the last value seen before the window
+          items:
+            type: object
+            required: [t]
+            properties:
+              t: {type: string, format: date-time}
+              length: {type: integer}
+              openRegisters: {type: integer, nullable: true}
+              entries: {type: integer}
+        markers:
+          type: array
+          maxItems: 500
+          items:
+            type: object
+            properties:
+              t: {type: string, format: date-time}
+              kind: {type: string, enum: [register.opened, register.closed]}
+              registerId: {type: string}
+        truncated: {type: boolean, description: More than 5000 points matched; the series stops at the limit}
     ReviewMetrics:
       type: object
       required: [days, generatedAt, rules]
@@ -162,6 +197,21 @@ paths:
       security: [{session: []}]
       parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
       responses: {"200": {description: OK}, "404": {description: Not found}}
+  /api/incidents/{id}/timeline:
+    get:
+      summary: >-
+        Evidence around an incident in event time (milestone C4): queue length and open registers with
+        register markers for queue incidents, zone entries per minute for zone incidents. Window is
+        onset - 10 min to resolution + 5 min, at most 2 h. Same visibility as GET /api/incidents/{id}.
+      security: [{session: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Timeline"}
+        "404": {description: Not found (or a shadow incident and the caller is not an admin)}
   /api/incidents/{id}/actions:
     post:
       summary: Review action (ack = operator; confirm, dismiss, close = reviewer)
