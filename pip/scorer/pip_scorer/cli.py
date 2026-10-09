@@ -110,6 +110,7 @@ def cmd_e2e(a) -> int:
             "(extract(epoch from detected_at) * 1000)::bigint "
             "FROM pip.incident WHERE sim_run_id = %s", (run_id,)).fetchall()
         stored = conn.execute("SELECT count(*) FROM pip.event WHERE sim_run_id = %s", (run_id,)).fetchone()[0]
+        latency = measure_latency(conn, run_id, int(manifest["graceMs"]))
 
     incidents = [{"ruleId": r, "mode": mo, "storeId": s, "key": k, "detectedMs": int(d), "kind": "OPENED"}
                  for r, mo, s, k, d in rows]
@@ -125,10 +126,12 @@ def cmd_e2e(a) -> int:
                         "failures": evaluate(scenario, sd, gate_for(thresholds, scenario, rule))})
     expected = manifest["counts"]["cleanEvents"]
     extra = [] if stored == expected else [f"stored events {stored} != expected unique valid events {expected}"]
-    write_reports(a.out, results, extra)
+    limit = (thresholds.get("e2e") or {}).get("processingLatencyP95")
+    extra += processing_gate(latency, dur_ms(limit) if limit else None)
+    write_reports(a.out, results, extra, metrics={"processingLatencyMs": latency})
     print((Path(a.out) / "score.md").read_text())
     print(json.dumps({"runId": run_id, "storedEvents": stored, "expectedEvents": expected,
-                      "incidents": len(incidents)}))
+                      "incidents": len(incidents), "processingLatencyMs": latency}))
     return 0 if all(not r["failures"] for r in results) and not extra else 1
 
 

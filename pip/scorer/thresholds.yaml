@@ -12,3 +12,5 @@ scenarios:
     "*": {precision: 0.50, recall: 0.50, latencyP95: PT120S}
 regression:
   maxDropPp: 2.0           # vs scorer/baseline.json when present
+e2e:                       # milestone Q2: live pipeline only (offline runs have no wall clock)
+  processingLatencyP95: PT10S  # stored event that moved the watermark past detection -> incident row
