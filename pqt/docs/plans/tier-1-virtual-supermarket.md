@@ -4,14 +4,10 @@
 
 **Runs entirely in Codespaces.**
 
-**Status.** The code for all five projects exists in `pqt-tier1.zip`. What it has and hasn't proven:
-
-| Proven | Not yet proven |
-|---|---|
-| Python tests pass (20). | Spring Boot and Kafka Streams code has never been compiled against its real dependencies. |
-| Rule-engine core tests pass (13 JUnit). | The Docker stack and the end-to-end tests have never been run. |
-| React tests and build pass. | |
-| Offline sim → rules → scorer matrix passes. | |
+**Status (9 Oct 2026): Tier 1 complete, tagged `v0.1.0`.** Every milestone below is ticked and merged
+through a pull request with green CI. The exit gate evidence is in `PHASE-1-README.md` (C7). The original
+starting point, for history: the code arrived in a zip whose Java had never been compiled and whose stack
+and end-to-end tests had never run.
 
 So this tier starts with **Stage 0: make it green**.
 
