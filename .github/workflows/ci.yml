@@ -192,7 +192,9 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           base_sha="$(git rev-parse --short "origin/$BASE_REF")"
-          git show "origin/$BASE_REF:pqt/scorer/baseline.json" > "$RUNNER_TEMP/baseline.json"
+          # The base branch's baseline; the PR that moved the project folder finds it under the old name.
+          git show "origin/$BASE_REF:pqt/scorer/baseline.json" > "$RUNNER_TEMP/baseline.json" 2>/dev/null \
+            || git show "origin/$BASE_REF:pip/scorer/baseline.json" > "$RUNNER_TEMP/baseline.json"
           PYTHONPATH=pqt/scorer python3 -m pqt_scorer.comment \
             --offline "$RUNNER_TEMP/reports/offline/score.json" \
             --e2e "$RUNNER_TEMP/reports/e2e/score.json" \
