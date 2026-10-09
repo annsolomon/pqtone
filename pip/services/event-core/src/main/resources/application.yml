@@ -75,13 +75,22 @@ spring:
         jwt:
           jwk-set-uri: ${PIP_OIDC_INTERNAL_ISSUER}/protocol/openid-connect/certs
 
+# OpenAPI generated from the controllers (milestone E5). Served only on the management port,
+# which the gateway never routes: /actuator/openapi on :8081. The contract test diffs it with
+# services/event-core/openapi.yaml.
+springdoc:
+  use-management-port: true
+  packages-to-scan: com.pip.eventcore
+  api-docs:
+    version: openapi_3_1
+
 management:
   server:
     port: 8081
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        include: health,info,prometheus,openapi
   endpoint:
     health:
       probes:
