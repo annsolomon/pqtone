@@ -32,6 +32,37 @@ components:
         errors: {type: array, items: {type: string}}
     CloudEvent:
       $ref: ../../schemas/envelope.schema.json
+    RuleScores:
+      type: object
+      required: [windowDays, generatedAt, rules]
+      properties:
+        windowDays: {type: integer}
+        generatedAt: {type: string, format: date-time}
+        rules:
+          type: array
+          items:
+            type: object
+            properties:
+              ruleId: {type: string}
+              ruleVersion: {type: string}
+              mode: {type: string, enum: [enforce, shadow]}
+              runs: {type: integer}
+              lastMeasuredAt: {type: string, format: date-time}
+              lastRunId: {type: string}
+              lastScenario: {type: string}
+              tp: {type: integer}
+              fp: {type: integer}
+              fn: {type: integer}
+              precision: {type: number, nullable: true}
+              recall: {type: number, nullable: true}
+              precisionLow: {type: number, nullable: true, description: 95% Wilson lower bound}
+              recallLow: {type: number, nullable: true}
+              precisionMin: {type: number}
+              recallMin: {type: number}
+              minN: {type: integer, nullable: true}
+              minLowerBound: {type: number, nullable: true}
+              ready: {type: boolean, description: Shadow rule meets the enforce gate with enough evidence}
+              reasons: {type: array, items: {type: string}}
     Timeline:
       type: object
       required: [incidentId, from, to, onsetAt, detectedAt, kind, series, markers, truncated]
@@ -259,6 +290,20 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/ReviewMetrics"}
         "400": {description: days outside 1..90}
+        "403": {description: Admins only}
+  /api/admin/rule-scores:
+    get:
+      summary: >-
+        Live (e2e) score per rule accumulated over the runs of its current version in the last 30 days,
+        with a promotion verdict for shadow rules (milestone R6). Admin only and read-only: promotion is a
+        reviewed pull request (docs/runbooks/RB-11-promote-shadow-rule.md), never a toggle.
+      security: [{session: []}]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RuleScores"}
         "403": {description: Admins only}
   /api/admin/audit/verify:
     get: {summary: Recompute the hash chain (admin), security: [{session: []}], responses: {"200": {description: "{valid, rows, brokenAtSeq?}"}}}

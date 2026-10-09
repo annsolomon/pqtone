@@ -109,7 +109,7 @@ So this tier starts with **Stage 0: make it green**.
 | ✅ R3 | **Compare both approaches** in an ADR: native windows + suppress vs the custom reorder buffer. Cover memory, determinism and latency. | `docs/adr/011-windowing.md`. |  |
 | ✅ R4 | **Rule versioning and hot reload.** A `rules.yaml` change bumps the rule version. The engine reloads via a compacted `rules.config.v1` topic instead of a restart. Incident ids include the major version (already true). | Changing a threshold in a running stack changes behaviour without a restart; old incidents keep their version. Note: ADR-030, make e2e-hot-reload |  |
 | R5 | **Scale test.** 50 simulated stores at 10× speed; measure throughput, state size, p95 processing lag. Raise partition count and threads; document the limits. | `docs/perf/rules-engine.md` with numbers and graphs. | |
-| R6 | **Shadow → enforce promotion flow.** An admin sees shadow precision and recall from the latest e2e score in the console and promotes a rule through a PR template. No UI toggle; changes go through review. | Documented flow; console shows the shadow score. | |
+| ✅ R6 | **Shadow → enforce promotion flow.** An admin sees shadow precision and recall from the latest e2e score in the console and promotes a rule through a PR template. No UI toggle; changes go through review. | Documented flow; console shows the shadow score. |  |
 
 ---
 

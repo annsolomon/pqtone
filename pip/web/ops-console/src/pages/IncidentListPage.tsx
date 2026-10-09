@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { get } from "../api";
 import { IncidentTable } from "../components/IncidentTable";
 import { useLive } from "../live";
@@ -9,9 +9,11 @@ interface Props {
   intro: string;
   query: string;
   empty: string;
+  /** Shown between the introduction and the list (the shadow page's scorecard, R6). */
+  children?: ReactNode;
 }
 
-export function IncidentListPage({ title, intro, query, empty }: Props) {
+export function IncidentListPage({ title, intro, query, empty, children }: Props) {
   const live = useLive();
   const [items, setItems] = useState<Incident[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +33,7 @@ export function IncidentListPage({ title, intro, query, empty }: Props) {
     <main className="page">
       <h1>{title}</h1>
       <p className="intro">{intro}</p>
+      {children}
       {error && <p className="error">{error}</p>}
       {items === null ? <p className="muted">Loading…</p> : <IncidentTable incidents={items} empty={empty} />}
     </main>

@@ -49,7 +49,7 @@ e2e: e2e-pipeline e2e-http e2e-http-sim e2e-db e2e-ui e2e-hot-reload ## Live end
 e2e-pipeline: ## Simulate SCENARIO through Kafka and score the incidents stored in PostgreSQL
 	rm -rf "$(WORK)/e2e" "$(WORK)/reports/e2e" && mkdir -p "$(WORK)/reports"
 	$(RUN) tools store-sim run --seed $(SEED) --scenario sim/scenarios/$(SCENARIO).yaml --out /work/e2e --sink kafka
-	$(RUN) tools pip-scorer e2e --case-dir /work/e2e --out /work/reports/e2e --timeout 600
+	$(RUN) tools pip-scorer e2e --case-dir /work/e2e --out /work/reports/e2e --timeout 600 --record
 
 e2e-http: ## Security and API tests through the gateway (auth, RBAC, CSRF, ingest contract, review flow)
 	$(COMPOSE) run --rm e2e-http
@@ -75,15 +75,16 @@ rules-reset: ## R4: drop the published rules; every engine goes back to config/r
 
 e2e-hot-reload: ## R4: change a threshold in the running stack without a restart; old incidents keep their version
 	rm -rf "$(WORK)/hot-reload" && mkdir -p "$(WORK)/hot-reload" "$(WORK)/reports"
-	@started=$$(docker inspect -f '{{.State.StartedAt}}' $$($(COMPOSE) ps -q rules-engine)); \
+	@started=$$(docker inspect -f '{{.State.StartedAt}}' $$($(COMPOSE) ps -q rules-engine)); rc=0; \
 	  $(RUN) tools python tests/hot_reload/check.py make-rules --out /work/hot-reload/rules.yaml --threshold 4 --version 1.1.0 && \
 	  $(RUN) tools python tests/hot_reload/check.py snapshot --out /work/hot-reload/before.json && \
 	  $(MAKE) --no-print-directory rules-publish RULES=.work/hot-reload/rules.yaml && \
 	  $(RUN) tools python tests/hot_reload/check.py wait-rules --version 1.1.0 --source topic && \
-	  $(RUN) tools store-sim run --seed $(HOT_SEED) --scenario sim/scenarios/register_delay.yaml \
+	  seed=$$($(RUN) tools python tests/hot_reload/check.py pick-seed --start $(HOT_SEED) --rules /work/hot-reload/rules.yaml) && \
+	  $(RUN) tools store-sim run --seed $$seed --scenario sim/scenarios/register_delay.yaml \
 	    --rules /work/hot-reload/rules.yaml --out /work/hot-reload/sim --sink kafka && \
 	  $(RUN) tools python tests/hot_reload/check.py verify --case-dir /work/hot-reload/sim \
-	    --rules /work/hot-reload/rules.yaml --snapshot /work/hot-reload/before.json; rc=$$?; \
+	    --rules /work/hot-reload/rules.yaml --snapshot /work/hot-reload/before.json || rc=1; \
 	  $(MAKE) --no-print-directory rules-reset && \
 	  $(RUN) tools python tests/hot_reload/check.py wait-rules --version 1.0.0 --source file || rc=1; \
 	  now=$$(docker inspect -f '{{.State.StartedAt}}' $$($(COMPOSE) ps -q rules-engine)); \
