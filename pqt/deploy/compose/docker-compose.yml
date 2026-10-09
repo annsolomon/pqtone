@@ -1,0 +1,360 @@
+# PQT Tier 1 local stack. Run through the Makefile (make all / make up) so .env exists.
+# Only the gateway is published (127.0.0.1:8080); observability UIs bind to 127.0.0.1 too.
+name: pqt
+
+x-logging: &logging
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+
+x-hardened: &hardened
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+
+networks:
+  frontend: {}                      # gateway <-> event-core, keycloak
+  backend: {internal: true}         # data plane: no route to the internet
+  observability: {}
+
+volumes:
+  certs: {}
+  pgdata: {}
+  redpanda-data: {}
+  rules-state: {}
+  prometheus-data: {}
+  grafana-data: {}
+
+services:
+  # ------------------------------------------------------------------ bootstrap
+  certs:
+    image: alpine:3.20
+    <<: *logging
+    entrypoint: ["/bin/sh", "/gen.sh"]
+    volumes:
+      - certs:/certs
+      - ../certs/gen.sh:/gen.sh:ro
+    networks: [frontend]
+    restart: "no"
+
+  postgres:
+    image: postgres:16.4-alpine
+    <<: *logging
+    depends_on:
+      certs: {condition: service_completed_successfully}
+    environment:
+      POSTGRES_DB: pqt
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run make bootstrap}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=trust
+      PQT_DB_MIGRATOR_PASSWORD: ${PQT_DB_MIGRATOR_PASSWORD}
+      PQT_DB_APP_PASSWORD: ${PQT_DB_APP_PASSWORD}
+      PQT_DB_READ_PASSWORD: ${PQT_DB_READ_PASSWORD}
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/certs/postgres.crt
+      - -c
+      - ssl_key_file=/certs/postgres.key
+      - -c
+      - ssl_min_protocol_version=TLSv1.2
+      - -c
+      - password_encryption=scram-sha-256
+      - -c
+      - log_connections=on
+      - -c
+      - log_disconnections=on
+      - -c
+      - log_statement=ddl
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - certs:/certs:ro
+      - ../postgres/init:/docker-entrypoint-initdb.d:ro
+    networks: [backend]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pqt"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  flyway:
+    image: flyway/flyway:10.20-alpine
+    <<: [*logging, *hardened]
+    depends_on:
+      postgres: {condition: service_healthy}
+    command:
+      - -url=jdbc:postgresql://postgres:5432/pqt?sslmode=verify-full&sslrootcert=/certs/ca.crt
+      - -user=pqt_migrator
+      - -password=${PQT_DB_MIGRATOR_PASSWORD}
+      - -schemas=pqt
+      - -createSchemas=false
+      - -locations=filesystem:/flyway/sql
+      - -connectRetries=30
+      - -validateMigrationNaming=true
+      # Session-level advisory lock: Flyway's default transactional lock keeps a transaction open,
+      # and CREATE INDEX CONCURRENTLY (V5) waits for every open transaction, so it would hang forever.
+      - -postgresql.transactional.lock=false
+      # Fail fast instead of queueing behind application traffic (docs/learn/migrations.md).
+      - -initSql=SET lock_timeout = '60s'
+      - migrate
+    volumes:
+      - ../../services/event-core/src/main/resources/db/migration:/flyway/sql:ro
+      - certs:/certs:ro
+    networks: [backend]
+    restart: "no"
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    <<: *logging
+    command:
+      - redpanda
+      - start
+      - --kafka-addr=internal://0.0.0.0:9092
+      - --advertise-kafka-addr=internal://redpanda:9092
+      - --rpc-addr=redpanda:33145
+      - --advertise-rpc-addr=redpanda:33145
+      - --mode=dev-container
+      - --smp=1
+      - --memory=1G
+      - --default-log-level=warn
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+      - ../redpanda/bootstrap.yaml:/etc/redpanda/.bootstrap.yaml:ro
+    networks: [backend]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -Eq 'Healthy:.+true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  redpanda-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    <<: [*logging, *hardened]
+    depends_on:
+      redpanda: {condition: service_healthy}
+    entrypoint: ["/bin/bash", "/init.sh"]
+    environment:
+      PQT_KAFKA_ADMIN_PASSWORD: ${PQT_KAFKA_ADMIN_PASSWORD}
+      PQT_KAFKA_EVENTCORE_PASSWORD: ${PQT_KAFKA_EVENTCORE_PASSWORD}
+      PQT_KAFKA_RULES_PASSWORD: ${PQT_KAFKA_RULES_PASSWORD}
+      PQT_KAFKA_SIM_PASSWORD: ${PQT_KAFKA_SIM_PASSWORD}
+    volumes:
+      - ../redpanda/init.sh:/init.sh:ro
+    networks: [backend]
+    restart: "no"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    <<: [*logging, *hardened]
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: kcadmin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD}
+      KC_HOSTNAME: ${PQT_PUBLIC_URL}/auth
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_HTTP_MANAGEMENT_RELATIVE_PATH: /
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      KC_LOG_LEVEL: warn
+    volumes:
+      - ../keycloak/generated/pqt-realm.json:/opt/keycloak/data/import/pqt-realm.json:ro
+    networks: [frontend]
+    healthcheck:
+      test: ["CMD-SHELL", 'exec 3<>/dev/tcp/127.0.0.1/9000 && printf "GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q "UP" <&3']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------ application
+  event-core:
+    build: {context: ../.., dockerfile: services/event-core/Dockerfile}
+    image: pqt/event-core:local
+    <<: [*logging, *hardened]
+    depends_on:
+      flyway: {condition: service_completed_successfully}
+      redpanda-init: {condition: service_completed_successfully}
+    environment:
+      PQT_DB_HOST: postgres
+      PQT_DB_APP_PASSWORD: ${PQT_DB_APP_PASSWORD}
+      PQT_KAFKA_BOOTSTRAP: redpanda:9092
+      PQT_KAFKA_USER: event-core
+      PQT_KAFKA_PASSWORD: ${PQT_KAFKA_EVENTCORE_PASSWORD}
+      PQT_OIDC_CLIENT_SECRET: ${PQT_OIDC_CLIENT_SECRET}
+      PQT_OIDC_PUBLIC_ISSUER: ${PQT_PUBLIC_URL}/auth/realms/pqt
+      PQT_OIDC_INTERNAL_ISSUER: http://keycloak:8080/auth/realms/pqt
+      PQT_PUBLIC_URL: ${PQT_PUBLIC_URL}
+      PQT_COOKIE_SECURE: ${PQT_COOKIE_SECURE:-false}
+      PQT_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
+    volumes:
+      - certs:/certs:ro
+    networks: [frontend, backend, observability]
+    restart: unless-stopped
+
+  rules-engine:
+    build: {context: ../.., dockerfile: services/rules-engine/Dockerfile}
+    image: pqt/rules-engine:local
+    <<: [*logging, *hardened]
+    depends_on:
+      redpanda-init: {condition: service_completed_successfully}
+    environment:
+      PQT_KAFKA_BOOTSTRAP: redpanda:9092
+      PQT_KAFKA_USER: rules-engine
+      PQT_KAFKA_PASSWORD: ${PQT_KAFKA_RULES_PASSWORD}
+      PQT_RULES_FILE: /config/rules.yaml
+      PQT_REPLICATION_FACTOR: "1"
+      PQT_STANDBY_REPLICAS: "0"
+      PQT_STREAM_THREADS: ${PQT_STREAM_THREADS:-2}
+    volumes:
+      - ../../config/rules.yaml:/config/rules.yaml:ro
+      - rules-state:/var/lib/rules-engine/state
+    networks: [backend, observability]
+    restart: unless-stopped
+
+  # Milestone R4: publish a rules document to rules.config.v1 (hot reload) or reset to the file.
+  # An operator action, so it uses the admin principal, never a service's.
+  #   make rules-publish RULES=config/rules.yaml   |   make rules-reset
+  rules-admin:
+    image: pqt/rules-engine:local
+    profiles: [tools]
+    <<: [*logging, *hardened]
+    # Runs as the host user, like tools: it reads rules files that make and the tools container wrote
+    # under .work/ (the image's own user 10001 cannot read a directory the runner created as 0700).
+    user: "${PQT_UID:-1000}:${PQT_GID:-1000}"
+    entrypoint: ["java", "-cp", "/app/rules-engine.jar", "com.pqt.rules.app.RulesPublisher"]
+    environment:
+      PQT_KAFKA_BOOTSTRAP: redpanda:9092
+      PQT_KAFKA_USER: admin
+      PQT_KAFKA_PASSWORD: ${PQT_KAFKA_ADMIN_PASSWORD}
+    volumes:
+      - ../../config:/config:ro
+      - ../../.work:/work:ro
+    networks: [backend]
+
+  gateway:
+    build: {context: ../.., dockerfile: web/ops-console/Dockerfile}
+    image: pqt/gateway:local
+    <<: [*logging, *hardened]
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      event-core: {condition: service_healthy}
+      keycloak: {condition: service_healthy}
+    ports:
+      - "${PQT_BIND_ADDR:-127.0.0.1}:8080:8080"
+    networks: [frontend]
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------ observability
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    <<: [*logging, *hardened]
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports: ["127.0.0.1:16686:16686"]
+    networks: [observability]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    <<: [*logging, *hardened]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports: ["127.0.0.1:9090:9090"]
+    networks: [observability]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    <<: [*logging, *hardened]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports: ["127.0.0.1:3000:3000"]
+    networks: [observability]
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------ tools (docker compose run)
+  tools:
+    build: {context: ../.., dockerfile: deploy/docker/python.Dockerfile}
+    image: pqt/tools:local
+    profiles: [tools]
+    <<: *logging
+    user: "${PQT_UID:-1000}:${PQT_GID:-1000}"
+    working_dir: /repo
+    environment:
+      PQT_KAFKA_BOOTSTRAP: redpanda:9092
+      PQT_KAFKA_USER: store-sim
+      PQT_KAFKA_PASSWORD: ${PQT_KAFKA_SIM_PASSWORD}
+      PQT_SCORER_DSN: host=postgres dbname=pqt user=pqt_read password=${PQT_DB_READ_PASSWORD} sslmode=verify-full sslrootcert=/certs/ca.crt
+      PQT_DB_APP_DSN: host=postgres dbname=pqt user=pqt_app password=${PQT_DB_APP_PASSWORD} sslmode=verify-full sslrootcert=/certs/ca.crt
+    volumes:
+      - ../../.work:/work
+      - certs:/certs:ro
+    networks: [backend]
+
+  # Runs inside the gateway's network namespace so "localhost:8080" is exactly what a browser sees.
+  e2e-http:
+    image: pqt/tools:local
+    profiles: [tools]
+    <<: *logging
+    user: "${PQT_UID:-1000}:${PQT_GID:-1000}"
+    working_dir: /repo
+    network_mode: "service:gateway"
+    environment:
+      PQT_BASE_URL: http://localhost:8080
+      PQT_PUBLIC_URL: ${PQT_PUBLIC_URL}
+      PQT_SIM_CLIENT_SECRET: ${PQT_SIM_CLIENT_SECRET}
+      PQT_EDGE_CLIENT_SECRET: ${PQT_EDGE_CLIENT_SECRET}
+      PQT_VIEWER_PASSWORD: ${PQT_VIEWER_PASSWORD}
+      PQT_OPERATOR_PASSWORD: ${PQT_OPERATOR_PASSWORD}
+      PQT_REVIEWER_PASSWORD: ${PQT_REVIEWER_PASSWORD}
+      PQT_ADMIN_PASSWORD: ${PQT_ADMIN_PASSWORD}
+    volumes:
+      - ../../.work:/work
+    command: ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/http", "--junitxml=/work/reports/e2e-http.xml"]
+
+  # Browser demo test (Playwright, milestone C2). Same network namespace as e2e-http, so the
+  # browser's origin is http://localhost:8080. Started by `make e2e-ui`, which starts the
+  # simulation once the test has signed in.
+  e2e-ui:
+    build: {context: ../.., dockerfile: tests/ui/Dockerfile}
+    image: pqt/e2e-ui:local
+    profiles: [tools]
+    <<: [*logging, *hardened]
+    user: "${PQT_UID:-1000}:${PQT_GID:-1000}"
+    working_dir: /repo
+    network_mode: "service:gateway"
+    shm_size: "1gb"
+    environment:
+      HOME: /tmp
+      PQT_BASE_URL: http://localhost:8080
+      PQT_PUBLIC_URL: ${PQT_PUBLIC_URL}
+      PQT_REVIEWER_PASSWORD: ${PQT_REVIEWER_PASSWORD}
+      PQT_ADMIN_PASSWORD: ${PQT_ADMIN_PASSWORD}
+      PQT_UI_REPORTS: /work/reports/ui
+      PQT_UI_TIMEOUT_S: "300"
+    volumes:
+      - ../../.work:/work
+    command: ["python3", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/ui", "--junitxml=/work/reports/e2e-ui.xml"]

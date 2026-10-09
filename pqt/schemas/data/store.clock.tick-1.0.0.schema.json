@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pqt.local/store/clock.tick/1.0.0",
+  "title": "com.pqt.store.clock.tick data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "seq"
+  ],
+  "properties": {
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

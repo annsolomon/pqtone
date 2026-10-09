@@ -1,5 +1,5 @@
 # Accepted vulnerabilities. Every entry needs an ADR and an expiry date; CI fails again
-# automatically once an entry expires. See pip/docs/adr/026-spring-framework-6-2-eol-cves.md.
+# automatically once an entry expires. See pqt/docs/adr/026-spring-framework-6-2-eol-cves.md.
 
 # Spring Framework 6.2.x (Spring Boot 3.5), no open-source fix on 6.2; fixed in 7.0.9.
 # XsltView path traversal: event-core renders no views and has no XsltView.

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pqt.local/store/zone.entered/1.0.0",
+  "title": "com.pqt.store.zone.entered data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "zoneId",
+    "trackId"
+  ],
+  "properties": {
+    "zoneId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,64}$"
+    },
+    "trackId": {
+      "type": "string",
+      "pattern": "^trk-[a-z0-9]{1,32}$"
+    }
+  }
+}

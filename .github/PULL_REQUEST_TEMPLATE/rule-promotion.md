@@ -25,4 +25,4 @@
 - Deploy, or publish without a restart: `make rules-publish RULES=config/rules.yaml` (RB-10).
 - Rollback: revert this PR and publish again; incidents raised meanwhile keep the version that raised them.
 
-Runbook: `pip/docs/runbooks/RB-11-promote-shadow-rule.md`. Promotion is never a console toggle.
+Runbook: `pqt/docs/runbooks/RB-11-promote-shadow-rule.md`. Promotion is never a console toggle.

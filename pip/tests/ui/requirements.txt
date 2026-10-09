@@ -1,5 +1,0 @@
-# Browser end-to-end tests (milestones C2, C3). Playwright: Apache-2.0. pytest: MIT.
-# axe-core (MPL-2.0) is installed by the Dockerfile's axe stage, not by pip.
-# Keep playwright in step with the base image tag in tests/ui/Dockerfile.
-playwright==1.63.0
-pytest==8.3.3
