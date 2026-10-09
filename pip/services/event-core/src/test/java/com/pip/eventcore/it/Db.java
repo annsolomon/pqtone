@@ -10,6 +10,7 @@ import org.testcontainers.utility.DockerImageName;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -83,6 +84,10 @@ public final class Db implements AutoCloseable {
     /** Flyway as pip_migrator, exactly like the compose `flyway` service; target null = latest. */
     public void migrate(String target) {
         var cfg = Flyway.configure()
+                // Same settings as the compose service: a session-level lock, because the default
+                // transactional lock keeps a transaction open and CREATE INDEX CONCURRENTLY waits for it.
+                .configuration(Map.of("flyway.postgresql.transactional.lock", "false"))
+                .initSql("SET lock_timeout = '60s'")
                 .dataSource(container.getJdbcUrl(), "pip_migrator", migratorPassword)
                 .schemas("pip")
                 .createSchemas(false)

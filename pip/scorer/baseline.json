@@ -17,7 +17,43 @@
       "recall": 1.0
     }
   },
+  "closing_time": {
+    "R-ABS-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-DWELL-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-FOOT-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-QUEUE-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
   "duplicates": {
+    "R-ABS-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-DWELL-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-FOOT-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-QUEUE-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
+  "flash_sale": {
     "R-ABS-001": {
       "precision": 1.0,
       "recall": 1.0
@@ -144,6 +180,24 @@
     }
   },
   "rush_hour": {
+    "R-ABS-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-DWELL-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-FOOT-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "R-QUEUE-001": {
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
+  "staff_shortage": {
     "R-ABS-001": {
       "precision": 1.0,
       "recall": 1.0

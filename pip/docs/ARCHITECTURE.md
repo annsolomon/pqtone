@@ -6,7 +6,7 @@
 >
 > **Scorer.**
 > - Matching is Hungarian one-to-one inside the match window, without the greedy fallback (§10.1, ADR-028).
-> - Latency is measured in event time. Wall-clock processing latency is not reported yet.
+> - Rule latency is measured in event time. Wall-clock processing latency (stored event → incident row) is reported and gated in e2e (milestone Q2, ADR-029).
 >
 > **Internal transport security.**
 > - Kafka uses SASL/SCRAM with per-service ACLs. PostgreSQL uses TLS with `verify-full`.
