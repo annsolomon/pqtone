@@ -107,7 +107,7 @@ export function IncidentDetailPage() {
             <form className="dismiss" onSubmit={(e) => { e.preventDefault(); void act("dismiss"); }}>
               <label>
                 Reason
-                <select value={reason} onChange={(e) => setReason(e.target.value)}>
+                <select value={reason} onChange={(e) => setReason(e.target.value)} autoFocus>
                   {REASONS.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
                 </select>
               </label>

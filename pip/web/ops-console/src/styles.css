@@ -10,6 +10,7 @@
   --aisle: #C9D1DA;
   --live: #0B7A75;
   --open: #B86E00;
+  --open-text: #8F5600; /* --open darkened to 6:1 on white for text (WCAG AA, C3) */
   --alarm: #A3243B;
   --shadow: #5B4B8A;
   --focus: #1F5FBF;
@@ -172,7 +173,7 @@ th { font-size: var(--s-1); color: var(--ink-2); font-weight: 600; }
 .hash { color: var(--ink-2); }
 .sev { padding: 1px 8px; border-radius: 999px; font-size: var(--s-1); font-weight: 600; border: 1px solid currentColor; }
 .sev-high.sev, .sev.sev-high { color: var(--alarm); }
-.sev.sev-medium { color: var(--open); }
+.sev.sev-medium { color: var(--open-text); }
 .sev.sev-low { color: var(--ink-2); }
 
 .detail .detail-head { border-left: 6px solid var(--open); padding-left: 16px; margin: 12px 0 20px; }
@@ -200,3 +201,14 @@ th { font-size: var(--s-1); color: var(--ink-2); font-weight: 600; }
   .toast { animation: none; }
   .zone.alert-new .zone-edge { animation: none; stroke-width: 9; }
 }
+
+/* ---------------------------------------------------------------- floor table alternative (C3) */
+.floor-table { margin: 8px 0 16px; }
+.floor-table table { width: auto; min-width: 320px; margin: 8px 0 12px; background: var(--shelf); border: 1px solid var(--aisle); }
+.floor-table caption { text-align: left; font-weight: 600; padding: 6px 0; }
+.floor-table th, .floor-table td { padding: 4px 12px; text-align: left; }
+
+/* ---------------------------------------------------------------- skip link (C3) */
+.skip-link { position: absolute; left: 8px; top: -48px; z-index: 100; background: var(--ink); color: var(--shelf); padding: 8px 14px; border-radius: 4px; font-weight: 600; text-decoration: none; }
+.skip-link:focus { top: 8px; }
+#content:focus { outline: none; }

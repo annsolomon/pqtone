@@ -85,7 +85,7 @@ jobs:
       - name: Quality report
         if: always()
         run: |
-          for f in .work/reports/offline/score.md .work/reports/e2e/score.md; do
+          for f in .work/reports/offline/score.md .work/reports/e2e/score.md .work/reports/ui/axe.md; do
             if [ -f "$f" ]; then cat "$f" >> "$GITHUB_STEP_SUMMARY"; fi
           done
           python3 ../.github/scripts/score-annotate.py "offline score" .work/reports/offline/score.json
