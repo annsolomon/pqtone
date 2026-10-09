@@ -167,6 +167,7 @@ def main() -> int:
     peak = lambda key: max((b[key] - a_[key]) / (b["t"] - a_["t"]) for a_, b in zip(ok, ok[1:]) if b["t"] > a_["t"]) if len(ok) > 1 else None
     result = {
         "label": a.label, "runId": run.run_id, "stores": a.stores, "speed": a.speed, "duration": a.duration,
+        "host": {"cpus": os.cpu_count(), "memGb": round(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 2**30, 1)},
         "simulatedHours": parse_duration_ms(a.duration) / 3_600_000, "streamThreads": os.environ.get("PIP_STREAM_THREADS_REPORTED"),
         "events": {"clean": len(run.clean), "emitted": n, "stored": total_stored, "complete": total_stored == len(run.clean)},
         "seconds": {"send": round(send_s, 1), "drained": round(drained_s, 1)}, "drainTimedOut": timed_out,
