@@ -11,6 +11,11 @@ on:
       duration:
         description: Simulated duration per run (ISO-8601)
         default: PT30M
+      ladder:
+        description: "standard: threads 1/2/4 at 40x, then 10x and 160x; stress: 640x and 2560x at 2 and 4 threads; both"
+        type: choice
+        options: [standard, stress, both]
+        default: both
 
 permissions:
   contents: read
@@ -29,7 +34,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write   # only to push the results branch; never main (branch name is fixed below)
-    timeout-minutes: 90
+    timeout-minutes: 150
     defaults:
       run:
         shell: bash
@@ -50,10 +55,12 @@ jobs:
         env:
           STORES: ${{ inputs.stores }}
           DURATION: ${{ inputs.duration }}
+          LADDER: ${{ inputs.ladder }}
         run: |
           [[ "$STORES" =~ ^[0-9]{1,3}$ ]] || { echo "stores must be a number"; exit 2; }
           [[ "$DURATION" =~ ^PT[0-9HMS]+$ ]] || { echo "duration must be like PT30M"; exit 2; }
-          make scale-ladder STORES="$STORES" DURATION="$DURATION" 2>&1 | tee "$RUNNER_TEMP/scale.log"
+          case "$LADDER" in standard) targets=scale-ladder ;; stress) targets=scale-stress ;; both) targets="scale-ladder scale-stress" ;; *) echo "bad ladder"; exit 2 ;; esac
+          for t in $targets; do make "$t" STORES="$STORES" DURATION="$DURATION" 2>&1 | tee -a "$RUNNER_TEMP/scale.log"; done
           cat .work/reports/scale/rules-engine.md >> "$GITHUB_STEP_SUMMARY"
       - name: Failure details
         if: failure()

@@ -71,11 +71,11 @@ def report(results_dir: Path, out_md: Path) -> None:
     (out_md.parent / f"{stem}-rules-rate.svg").write_text(svg_chart(
         {r["label"]: rates(r["samples"], "received") for r in results}, "Events processed per second (rules-engine)", "events/s"))
     (out_md.parent / f"{stem}-lag.svg").write_text(svg_chart(
-        {r["label"]: [(s["t"], s["lagMax"]) for s in r["samples"] if "error" not in s] for r in results},
-        "Rules-engine consumer lag (records-lag-max)", "records"))
+        {r["label"]: [(s["t"], s.get("backlog", 0)) for s in r["samples"] if "error" not in s] for r in results},
+        "Backlog: events produced but not yet processed by rules-engine", "events"))
 
     lines = ["| Run | Stores | Speed | Threads | Events | Complete | Send s | Drained s | Produced avg/s | Stored peak/s | "
-             "Rules peak/s | Lag max | Latency p50 / p95 / max ms | State | Memory |",
+             "Rules peak/s | Backlog max | Latency p50 / p95 / max ms | State | Memory |",
              "|---|---:|---:|---:|---:|:-:|---:|---:|---:|---:|---:|---:|---|---:|---|"]
     for r in results:
         lat = r["processingLatencyMs"]
@@ -84,7 +84,7 @@ def report(results_dir: Path, out_md: Path) -> None:
             f"| {r['label']} | {r['stores']} | {r['speed']:g}x | {r.get('streamThreads') or '-'} | {r['events']['clean']:,} | "
             f"{'yes' if r['events']['complete'] and not r.get('drainTimedOut') else 'NO'} | {r['seconds']['send']} | "
             f"{r['seconds']['drained']} | {r['throughput']['producedAvg']} | {r['throughput']['storedPeak']} | "
-            f"{r['throughput']['rulesPeak']} | {r['lag']['recordsLagMax']:,.0f} | {lat['p50']} / {lat['p95']} / {lat['max']} | "
+            f"{r['throughput']['rulesPeak']} | {(r['lag'].get('backlogMax') or 0):,.0f} | {lat['p50']} / {lat['p95']} / {lat['max']} | "
             f"{(re_.get('stateKb') or 0) / 1024:.1f} MB | {re_.get('memory') or '-'} |")
     q = ["| Run | " + " | ".join(sorted(results[0]["quality"])) + " |", "|---|" + "---|" * len(results[0]["quality"])]
     for r in results:

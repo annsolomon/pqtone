@@ -105,14 +105,23 @@ def main() -> int:
     samples: list[dict] = []
     stop = threading.Event()
     base = scrape()
+    sent = [0]
+
+    def counting(events):
+        """Counts events handed to the producer, so backlog = produced - processed can be sampled."""
+        for ev in events:
+            sent[0] += 1
+            yield ev
 
     def sampler():
         start = time.monotonic()
         while not stop.is_set():
             try:
                 m = scrape()
-                samples.append({"t": round(time.monotonic() - start, 1), "stored": stored(conn, run.run_id),
-                                "received": m["received"] - base["received"], "lagMax": m["lagMax"]})
+                st = stored(conn, run.run_id)
+                rec = m["received"] - base["received"]
+                samples.append({"t": round(time.monotonic() - start, 1), "produced": sent[0], "stored": st,
+                                "received": rec, "backlog": max(0, sent[0] - rec), "lagMax": m["lagMax"]})
             except Exception as e:  # keep sampling through a transient scrape error, but record it
                 samples.append({"t": round(time.monotonic() - start, 1), "error": str(e)[:200]})
             stop.wait(5)
@@ -120,7 +129,7 @@ def main() -> int:
     th = threading.Thread(target=sampler, daemon=True)
     th.start()
     send_start = time.monotonic()
-    kafka_sink(run.emitted, a.speed)
+    kafka_sink(counting(run.emitted), a.speed)
     send_s = time.monotonic() - send_start
 
     # Drain: every event stored by event-core and seen by rules-engine, then every store's watermark at
@@ -175,7 +184,11 @@ def main() -> int:
                        "storedAvg": round(total_stored / drained_s, 1) if drained_s else None,
                        "storedPeak": round(peak("stored"), 1) if peak("stored") is not None else None,
                        "rulesPeak": round(peak("received"), 1) if peak("received") is not None else None},
-        "lag": {"recordsLagMax": max((s["lagMax"] for s in ok), default=None)},
+        # backlog = events handed to the producer but not yet processed by rules-engine (the end-to-end queue).
+        # recordsLagMax is Kafka's client gauge: a windowed maximum over every consumer of the app (restore and
+        # global-store consumers included), so it can stay high while nothing is queued. Kept for reference.
+        "lag": {"backlogMax": max((s.get("backlog", 0) for s in ok), default=None),
+                "recordsLagMax": max((s["lagMax"] for s in ok), default=None)},
         "processingLatencyMs": latency,
         "quality": {rule: {"precision": round(s.precision, 4), "recall": round(s.recall, 4), "gt": s.tp + s.fn}
                     for rule, s in sorted(scores.items())},

@@ -132,7 +132,7 @@ clean: ## Stop and delete all data, generated secrets and reports
 	-$(COMPOSE) --profile tools down -v --remove-orphans
 	rm -rf .work deploy/keycloak/generated .env
 
-.PHONY: openapi-check dev-setup test-fast schema-compat test-it baseline-accept scale scale-ladder
+.PHONY: openapi-check dev-setup test-fast schema-compat test-it baseline-accept scale scale-ladder scale-stress
 dev-setup: ## One-time, no Docker: Python venv with sim + scorer, and web dependencies
 	python3 -m venv .venv
 	.venv/bin/pip install -q -e './sim[test]' -e './scorer[test]'
@@ -177,5 +177,13 @@ scale-ladder: ## R5: the documented ladder (threads 1/2/4 at 40x; speeds 10/40/1
 	$(MAKE) scale THREADS=4 SPEED=40
 	$(MAKE) scale THREADS=2 SPEED=10
 	$(MAKE) scale THREADS=2 SPEED=160
+	PIP_STREAM_THREADS=2 $(COMPOSE) up -d --no-deps rules-engine
+	python3 scripts/scale_report.py report "$(WORK)/reports/scale" "$(WORK)/reports/scale/rules-engine.md"
+
+scale-stress: ## R5: past the standard ladder, to find where the single-node stack saturates (640x and 2560x, 2 and 4 threads)
+	$(MAKE) scale THREADS=2 SPEED=640
+	$(MAKE) scale THREADS=4 SPEED=640
+	$(MAKE) scale THREADS=2 SPEED=2560
+	$(MAKE) scale THREADS=4 SPEED=2560
 	PIP_STREAM_THREADS=2 $(COMPOSE) up -d --no-deps rules-engine
 	python3 scripts/scale_report.py report "$(WORK)/reports/scale" "$(WORK)/reports/scale/rules-engine.md"
