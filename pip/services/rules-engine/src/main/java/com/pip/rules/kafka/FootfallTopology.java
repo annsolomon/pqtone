@@ -96,9 +96,20 @@ public final class FootfallTopology {
     /** Adds the footfall branch to a topology reading {@code events} (store events keyed by store id). */
     public static void addTo(StreamsBuilder builder, KStream<String, String> events, FootfallConfig cfg, Topics topics,
                              RulesMetrics metrics, Duration idleTtl) {
+        FootfallSpikeDetector detector = new FootfallSpikeDetector(cfg);
+        addTo(builder, events, cfg, () -> detector, topics, metrics, idleTtl);
+    }
+
+    /**
+     * R4: the window topology is built from {@code cfg} (window, grace and zones are structural and
+     * cannot change while running); the detector, which holds mode, factor and minCount, is looked
+     * up for every closed window, so a published rules document changes it without a restart.
+     */
+    public static void addTo(StreamsBuilder builder, KStream<String, String> events, FootfallConfig cfg,
+                             java.util.function.Supplier<FootfallSpikeDetector> detector, Topics topics,
+                             RulesMetrics metrics, Duration idleTtl) {
         builder.addStateStore(Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(HISTORY_STORE), Serdes.String(), json(FootfallHistory.class)));
-        FootfallSpikeDetector detector = new FootfallSpikeDetector(cfg);
         ProcessorSupplier<Windowed<String>, WindowCounts, String, String> spikes =
                 () -> new FootfallSpikeProcessor(detector, topics, metrics, idleTtl);
 
@@ -134,14 +145,15 @@ public final class FootfallTopology {
 
     /** Applies each final window to the per-(store, run) history and routes the resulting incidents. */
     static final class FootfallSpikeProcessor implements Processor<Windowed<String>, WindowCounts, String, String> {
-        private final FootfallSpikeDetector detector;
+        private final java.util.function.Supplier<FootfallSpikeDetector> detector;
         private final Topics topics;
         private final RulesMetrics metrics;
         private final Duration idleTtl;
         private ProcessorContext<String, String> ctx;
         private KeyValueStore<String, FootfallHistory> store;
 
-        FootfallSpikeProcessor(FootfallSpikeDetector detector, Topics topics, RulesMetrics metrics, Duration idleTtl) {
+        FootfallSpikeProcessor(java.util.function.Supplier<FootfallSpikeDetector> detector, Topics topics,
+                               RulesMetrics metrics, Duration idleTtl) {
             this.detector = detector;
             this.topics = topics;
             this.metrics = metrics;
@@ -163,6 +175,7 @@ public final class FootfallTopology {
             long start = rec.key().window().start();
             long end = rec.key().window().end();
             long wall = System.currentTimeMillis();
+            FootfallSpikeDetector detector = this.detector.get();
             for (Map.Entry<String, java.util.TreeMap<String, Long>> run : rec.value().runs.entrySet()) {
                 String runId = LIVE.equals(run.getKey()) ? null : run.getKey();
                 String key = storeId + "|" + run.getKey();

@@ -2,7 +2,7 @@ package com.pip.rules.app;
 
 import com.pip.rules.domain.FootfallConfig;
 import com.pip.rules.domain.RuleConfig;
-import com.pip.rules.domain.RuleEngine;
+import com.pip.rules.kafka.RulesHolder;
 import com.pip.rules.kafka.RulesMetrics;
 import com.pip.rules.kafka.RulesTopology;
 import com.pip.rules.kafka.Topics;
@@ -79,8 +79,13 @@ public final class RulesEngineApp {
 
     public static void main(String[] args) throws Exception {
         Path rulesFile = Path.of(env("PIP_RULES_FILE", "/config/rules.yaml"));
-        RuleConfig cfg = RulesConfigLoader.load(rulesFile);
-        Optional<FootfallConfig> footfall = RulesConfigLoader.loadFootfall(rulesFile);
+        RuleSet fileRules = RuleSet.parse(java.nio.file.Files.readString(rulesFile));
+        RuleConfig cfg = fileRules.core();
+        Optional<FootfallConfig> footfall = fileRules.footfall();
+        RulesHolder rules = new RulesHolder(fileRules);
+        // Milestone R4: hot reload from the compacted config topic; "off" (or empty) turns it off.
+        Optional<String> configTopic = Optional.of(System.getenv().getOrDefault("PIP_TOPIC_RULES_CONFIG", "rules.config.v1"))
+                .map(String::trim).filter(t -> !t.isEmpty() && !t.equals("off"));
         Topics topics = new Topics(
                 env("PIP_TOPIC_VALIDATED", "store.events.v1"),
                 env("PIP_TOPIC_INCIDENTS", "incidents.v1"),
@@ -97,7 +102,7 @@ public final class RulesEngineApp {
         RulesMetrics metrics = new RulesMetrics(registry);
 
         KafkaStreams streams = new KafkaStreams(
-                RulesTopology.build(new RuleEngine(cfg), footfall, topics, metrics, instanceId,
+                RulesTopology.build(rules, configTopic, topics, metrics, instanceId,
                         Duration.parse(env("PIP_IDLE_STATE_TTL", "PT6H"))),
                 streamsProperties());
         new KafkaStreamsMetrics(streams).bindTo(registry);
@@ -127,8 +132,9 @@ public final class RulesEngineApp {
             http.stop(0);
             done.countDown();
         }, "shutdown"));
-        log.info("starting rules-engine {} with grace {} ms; R-FOOT-001 {}", instanceId, cfg.graceMs,
-                footfall.map(f -> f.meta().mode()).orElse("not configured"));
+        log.info("starting rules-engine {} with grace {} ms; R-FOOT-001 {}; rules {} from {}; reload topic {}", instanceId,
+                cfg.graceMs, footfall.map(f -> f.meta().mode()).orElse("not configured"), fileRules.sha256(), rulesFile,
+                configTopic.orElse("off"));
         streams.start();
         done.await();
     }

@@ -1,4 +1,4 @@
-import { occupancyStrength, queueTrail, registersOf } from "../floor";
+import { alertingZones, occupancyStrength, queueTrail, registersOf, zoneForIncident } from "../floor";
 import type { Incident, Layout, StoreState } from "../types";
 
 interface Props {
@@ -10,22 +10,12 @@ interface Props {
   pulsing?: Set<string>;
 }
 
-function zoneForIncident(inc: Incident, layout: Layout): string | null {
-  const s = inc.subject ?? "";
-  if (s.startsWith("zone:")) return s.slice(5);
-  if (s.startsWith("queue:")) return layout.queues.find((q) => q.id === s.slice(6))?.zoneId ?? null;
-  return null;
-}
-
 export function FloorMap({ layout, state, incidents, threshold, pulsing }: Props) {
-  const alerting = new Map<string, Incident["severity"]>();
+  const alerting = alertingZones(incidents, layout);
   const pulsingZones = new Set<string>();
   for (const inc of incidents) {
     const z = zoneForIncident(inc, layout);
-    if (!z) continue;
-    if (pulsing?.has(inc.incidentId)) pulsingZones.add(z);
-    const prev = alerting.get(z);
-    if (!prev || inc.severity === "high" || (inc.severity === "medium" && prev === "low")) alerting.set(z, inc.severity);
+    if (z && pulsing?.has(inc.incidentId)) pulsingZones.add(z);
   }
   return (
     <svg className="floor" viewBox={`0 0 ${layout.width} ${layout.height}`} role="img"

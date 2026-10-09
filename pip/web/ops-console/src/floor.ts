@@ -1,4 +1,4 @@
-import type { Layout, LiveEvent, StoreState } from "./types";
+import type { Incident, Layout, LiveEvent, StoreState } from "./types";
 
 /** Applies live events to the floor read model. Pure, so it is unit-tested. */
 export function applyEvents(state: StoreState, events: LiveEvent[]): StoreState {
@@ -43,6 +43,64 @@ export function queueTrail(n: number, box: { x: number; y: number; w: number; h:
     out.push({ x, y });
   }
   return out;
+}
+
+/** The zone an incident is about: its own zone, or the zone that holds its queue. */
+export function zoneForIncident(inc: Incident, layout: Layout): string | null {
+  const s = inc.subject ?? "";
+  if (s.startsWith("zone:")) return s.slice(5);
+  if (s.startsWith("queue:")) return layout.queues.find((q) => q.id === s.slice(6))?.zoneId ?? null;
+  return null;
+}
+
+const SEVERITY_RANK: Record<Incident["severity"], number> = { low: 1, medium: 2, high: 3 };
+
+/** Highest severity of the open incidents per zone. */
+export function alertingZones(incidents: Incident[], layout: Layout): Map<string, Incident["severity"]> {
+  const out = new Map<string, Incident["severity"]>();
+  for (const inc of incidents) {
+    const z = zoneForIncident(inc, layout);
+    if (!z) continue;
+    const prev = out.get(z);
+    if (!prev || SEVERITY_RANK[inc.severity] > SEVERITY_RANK[prev]) out.set(z, inc.severity);
+  }
+  return out;
+}
+
+export interface FloorZoneRow {
+  id: string;
+  name: string;
+  people: number;
+  alert: Incident["severity"] | null;
+}
+
+export interface FloorQueueRow {
+  id: string;
+  zoneName: string;
+  waiting: number;
+  openRegisters: number;
+  registers: number;
+  alert: Incident["severity"] | null;
+}
+
+/** Milestone C3: the floor map as rows, for the table alternative screen-reader and keyboard users get. */
+export function floorRows(layout: Layout, state: StoreState, incidents: Incident[]): { zones: FloorZoneRow[]; queues: FloorQueueRow[] } {
+  const alerting = alertingZones(incidents, layout);
+  const zones = layout.zones
+    .filter((z) => z.kind !== "checkout")
+    .map((z) => ({ id: z.id, name: z.name, people: state.zones[z.id] ?? 0, alert: alerting.get(z.id) ?? null }));
+  const queues = layout.queues.map((q) => {
+    const st = state.queues[q.id];
+    return {
+      id: q.id,
+      zoneName: layout.zones.find((z) => z.id === q.zoneId)?.name ?? q.zoneId,
+      waiting: st?.length ?? 0,
+      openRegisters: st?.openRegisters ?? 0,
+      registers: registersOf(layout, q.id).length,
+      alert: alerting.get(q.zoneId) ?? null,
+    };
+  });
+  return { zones, queues };
 }
 
 /** Milestone S2: the registers that serve a queue (a register without queueId serves the first queue). */

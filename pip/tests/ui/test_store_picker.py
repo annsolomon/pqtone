@@ -23,7 +23,7 @@ def test_store_picker_switches_the_floor_between_stores():
         page = context.new_page()
         try:
             sign_in(page, "reviewer", os.environ["PIP_REVIEWER_PASSWORD"])
-            picker = page.get_by_label("Store")
+            picker = page.locator(".store-pick select")  # get_by_label("Store") also matches the floor plan's name
             expect(picker).to_be_visible(timeout=30_000)
             expect(picker.locator("option")).to_have_count(2)
             expect(page.get_by_role("heading", level=1)).to_have_text("Demo store 001")

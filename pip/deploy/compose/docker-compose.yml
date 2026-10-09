@@ -218,6 +218,26 @@ services:
     networks: [backend, observability]
     restart: unless-stopped
 
+  # Milestone R4: publish a rules document to rules.config.v1 (hot reload) or reset to the file.
+  # An operator action, so it uses the admin principal, never a service's.
+  #   make rules-publish RULES=config/rules.yaml   |   make rules-reset
+  rules-admin:
+    image: pip/rules-engine:local
+    profiles: [tools]
+    <<: [*logging, *hardened]
+    # Runs as the host user, like tools: it reads rules files that make and the tools container wrote
+    # under .work/ (the image's own user 10001 cannot read a directory the runner created as 0700).
+    user: "${PIP_UID:-1000}:${PIP_GID:-1000}"
+    entrypoint: ["java", "-cp", "/app/rules-engine.jar", "com.pip.rules.app.RulesPublisher"]
+    environment:
+      PIP_KAFKA_BOOTSTRAP: redpanda:9092
+      PIP_KAFKA_USER: admin
+      PIP_KAFKA_PASSWORD: ${PIP_KAFKA_ADMIN_PASSWORD}
+    volumes:
+      - ../../config:/config:ro
+      - ../../.work:/work:ro
+    networks: [backend]
+
   gateway:
     build: {context: ../.., dockerfile: web/ops-console/Dockerfile}
     image: pip/gateway:local
@@ -331,6 +351,7 @@ services:
       PIP_BASE_URL: http://localhost:8080
       PIP_PUBLIC_URL: ${PIP_PUBLIC_URL}
       PIP_REVIEWER_PASSWORD: ${PIP_REVIEWER_PASSWORD}
+      PIP_ADMIN_PASSWORD: ${PIP_ADMIN_PASSWORD}
       PIP_UI_REPORTS: /work/reports/ui
       PIP_UI_TIMEOUT_S: "300"
     volumes:

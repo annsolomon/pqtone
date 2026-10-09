@@ -51,7 +51,8 @@ export function IncidentTimeline({ incidentId, version }: { incidentId: string; 
               </g>
             ))}
             {m.xTicks.map((t) => (
-              <text key={`x${t.label}`} className="tl-xtick" x={t.x} y={size.height - 8} textAnchor="middle">{t.label}</text>
+              <text key={`x${t.label}`} className="tl-xtick" x={t.x} y={size.height - 8}
+                textAnchor={t.x > size.width - size.padRight - 18 ? "end" : "middle"}>{t.label}</text>
             ))}
             {m.thresholdY != null && (
               <g className="tl-threshold">
