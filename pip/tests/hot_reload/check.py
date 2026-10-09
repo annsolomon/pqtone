@@ -4,6 +4,7 @@ Run inside the tools container (it has the scorer and the read-only database DSN
 target `e2e-hot-reload` strings the steps together:
 
   make-rules  -> write a copy of rules.yaml with R-QUEUE-001 threshold 4 at version 1.1.0
+  pick-seed   -> the first seed from a fresh start whose run the threshold change actually affects
   snapshot    -> remember every existing incident's version
   (publish the copy with rules-admin)
   wait-rules  -> every rules-engine task's heartbeat reports the new version, from the topic
@@ -41,6 +42,26 @@ def make_rules(a) -> int:
     Path(a.out).write_text(text)
     print(f"wrote {a.out}: R-QUEUE-001 threshold {a.threshold}, version {a.version}")
     return 0
+
+
+def pick_seed(a) -> int:
+    """A random seed can give a run where thresholds 4 and 6 open the same number of queue episodes;
+    the test would then prove nothing (and verify() rightly fails). Search forward from a fresh seed
+    (fresh, so event ids never collide with earlier runs) for one where they differ. Deterministic for
+    a given start; prints only the seed."""
+    from store_sim.generate import simulate
+
+    for seed in range(a.start, a.start + a.tries):
+        counts = []
+        for rules in (a.rules, a.baseline_rules):
+            out = simulate(seed=seed, layout_path=a.layout, scenario_path=a.scenario, rules_path=rules)
+            counts.append(sum(1 for g in out.ground_truth if g["ruleId"] == "R-QUEUE-001"))
+        if counts[0] != counts[1]:
+            print(seed)
+            print(f"seed {seed}: R-QUEUE-001 episodes {counts[0]} (published) vs {counts[1]} (file)", file=sys.stderr)
+            return 0
+    print(f"no seed in [{a.start}, {a.start + a.tries}) separates the two rule sets", file=sys.stderr)
+    return 1
 
 
 def snapshot(a) -> int:
@@ -122,6 +143,14 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("--threshold", type=int, default=4)
     m.add_argument("--version", default="1.1.0")
     m.set_defaults(fn=make_rules)
+    k = sub.add_parser("pick-seed")
+    k.add_argument("--start", type=int, required=True)
+    k.add_argument("--tries", type=int, default=50)
+    k.add_argument("--rules", required=True)
+    k.add_argument("--baseline-rules", default="config/rules.yaml")
+    k.add_argument("--layout", default="config/layouts/store-001.json")
+    k.add_argument("--scenario", default="sim/scenarios/register_delay.yaml")
+    k.set_defaults(fn=pick_seed)
     s = sub.add_parser("snapshot")
     s.add_argument("--out", required=True)
     s.set_defaults(fn=snapshot)
