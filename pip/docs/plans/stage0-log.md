@@ -31,3 +31,4 @@ What had to change to make Tier 1 run for real, and why.
 | 2026-10-09 | 0.6 | event-core pins Tomcat 10.1.60, the newest on Maven Central (Boot 3.5.16 ships 10.1.55) | CRITICAL CVE-2026-65182, CVE-2026-65905, CVE-2026-68525, fixed in 10.1.58 |
 | 2026-10-09 | 0.6 | Workflow `defaults.run.shell: bash` | Without it steps run as `bash -e` (no pipefail), so `make all \| tee` hid a failed image build |
 | 2026-10-09 | C2 | `make help` regex accepts digits; `dev-setup` and `test-fast` documented | `e2e*` targets were missing from `make help` |
+| 2026-10-09 | 0.6 | event-core `StoreController`: a layout is found by matching the store id against the files listed in the layouts folder; the path is never built from the request | CodeQL `java/path-injection` (7.5) failed every push to `main`; pull requests only report alerts on changed lines, so it never showed there |
