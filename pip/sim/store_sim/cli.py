@@ -25,8 +25,11 @@ def cmd_run(a) -> int:
     print(json.dumps({"runId": out.run_id, "counts": manifest["counts"], "out": a.out}))
     if a.sink in ("kafka", "both"):
         kafka_sink(out.emitted, a.speed)
-    if a.sink in ("http", "both-http"):
-        print(json.dumps({"http": http_sink(out.emitted, a.speed)}))
+    if a.sink in ("http", "both"):
+        totals = http_sink(out.emitted, a.speed)
+        # Kept next to the manifest so `pip-scorer stored` can check every item was answered.
+        (Path(a.out) / "http_results.json").write_text(json.dumps(totals, sort_keys=True) + "\n")
+        print(json.dumps({"http": totals}))
     return 0
 
 
