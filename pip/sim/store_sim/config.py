@@ -43,6 +43,15 @@ class RuleSet:
     dwell_ttl_ms: int
     abs_within_ms: int
     abs_expect: str
+    foot_zones: tuple[str, ...] = ()
+    foot_window_ms: int = 300_000
+    foot_history_windows: int = 12
+    foot_factor: float = 2.0
+    foot_min_count: int = 10
+
+    @property
+    def foot_on(self) -> bool:
+        return self.modes.get("R-FOOT-001", "off") != "off"
 
 
 def load_rules(path: str | Path) -> RuleSet:
@@ -51,6 +60,15 @@ def load_rules(path: str | Path) -> RuleSet:
     q = by_id["R-QUEUE-001"]["params"]
     d = by_id["R-DWELL-001"]["params"]
     a = by_id["R-ABS-001"]["params"]
+    f = by_id.get("R-FOOT-001", {}).get("params")
+    foot = {}
+    if f is not None:
+        window_ms, history_ms = parse_duration_ms(f["window"]), parse_duration_ms(f["history"])
+        if window_ms <= 0 or history_ms % window_ms != 0:
+            raise ValueError("R-FOOT-001: history must be a whole number of windows")
+        foot = dict(foot_zones=tuple(f["zones"]), foot_window_ms=window_ms,
+                    foot_history_windows=history_ms // window_ms, foot_factor=float(f["factor"]),
+                    foot_min_count=int(f["minCount"]))
     return RuleSet(
         grace_ms=parse_duration_ms(doc["grace"]),
         modes={k: v["mode"] for k, v in by_id.items()},
@@ -64,6 +82,7 @@ def load_rules(path: str | Path) -> RuleSet:
         dwell_ttl_ms=parse_duration_ms(d["sessionTtl"]),
         abs_within_ms=parse_duration_ms(a["within"]),
         abs_expect=a["expect"],
+        **foot,
     )
 
 

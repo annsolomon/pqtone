@@ -1,5 +1,6 @@
 package com.pip.rules.app;
 
+import com.pip.rules.domain.FootfallConfig;
 import com.pip.rules.domain.RuleConfig;
 import com.pip.rules.domain.RuleEngine;
 import com.pip.rules.kafka.RulesMetrics;
@@ -30,6 +31,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -76,7 +78,9 @@ public final class RulesEngineApp {
     }
 
     public static void main(String[] args) throws Exception {
-        RuleConfig cfg = RulesConfigLoader.load(Path.of(env("PIP_RULES_FILE", "/config/rules.yaml")));
+        Path rulesFile = Path.of(env("PIP_RULES_FILE", "/config/rules.yaml"));
+        RuleConfig cfg = RulesConfigLoader.load(rulesFile);
+        Optional<FootfallConfig> footfall = RulesConfigLoader.loadFootfall(rulesFile);
         Topics topics = new Topics(
                 env("PIP_TOPIC_VALIDATED", "store.events.v1"),
                 env("PIP_TOPIC_INCIDENTS", "incidents.v1"),
@@ -93,7 +97,7 @@ public final class RulesEngineApp {
         RulesMetrics metrics = new RulesMetrics(registry);
 
         KafkaStreams streams = new KafkaStreams(
-                RulesTopology.build(new RuleEngine(cfg), topics, metrics, instanceId,
+                RulesTopology.build(new RuleEngine(cfg), footfall, topics, metrics, instanceId,
                         Duration.parse(env("PIP_IDLE_STATE_TTL", "PT6H"))),
                 streamsProperties());
         new KafkaStreamsMetrics(streams).bindTo(registry);
@@ -123,7 +127,8 @@ public final class RulesEngineApp {
             http.stop(0);
             done.countDown();
         }, "shutdown"));
-        log.info("starting rules-engine {} with grace {} ms", instanceId, cfg.graceMs);
+        log.info("starting rules-engine {} with grace {} ms; R-FOOT-001 {}", instanceId, cfg.graceMs,
+                footfall.map(f -> f.meta().mode()).orElse("not configured"));
         streams.start();
         done.await();
     }

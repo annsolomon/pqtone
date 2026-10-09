@@ -14,7 +14,7 @@ from .gates import check, confidence_for, dur_ms, gate_for, regressions
 from .match import RuleScore, score
 from .report import write_reports
 
-RULES = ["R-QUEUE-001", "R-DWELL-001", "R-ABS-001"]
+RULES = ["R-QUEUE-001", "R-DWELL-001", "R-ABS-001", "R-FOOT-001"]
 
 
 def read_jsonl(path: Path) -> list[dict]:
