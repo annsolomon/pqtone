@@ -5,7 +5,7 @@
 > - Wall-clock punctuation drives only the liveness heartbeat and idle-state eviction.
 >
 > **Scorer.**
-> - Matching is greedy one-to-one by smallest time distance inside the match window, not Hungarian (§10.1).
+> - Matching is Hungarian one-to-one inside the match window, without the greedy fallback (§10.1, ADR-028).
 > - Latency is measured in event time. Wall-clock processing latency is not reported yet.
 >
 > **Internal transport security.**
@@ -509,7 +509,7 @@ Transitions are validated server-side. Each transition writes `incident_review` 
 Per rule class, per store and key:
 
 - An incident **matches** a ground-truth episode if its event-time onset falls within `[gt.onset − tolerance_before, gt.onset + max_latency]`.
-- One-to-one assignment (Hungarian algorithm on time distance; greedy fallback for large sets).
+- One-to-one assignment by the Hungarian algorithm (`scorer/pip_scorer/assignment.py`): the most matches first, then the least total time distance. Groups are one (rule, store, key), so they stay small and no greedy fallback is needed (ADR-028).
 - Unmatched incidents = false positives. Unmatched episodes = false negatives.
 
 ### 10.2 Metrics
