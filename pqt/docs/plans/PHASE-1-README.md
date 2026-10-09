@@ -51,8 +51,8 @@
 - [x] B2 Claude Code set up in the repo (plans, CLAUDE.md, agents, skill, scripts)
 - [x] B3 Milestone 0.5: second consecutive green `make all`
 - [x] B4 Milestone 0.2: `make test-fast`
-- [x] B5 Milestone 0.6: CI green on GitHub (owner still to do: install Renovate, protect `main`)
-- [ ] B6 Milestone 0.7: product rename
+- [x] B5 Milestone 0.6: CI green on GitHub (owner still to do: install Renovate, protect `main`; the repo is public since 9 Oct, so protection is available)
+- [x] B6 Milestone 0.7: product rename (PQT, ADR-031)
 
 **Part C: Tier 1 exit milestones**
 - [x] C1 Alert toast
@@ -61,12 +61,12 @@
 - [x] C4 R2 Windowed footfall rule
 - [x] C5 E2 Schema versioning and compat check
 - [x] C6 Q1 Scorer PR comment
-- [ ] C7 Gate checked, demo script written, tag `v0.1.0`
+- [x] C7 Gate checked, demo script written (`docs/demos/tier-1.md`), tag `v0.1.0`
 
 **Part D: rest of Tier 1**
-- [ ] Before Tier 2: S5, E4, Q2, Q4
-- [ ] Before the pilot: R4
-- [ ] Any time: E1, E3, E5, S1, S2, S3, S4, R3, R5, R6, C3, C4, C5, Q3, Q5
+- [x] Before Tier 2: S5, E4, Q2, Q4
+- [x] Before the pilot: R4
+- [x] Any time: E1, E3, E5, S1, S2, S3, S4, R3, R5, R6, C3, C4, C5, Q3, Q5
 
 ---
 
@@ -917,11 +917,11 @@ marocchino/sticky-pull-request-comment (MIT) pinned to a commit SHA, or gh pr co
 
 **1. Check the gate.** All must be true:
 
-- [ ] `make all` green twice in a row on `main`
-- [ ] CI green on `main`, badge green
-- [ ] The C2 Playwright test passes in CI and its video is uploaded
-- [ ] `scorer/baseline.json` committed and matching the current rules
-- [ ] Milestones 0.1–0.7, C1, C2, R1, R2, E2 and Q1 ticked in the Tier 1 plan
+- [x] `make all` green twice in a row on `main` (CI on `main`: runs 37905512320, 37907987826, 37912476614 green consecutively, each a fresh `make all`; the run after the rename and after C7 too)
+- [x] CI green on `main`, badge green
+- [x] The C2 Playwright test passes in CI and its video is uploaded (artifact `ui-demo`; e2e-ui: 4 passed, 0 skipped)
+- [x] `scorer/baseline.json` committed and matching the current rules (14 scenarios; score comment: no change against the baseline)
+- [x] Milestones 0.1–0.7, C1, C2, R1, R2, E2 and Q1 ticked in the Tier 1 plan (and every other Tier 1 milestone)
 
 **2. Write the demo script** in Claude Code:
 
@@ -979,7 +979,7 @@ These finish Tier 1 completely. Each runs exactly like C0: `/milestone <ID>`, pl
 
 None of these need code, and Tier 2 waits on them.
 
-- [ ] **Product name decided** (needed for B6 anyway).
+- [x] **Product name decided**: PQT (ADR-031).
 - [ ] **Footage:** a shop owner agrees to let you record their checkout with signage and written consent from the owner and the people recorded. Ask two or three shops this month.
 - [ ] **Camera:** buy one TP-Link VIGI C440I 2.8 mm (about ₹2,900–5,000) and a PoE injector (about ₹1,500–2,000).
 - [ ] **ADR-012, detector choice:** YOLOX-S (Apache-2.0), not Ultralytics YOLO (AGPL-3.0). Write it in `docs/adr/012-detector.md`.
