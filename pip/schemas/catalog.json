@@ -47,6 +47,10 @@
         {
           "dataschema": "https://schemas.pip.local/store/queue.length/1.0.0",
           "file": "data/store.queue.length-1.0.0.schema.json"
+        },
+        {
+          "dataschema": "https://schemas.pip.local/store/queue.length/1.1.0",
+          "file": "data/store.queue.length-1.1.0.schema.json"
         }
       ],
       "subjectPattern": "^queue:[a-z0-9-]{1,64}$"

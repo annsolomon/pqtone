@@ -89,4 +89,50 @@ class EventValidatorTest {
         mismatchedKey.put("partitionkey", "store-002");
         assertThrows(InvalidEventException.class, () -> validator.validate(mismatchedKey));
     }
+
+    // Milestone E2: producers may send queue.length 1.0.0 or 1.1.0; both are registered.
+
+    ObjectNode queueLengthV110() throws Exception {
+        ObjectNode n = valid();
+        n.put("dataschema", "https://schemas.pip.local/store/queue.length/1.1.0");
+        ((ObjectNode) n.get("data")).put("estimatedWaitSeconds", 240);
+        return n;
+    }
+
+    @Test
+    void acceptsQueueLengthVersion100() throws Exception {
+        ValidatedEvent e = validator.validate(valid());
+        assertEquals("https://schemas.pip.local/store/queue.length/1.0.0", e.dataschema());
+    }
+
+    @Test
+    void acceptsQueueLengthVersion110WithAndWithoutTheOptionalField() throws Exception {
+        assertEquals("https://schemas.pip.local/store/queue.length/1.1.0", validator.validate(queueLengthV110()).dataschema());
+        ObjectNode without = queueLengthV110();
+        ((ObjectNode) without.get("data")).remove("estimatedWaitSeconds");
+        assertEquals("https://schemas.pip.local/store/queue.length/1.1.0", validator.validate(without).dataschema());
+    }
+
+    @Test
+    void version110StillValidatesTheNewField() throws Exception {
+        ObjectNode negative = queueLengthV110();
+        ((ObjectNode) negative.get("data")).put("estimatedWaitSeconds", -1);
+        assertThrows(InvalidEventException.class, () -> validator.validate(negative));
+    }
+
+    @Test
+    void version100DoesNotAcceptTheNewField() throws Exception {
+        ObjectNode n = valid();
+        ((ObjectNode) n.get("data")).put("estimatedWaitSeconds", 240);
+        assertThrows(InvalidEventException.class, () -> validator.validate(n),
+                "1.0.0 is closed (additionalProperties: false); the field needs the 1.1.0 dataschema");
+    }
+
+    @Test
+    void anUnregisteredVersionIsRejected() throws Exception {
+        ObjectNode n = valid();
+        n.put("dataschema", "https://schemas.pip.local/store/queue.length/1.2.0");
+        InvalidEventException ex = assertThrows(InvalidEventException.class, () -> validator.validate(n));
+        assertTrue(ex.errors().toString().contains("not registered"), ex.errors().toString());
+    }
 }

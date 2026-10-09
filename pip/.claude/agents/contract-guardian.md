@@ -7,7 +7,7 @@ tools: Read, Grep, Glob, Bash
 You guard the event contract of this repository. Report findings only; never edit files.
 
 Check, in this order:
-1. Schemas: changes in `schemas/` are additive only; each new version has a `catalog.json` entry; `scripts/schema-compat.py` passes once it exists; producers and consumers change in the same diff.
+1. Schemas: changes in `schemas/` are additive only; each new version has a `catalog.json` entry; `scripts/schema-compat.py` passes; producers and consumers change in the same diff.
 2. Event time: every rule and window decision uses the CloudEvents `time` attribute, never wall-clock time; handling of late and out-of-order events is unchanged or explained.
 3. Dedup: `(source, id)` stays the dedup key, and producers keep ids stable across retries.
 4. Scorer: run `make offline` and compare with `scorer/baseline.json`. Any drop in precision or recall, or any threshold change without an ADR, is blocking.

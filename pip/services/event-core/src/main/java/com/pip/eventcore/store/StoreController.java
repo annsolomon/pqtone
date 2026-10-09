@@ -77,7 +77,7 @@ public class StoreController {
     @GetMapping("/api/stores/{storeId}/layout")
     public JsonNode layout(@PathVariable String storeId) throws IOException {
         Path p = layoutPath(storeId);
-        if (!Files.isRegularFile(p)) throw new ApiException(HttpStatus.NOT_FOUND, "not-found", "unknown store");
+        if (p == null) throw new ApiException(HttpStatus.NOT_FOUND, "not-found", "unknown store");
         return mapper.readTree(Files.readAllBytes(p));
     }
 
@@ -159,9 +159,19 @@ public class StoreController {
         return out;
     }
 
-    private Path layoutPath(String storeId) {
+    /**
+     * The layout file for this store, or null. The path is never built from the request: the id is matched
+     * against the names of the files that exist in the layouts folder, and only a listed path is returned.
+     */
+    private Path layoutPath(String storeId) throws IOException {
         checkId(storeId);
-        return Path.of(props.paths().layouts()).resolve(storeId + ".json").normalize();
+        String wanted = storeId + ".json";
+        try (DirectoryStream<Path> ds = Files.newDirectoryStream(Path.of(props.paths().layouts()), "*.json")) {
+            for (Path p : ds) {
+                if (Files.isRegularFile(p) && p.getFileName().toString().equals(wanted)) return p;
+            }
+        }
+        return null;
     }
 
     private static void checkId(String storeId) {
