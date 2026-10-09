@@ -91,14 +91,18 @@ clean: ## Stop and delete all data, generated secrets and reports
 	-$(COMPOSE) --profile tools down -v --remove-orphans
 	rm -rf .work deploy/keycloak/generated .env
 
-.PHONY: dev-setup test-fast
+.PHONY: dev-setup test-fast schema-compat
 dev-setup: ## One-time, no Docker: Python venv with sim + scorer, and web dependencies
 	python3 -m venv .venv
 	.venv/bin/pip install -q -e './sim[test]' -e './scorer[test]'
 	cd web/ops-console && npm ci
 
+schema-compat: ## Fail if a schema version would reject data an older version accepted
+	.venv/bin/python scripts/schema-compat.py
+
 test-fast: ## No Docker, under 3 min: Java unit tests, Python tests, web typecheck and tests
+	.venv/bin/python scripts/schema-compat.py
 	cd services/event-core && mvn -B -q -ntp verify
 	cd services/rules-engine && mvn -B -q -ntp verify
-	.venv/bin/pytest -q sim/tests scorer/tests
+	.venv/bin/pytest -q sim/tests scorer/tests scripts/tests
 	cd web/ops-console && npm run -s typecheck && npm test --silent
