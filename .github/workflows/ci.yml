@@ -51,9 +51,13 @@ jobs:
       - name: Rule versions (a changed rule needs a higher version, milestone R4)
         run: |
           git fetch -q --depth=1 origin main
-          git show "FETCH_HEAD:$(git rev-parse --show-prefix)config/rules.yaml" > "$RUNNER_TEMP/main-rules.yaml"
-          pip install -q pyyaml==6.0.2
-          python3 scripts/rules-version-check.py "$RUNNER_TEMP/main-rules.yaml" config/rules.yaml
+          # main's rules file: same path, or (only for the PR that moves the project folder) not there yet.
+          if git show "FETCH_HEAD:$(git rev-parse --show-prefix)config/rules.yaml" > "$RUNNER_TEMP/main-rules.yaml" 2>/dev/null; then
+            pip install -q pyyaml==6.0.2
+            python3 scripts/rules-version-check.py "$RUNNER_TEMP/main-rules.yaml" config/rules.yaml
+          else
+            echo "::warning title=Rule versions::config/rules.yaml is not at this path on main (the project folder moves in this PR); nothing to compare"
+          fi
       - name: make test-fast
         run: |
           make dev-setup 2>&1 | tee "$RUNNER_TEMP/test-fast.log"
