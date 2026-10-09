@@ -17,7 +17,7 @@ export COMPOSE_DOCKER_CLI_BUILD := 1
 
 .PHONY: all help bootstrap build offline up e2e e2e-pipeline e2e-http e2e-db e2e-ui summary sim down clean logs ps
 
-all: bootstrap build offline up e2e summary ## Build + unit tests, offline quality gate, start the stack, live end-to-end tests, summary
+all: bootstrap build test-it offline up e2e summary ## Build + unit tests, integration tests, offline quality gate, start the stack, live end-to-end tests, summary
 
 help: ## List targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[1m%-14s\033[0m %s\n", $$1, $$2}'
@@ -91,11 +91,14 @@ clean: ## Stop and delete all data, generated secrets and reports
 	-$(COMPOSE) --profile tools down -v --remove-orphans
 	rm -rf .work deploy/keycloak/generated .env
 
-.PHONY: dev-setup test-fast schema-compat baseline-accept
+.PHONY: dev-setup test-fast schema-compat test-it baseline-accept
 dev-setup: ## One-time, no Docker: Python venv with sim + scorer, and web dependencies
 	python3 -m venv .venv
 	.venv/bin/pip install -q -e './sim[test]' -e './scorer[test]'
 	cd web/ops-console && npm ci
+
+test-it: ## Integration tests (Testcontainers: PostgreSQL 16, Redpanda); needs Docker and JDK 21
+	cd services/event-core && mvn -B -ntp -DskipUTs verify
 
 baseline-accept: ## Open a PR proposing the latest green main run's quality baseline (needs gh; RB-09)
 	./scripts/baseline-accept.sh
@@ -105,7 +108,7 @@ schema-compat: ## Fail if a schema version would reject data an older version ac
 
 test-fast: ## No Docker, under 3 min: Java unit tests, Python tests, web typecheck and tests
 	.venv/bin/python scripts/schema-compat.py
-	cd services/event-core && mvn -B -q -ntp verify
+	cd services/event-core && mvn -B -q -ntp -DskipITs verify
 	cd services/rules-engine && mvn -B -q -ntp verify
 	.venv/bin/pytest -q sim/tests scorer/tests scripts/tests
 	cd web/ops-console && npm run -s typecheck && npm test --silent

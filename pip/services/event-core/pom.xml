@@ -22,6 +22,7 @@
     <jackson-bom.version>2.21.7</jackson-bom.version>
     <postgresql.version>42.7.14</postgresql.version>
     <tomcat.version>10.1.60</tomcat.version>
+    <skipUTs>false</skipUTs>
   </properties>
 
   <dependencyManagement>
@@ -56,6 +57,12 @@
 
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.springframework.security</groupId><artifactId>spring-security-test</artifactId><scope>test</scope></dependency>
+    <!-- Integration tests (milestone E4), versions from the Spring Boot BOM. Testcontainers: MIT. Flyway: Apache-2.0. -->
+    <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>redpanda</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-core</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-database-postgresql</artifactId><scope>test</scope></dependency>
   </dependencies>
 
   <build>
@@ -68,6 +75,24 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <!-- -DskipUTs runs only the integration tests (make test-it). -->
+          <skipTests>${skipUTs}</skipTests>
+          <systemPropertyVariables>
+            <pip.schemas>${project.basedir}/../../schemas</pip.schemas>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+      <!-- *IT.java against real PostgreSQL 16 and Redpanda via Testcontainers. Needs Docker;
+           make test-fast and the image build pass -DskipITs. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals><goal>integration-test</goal><goal>verify</goal></goals>
+          </execution>
+        </executions>
         <configuration>
           <systemPropertyVariables>
             <pip.schemas>${project.basedir}/../../schemas</pip.schemas>

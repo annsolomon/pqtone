@@ -27,3 +27,13 @@ rules:
       trigger: R-QUEUE-001
       expect: com.pip.store.register.opened
       within: PT300S
+  - id: R-FOOT-001
+    version: 1.0.0
+    mode: enforce          # promoted from shadow after the offline and e2e scores passed (CI run 37853464719, milestone R2)
+    severity: low
+    params:
+      zones: [entrance]    # footfall = people entering the store; any zone id from the layout works
+      window: PT5M         # tumbling, aligned to the epoch; one count of zone.entered per zone
+      history: PT1H        # baseline = mean of the previous 12 windows of the same run
+      factor: 2.0          # spike when count > factor x baseline...
+      minCount: 10         # ...and count >= minCount; alerting starts once a full hour of history exists

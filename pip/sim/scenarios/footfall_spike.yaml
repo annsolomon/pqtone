@@ -1,0 +1,7 @@
+name: footfall_spike
+description: A coach party arrives after 70 minutes; footfall more than quadruples for 10 minutes, then returns to normal.
+duration: PT2H
+arrivals:
+  - {from: PT0S,  to: PT70M, perHour: 110}
+  - {from: PT70M, to: PT80M, perHour: 480}
+  - {from: PT80M, to: PT2H,  perHour: 110}

@@ -63,10 +63,10 @@ So this tier starts with **Stage 0: make it green**.
 
 | # | Milestone | Done when | 🧠 |
 |---|---|---|---|
-| E1 | **Trace a request end to end.** Use the debugger plus Jaeger to follow one HTTP event: filter chain → controller → validator → transaction → outbox → Kafka. Write `docs/learn/event-core-request-path.md` in your own words. | Doc exists; you can explain each Spring bean involved. | 🧠 You write |
+| ✅ E1 | **Trace a request end to end.** Use the debugger plus Jaeger to follow one HTTP event: filter chain → controller → validator → transaction → outbox → Kafka. Write `docs/learn/event-core-request-path.md` in your own words. | Doc exists; you can explain each Spring bean involved. Note: Doc from the code; the debugger/Jaeger walk-through is in its last section | 🧠 You write |
 | ✅ E2 | **Schema evolution.** Add `store.queue.length` v1.1.0 with an optional `estimatedWaitSeconds` field. Add a CI script `scripts/schema-compat.py` that fails if a new version removes or renames a field, tightens a type, or adds a required field. Register both versions; producers may send either. | Compat script in CI; a test proves v1.0.0 and v1.1.0 events are both accepted; a deliberately breaking v1.2.0 fails CI. | 🧠 Compat rules |
 | E3 | **Flyway discipline.** Add `V5__incident_assignee.sql` (nullable column, grant, index). Practise the expand → migrate → contract pattern. Write a rollback note. Add a test that migrations apply cleanly to an empty DB and to a DB at V4. | Both paths green in CI. | |
-| E4 | **Testcontainers integration tests.** Repository and ingest tests against real Postgres 16 and Redpanda in `mvn verify`, using Docker-in-Docker in the devcontainer and in CI. | Covered: dedup race (two concurrent identical inserts → one accepted, one duplicate); conflict path; outbox relay with Kafka down → backlog drains when it returns. | 🧠 The race test |
+| ✅ E4 | **Testcontainers integration tests.** Repository and ingest tests against real Postgres 16 and Redpanda in `mvn verify`, using Docker-in-Docker in the devcontainer and in CI. | Covered: dedup race (two concurrent identical inserts → one accepted, one duplicate); conflict path; outbox relay with Kafka down → backlog drains when it returns. | 🧠 The race test |
 | E5 | **Contract tests.** Generate the OpenAPI doc from code (springdoc) and diff it against `openapi.yaml` in CI. | Drift fails the build. | |
 
 ---
@@ -105,7 +105,7 @@ So this tier starts with **Stage 0: make it green**.
 | # | Milestone | Done when | 🧠 |
 |---|---|---|---|
 | ✅ R1 | **Explain the watermark.** Write `docs/learn/watermarks.md`: stream time vs event time vs wall time, why grace exists, what "late" means here vs Flink. Include a worked example from the `late_beyond_grace` scenario. | Doc written; you can predict which events get dropped in a hand-made sequence. Note: docs/learn/watermarks.md; its 12-event sequence is executed by WatermarkLatenessTest | 🧠 You write |
-| R2 | **Windowed rule R-FOOT-001**: footfall spike. Count `zone.entered` per zone in 5-minute tumbling windows (`TimeWindows.ofSizeAndGrace`). Alert when a window exceeds 2× the trailing hour's mean. Use `suppress(untilWindowCloses)` so each window emits once. Add it to the Python reference and to the scorer. | Offline matrix and e2e green with the new rule; JUnit tests for window boundaries and late records. | 🧠 The windowing code |
+| ✅ R2 | **Windowed rule R-FOOT-001**: footfall spike. Count `zone.entered` per zone in 5-minute tumbling windows (`TimeWindows.ofSizeAndGrace`). Alert when a window exceeds 2× the trailing hour's mean. Use `suppress(untilWindowCloses)` so each window emits once. Add it to the Python reference and to the scorer. | Offline matrix and e2e green with the new rule; JUnit tests for window boundaries and late records. | 🧠 The windowing code |
 | R3 | **Compare both approaches** in an ADR: native windows + suppress vs the custom reorder buffer. Cover memory, determinism and latency. | `docs/adr/011-windowing.md`. | |
 | R4 | **Rule versioning and hot reload.** A `rules.yaml` change bumps the rule version. The engine reloads via a compacted `rules.config.v1` topic instead of a restart. Incident ids include the major version (already true). | Changing a threshold in a running stack changes behaviour without a restart; old incidents keep their version. | |
 | R5 | **Scale test.** 50 simulated stores at 10× speed; measure throughput, state size, p95 processing lag. Raise partition count and threads; document the limits. | `docs/perf/rules-engine.md` with numbers and graphs. | |
@@ -145,7 +145,7 @@ So this tier starts with **Stage 0: make it green**.
 | Q2 | **Wall-clock processing latency** in e2e: ingest → incident row, p50 and p95. Add it to thresholds. | Reported; a gate is added. |
 | ✅ Q3 | **Baseline update flow.** On `main`, CI uploads `baseline.candidate.json`. A maintainer runs `make baseline-accept`, which opens a PR. Never auto-update the baseline. | Documented and scripted. Note: make baseline-accept, RB-09 |
 | ✅ Q4 | **Confidence intervals.** Wilson intervals on precision and recall so small samples (2 absence incidents) aren't read as certainty. Gates use the lower bound when n ≥ 20, otherwise they warn. | Shown in the report. Note: Gate semantics in ADR-027 |
-| Q5 | **Hungarian matching** (to match the architecture doc) with property tests comparing it to brute force on small cases. 🧠 | Tests pass; ADR notes the change. |
+| ✅ Q5 | **Hungarian matching** (to match the architecture doc) with property tests comparing it to brute force on small cases. 🧠 | Tests pass; ADR notes the change. Note: ADR-028 |
 
 ---
 
