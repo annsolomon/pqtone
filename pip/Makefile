@@ -91,11 +91,14 @@ clean: ## Stop and delete all data, generated secrets and reports
 	-$(COMPOSE) --profile tools down -v --remove-orphans
 	rm -rf .work deploy/keycloak/generated .env
 
-.PHONY: dev-setup test-fast schema-compat
+.PHONY: dev-setup test-fast schema-compat baseline-accept
 dev-setup: ## One-time, no Docker: Python venv with sim + scorer, and web dependencies
 	python3 -m venv .venv
 	.venv/bin/pip install -q -e './sim[test]' -e './scorer[test]'
 	cd web/ops-console && npm ci
+
+baseline-accept: ## Open a PR proposing the latest green main run's quality baseline (needs gh; RB-09)
+	./scripts/baseline-accept.sh
 
 schema-compat: ## Fail if a schema version would reject data an older version accepted
 	.venv/bin/python scripts/schema-compat.py
