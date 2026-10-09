@@ -114,7 +114,8 @@ class IngestIT {
         ingest.ingest(Fixtures.event(id, 2), "http", "it");
         var ex = org.junit.jupiter.api.Assertions.assertThrows(Exception.class,
                 () -> jdbc.update("UPDATE pip.event_dedup SET payload_sha256 = repeat('0', 64) WHERE id = ?", id));
-        assertTrue(ex.getMessage().contains("permission denied") || ex.getMessage().contains("append-only"),
-                ex.getMessage());
+        // Spring wraps the driver error; the database's own reason is the most specific cause.
+        String reason = org.springframework.core.NestedExceptionUtils.getMostSpecificCause(ex).getMessage();
+        assertTrue(reason.contains("permission denied for table event_dedup"), reason);
     }
 }

@@ -39,9 +39,9 @@ public final class Db implements AutoCloseable {
         container.start();
         try (Connection c = DriverManager.getConnection(container.getJdbcUrl(), container.getUsername(), container.getPassword());
              Statement s = c.createStatement()) {
-            s.execute("CREATE ROLE pip_migrator LOGIN PASSWORD '" + migratorPassword + "' CONNECTION LIMIT 5");
-            s.execute("CREATE ROLE pip_app LOGIN PASSWORD '" + appPassword + "' CONNECTION LIMIT 60");
-            s.execute("CREATE ROLE pip_read LOGIN PASSWORD '" + readPassword + "' CONNECTION LIMIT 10");
+            createRole(c, "pip_migrator", migratorPassword, 5);
+            createRole(c, "pip_app", appPassword, 60);
+            createRole(c, "pip_read", readPassword, 10);
             s.execute("REVOKE ALL ON DATABASE pip FROM PUBLIC");
             s.execute("GRANT CONNECT ON DATABASE pip TO pip_migrator, pip_app, pip_read");
             s.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC");
@@ -55,6 +55,29 @@ public final class Db implements AutoCloseable {
             s.execute("ALTER DATABASE pip SET timezone TO 'UTC'");
         }
         return this;
+    }
+
+    /**
+     * CREATE ROLE cannot take a bind parameter, so the password travels as a session setting and is
+     * quoted by format(%L) inside the server. No SQL text is ever built from a value.
+     */
+    private static void createRole(Connection c, String role, String password, int connectionLimit) throws Exception {
+        try (var set = c.prepareStatement("SELECT set_config('pip_it.password', ?, false), set_config('pip_it.role', ?, false), "
+                + "set_config('pip_it.limit', ?, false)")) {
+            set.setString(1, password);
+            set.setString(2, role);
+            set.setString(3, Integer.toString(connectionLimit));
+            set.execute();
+        }
+        try (Statement s = c.createStatement()) {
+            s.execute("""
+                    DO $$ BEGIN
+                      EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L CONNECTION LIMIT %s',
+                                     current_setting('pip_it.role'), current_setting('pip_it.password'),
+                                     current_setting('pip_it.limit')::int);
+                    END $$""");
+            s.execute("SELECT set_config('pip_it.password', '', false)");
+        }
     }
 
     /** Flyway as pip_migrator, exactly like the compose `flyway` service; target null = latest. */
