@@ -142,7 +142,7 @@ So this tier starts with **Stage 0: make it green**.
 | # | Milestone | Done when |
 |---|---|---|
 | ✅ Q1 | **PR comment.** The CI job posts `score.md` as a sticky PR comment, with a delta against `baseline.json`. | Visible on a test PR. |
-| Q2 | **Wall-clock processing latency** in e2e: ingest → incident row, p50 and p95. Add it to thresholds. | Reported; a gate is added. |
+| ✅ Q2 | **Wall-clock processing latency** in e2e: ingest → incident row, p50 and p95. Add it to thresholds. | Reported; a gate is added. Note: ADR-029 |
 | Q3 | **Baseline update flow.** On `main`, CI uploads `baseline.candidate.json`. A maintainer runs `make baseline-accept`, which opens a PR. Never auto-update the baseline. | Documented and scripted. |
 | ✅ Q4 | **Confidence intervals.** Wilson intervals on precision and recall so small samples (2 absence incidents) aren't read as certainty. Gates use the lower bound when n ≥ 20, otherwise they warn. | Shown in the report. Note: Gate semantics in ADR-027 |
 | ✅ Q5 | **Hungarian matching** (to match the architecture doc) with property tests comparing it to brute force on small cases. 🧠 | Tests pass; ADR notes the change. Note: ADR-028 |
