@@ -100,3 +100,15 @@ def test_sim_client_can_publish_sim_events(sim_token):
     ev = edge_event(source="urn:pip:sim:store-sim:store-001", simrunid="run-e2e000000000",
                     time="2026-01-01T09:00:00.000Z")
     assert post(ev, sim_token).status_code == 202
+
+
+def test_both_registered_queue_length_versions_are_accepted(edge_token):
+    """Milestone E2: producers may send store.queue.length 1.0.0 or 1.1.0."""
+    v100 = edge_event()
+    assert post(v100, edge_token).status_code == 202
+    v110 = edge_event(dataschema="https://schemas.pip.local/store/queue.length/1.1.0",
+                      data={"queueId": "checkout-1", "length": 3, "openRegisters": 1, "estimatedWaitSeconds": 180})
+    r = post(v110, edge_token)
+    assert r.status_code == 202, r.text
+    unregistered = edge_event(dataschema="https://schemas.pip.local/store/queue.length/1.2.0")
+    assert post(unregistered, edge_token).status_code == 400

@@ -213,6 +213,7 @@ Track pseudonyms are simulator-generated, per-run, and carry no identity. See §
 
 - Schemas live in `/schemas`, one file per type per version, JSON Schema 2020-12.
 - Semantic versioning. Minor and patch versions must be **backward compatible** (additive optional fields only). A breaking change requires a new major version and a new `dataschema` URI; both versions are accepted during migration.
+- Enforced by `scripts/schema-compat.py` (`make schema-compat`, run in `make test-fast` and as its own CI step): within a type, every catalogue version must accept everything the previous version accepted. Removed or renamed fields, new required fields, narrowed types and tightened bounds fail the build. A breaking major version therefore needs an ADR and an explicit change to that check. Example: `store.queue.length` 1.1.0 adds the optional `estimatedWaitSeconds`; producers may send 1.0.0 or 1.1.0.
 - CI runs a compatibility check on every schema change and fails on a breaking change without a major bump.
 - `event-core` loads schemas at startup from the repo bundle. No remote schema fetching at runtime (prevents SSRF and schema poisoning).
 

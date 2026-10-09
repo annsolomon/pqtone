@@ -13,7 +13,7 @@ First time in a Codespace: `make dev-setup`. Console mode: `scripts/mode.sh code
 - Long runs: pipe through `tee`, never `tail`.
 
 ## Contract rules
-- `schemas/` is the contract. Changes are additive only. Every change gets a new version and a `catalog.json` entry, and must pass `scripts/schema-compat.py` once it exists (milestone E2).
+- `schemas/` is the contract. Changes are additive only. Every change gets a new version and a `catalog.json` entry, and must pass `scripts/schema-compat.py` (`make schema-compat`).
 - Every rule decision is made in event time (`time` attribute), never wall time.
 - Dedup key is `(source, id)`. Producers must make ids stable across retries.
 - Any change to rules or detectors must keep the scorer gate green. Thresholds change only with an ADR. The baseline is never updated automatically.
