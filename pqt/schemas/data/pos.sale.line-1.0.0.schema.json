@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pqt.local/pos/sale.line/1.0.0",
+  "title": "com.pqt.pos.sale.line data",
+  "description": "One line of a bill (X1, milestone B1). Money is integer minor units (paise for INR). Allow-listed fields only: no customer identity, card numbers or free text (ADR-033).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "storeId",
+    "tillId",
+    "billRef",
+    "revision",
+    "lineNo",
+    "sku",
+    "qtyMilli",
+    "unit",
+    "amountMinor",
+    "currency"
+  ],
+  "properties": {
+    "storeId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,64}$"
+    },
+    "tillId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,64}$"
+    },
+    "billRef": {
+      "type": "string",
+      "pattern": "^bill-[0-9a-f]{32}$",
+      "description": "HMAC-SHA256 of the bill number with the store's key (ADR-033); never the real number."
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000,
+      "description": "0 for the first version of the bill; consumers take the highest revision per bill."
+    },
+    "lineNo": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000
+    },
+    "sku": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$",
+      "description": "The billing system's item code (business data, not personal)."
+    },
+    "qtyMilli": {
+      "type": "integer",
+      "minimum": -1000000000000,
+      "maximum": 1000000000000,
+      "description": "Quantity in thousandths of `unit` (1 piece = 1000; 0.5 kg = 500). Negative for a returned item on the same bill."
+    },
+    "unit": {
+      "type": "string",
+      "enum": [
+        "pcs",
+        "kg",
+        "g",
+        "l",
+        "ml",
+        "m",
+        "box",
+        "pack",
+        "other"
+      ]
+    },
+    "amountMinor": {
+      "type": "integer",
+      "minimum": -1000000000000,
+      "maximum": 1000000000000,
+      "description": "Line amount after line discounts, including tax, in minor units. Negative for a returned item or a bill-level discount line."
+    },
+    "taxMinor": {
+      "type": "integer",
+      "minimum": -1000000000000,
+      "maximum": 1000000000000,
+      "description": "Tax included in amountMinor, in minor units."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "ISO 4217 code, e.g. INR."
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pqt.local/stock/level/1.0.0",
+  "title": "com.pqt.stock.level data",
+  "description": "Stock on hand as the billing system reports it (X1, B1). Allow-listed fields only: no customer identity, card numbers or free text (ADR-033).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "storeId",
+    "sku",
+    "qtyMilli",
+    "unit",
+    "source"
+  ],
+  "properties": {
+    "storeId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,64}$"
+    },
+    "sku": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$",
+      "description": "The billing system's item code (business data, not personal)."
+    },
+    "qtyMilli": {
+      "type": "integer",
+      "minimum": -1000000000000,
+      "maximum": 1000000000000,
+      "description": "Quantity on hand in thousandths of `unit`; billing systems can report negative stock."
+    },
+    "unit": {
+      "type": "string",
+      "enum": [
+        "pcs",
+        "kg",
+        "g",
+        "l",
+        "ml",
+        "m",
+        "box",
+        "pack",
+        "other"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,32}$",
+      "description": "Which billing system reported it: tally, zoho, file, sim, ..."
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "specversion": "1.0",
+  "id": "e04e335f-cb66-5970-a17d-6d461d7d3c2c",
+  "source": "urn:pqt:edge:store-001:pos-file",
+  "type": "com.pqt.pos.payment",
+  "time": "2026-01-01T10:15:40.000Z",
+  "subject": "till:till-1",
+  "dataschema": "https://schemas.pqt.local/pos/payment/1.0.0",
+  "datacontenttype": "application/json",
+  "storeid": "store-001",
+  "partitionkey": "store-001",
+  "sequence": "0000000001",
+  "data": {
+    "storeId": "store-001",
+    "tillId": "till-1",
+    "billRef": "bill-9c05b144c6325ed1692f05ea8e277b1a",
+    "paymentNo": 1,
+    "tender": "upi",
+    "direction": "in",
+    "amountMinor": 49000,
+    "currency": "INR",
+    "providerRef": "pay-8c15491243ed077fa2ebddb323cdde44"
+  }
+}

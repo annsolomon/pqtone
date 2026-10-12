@@ -128,6 +128,40 @@ class EventValidatorTest {
                 "1.0.0 is closed (additionalProperties: false); the field needs the 1.1.0 dataschema");
     }
 
+    // X1 milestone B1: the billing contracts are registered; every sample is accepted, a float amount is not.
+
+    static final List<String> BILLING = List.of("pos.sale.line", "pos.payment", "pos.till.event", "stock.movement",
+            "stock.level", "pos.day.total");
+
+    ObjectNode billingSample(String shortType) throws Exception {
+        Path dir = Path.of(System.getProperty("pqt.schemas", "../../schemas")).resolve("samples");
+        ObjectNode n = (ObjectNode) m.readTree(java.nio.file.Files.readString(dir.resolve(shortType + ".json")));
+        n.put("time", "2026-05-31T23:30:00.000Z");  // inside the real-producer age window of the fixed clock
+        return n;
+    }
+
+    @Test
+    void acceptsEveryBillingSample() throws Exception {
+        for (String t : BILLING) {
+            ValidatedEvent e = validator.validate(billingSample(t));
+            assertEquals("com.pqt." + t, e.type(), t);
+            assertEquals("store-001", e.storeId(), t);
+        }
+    }
+
+    @Test
+    void rejectsFractionalMoneyAndRealBillNumbers() throws Exception {
+        ObjectNode fractional = billingSample("pos.payment");
+        ((ObjectNode) fractional.get("data")).put("amountMinor", 490.5);
+        assertThrows(InvalidEventException.class, () -> validator.validate(fractional));
+        ObjectNode realNumber = billingSample("pos.sale.line");
+        ((ObjectNode) realNumber.get("data")).put("billRef", "INV-2026-000123");
+        assertThrows(InvalidEventException.class, () -> validator.validate(realNumber));
+        ObjectNode customer = billingSample("pos.sale.line");
+        ((ObjectNode) customer.get("data")).put("customerName", "A Person");
+        assertThrows(InvalidEventException.class, () -> validator.validate(customer));
+    }
+
     @Test
     void anUnregisteredVersionIsRejected() throws Exception {
         ObjectNode n = valid();

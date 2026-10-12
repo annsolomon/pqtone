@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pqt.local/pos/day.total/1.0.0",
+  "title": "com.pqt.pos.day.total data",
+  "description": "The billing system's own totals for one business day, for the reconcile job (X1, B1, B6). Allow-listed fields only: no customer identity, card numbers or free text (ADR-033).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "storeId",
+    "businessDate",
+    "salesMinor",
+    "refundsMinor",
+    "bills",
+    "paymentsByTender",
+    "currency",
+    "source"
+  ],
+  "properties": {
+    "storeId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,64}$"
+    },
+    "businessDate": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "salesMinor": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000000000,
+      "description": "Gross sales including tax, in minor units."
+    },
+    "refundsMinor": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000000000,
+      "description": "Refunds, in minor units."
+    },
+    "bills": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000000
+    },
+    "paymentsByTender": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "cash",
+          "card",
+          "upi",
+          "wallet",
+          "credit",
+          "voucher",
+          "other"
+        ]
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": -1000000000000,
+        "maximum": 1000000000000,
+        "description": "Net payments received with this tender, in minor units (refunds subtracted)."
+      },
+      "description": "Net payments per tender."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "ISO 4217 code, e.g. INR."
+    },
+    "source": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,32}$",
+      "description": "Which billing system reported it: tally, zoho, file, sim, ..."
+    }
+  }
+}
