@@ -217,9 +217,10 @@ class ZoneEngine:
     def _exit(self, tid: int, tr: _Track, z: ZoneSpec, st: _ZT, t: int) -> list[ZoneEvent]:
         ev = []
         if st.member:
-            head = self.heads.get(z.id)
+            head = self.heads.get(z.id, z.head)
+            radius = self.head_radius if z.id in self.heads else z.head_radius
             px, py = st.exit_xy or tr.last_xy
-            served = True if head is None else bool(np.hypot(px - head[0], py - head[1]) <= self.head_radius)
+            served = True if head is None else bool(np.hypot(px - head[0], py - head[1]) <= radius)
             ev.append(ZoneEvent("queue.left", t, z.id, tid, queue_id=z.queue, served=served))
         ev.append(ZoneEvent("zone.exited", t, z.id, tid))
         tr.zones[z.id] = _ZT()

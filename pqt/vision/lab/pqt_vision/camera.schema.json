@@ -5,72 +5,223 @@
   "description": "Lives in config/cameras/<camera>.yaml (or vision/lab/config/ for open-dataset sequences). Holds geometry only: never frames, credentials or anything about people.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["apiVersion", "camera", "store", "image", "units", "homography", "zones"],
+  "required": [
+    "apiVersion",
+    "camera",
+    "store",
+    "image",
+    "units",
+    "homography",
+    "zones"
+  ],
   "properties": {
-    "apiVersion": {"const": "camera.pqt/v1"},
-    "camera": {"type": "string", "pattern": "^[a-z0-9-]{1,64}$"},
-    "store": {"type": "string", "pattern": "^[a-z0-9-]{1,64}$"},
-    "description": {"type": "string", "maxLength": 1000},
+    "apiVersion": {
+      "const": "camera.pqt/v1"
+    },
+    "camera": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,64}$"
+    },
+    "store": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,64}$"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1000
+    },
     "image": {
-      "type": "object", "additionalProperties": false, "required": ["width", "height"],
-      "properties": {"width": {"type": "integer", "minimum": 16}, "height": {"type": "integer", "minimum": 16}}
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "width",
+        "height"
+      ],
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 16
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 16
+        }
+      }
     },
     "units": {
       "description": "m: the homography maps to floor metres (a calibrated camera). px: identity homography, zones in image pixels (open datasets without floor measurements).",
-      "enum": ["m", "px"]
+      "enum": [
+        "m",
+        "px"
+      ]
     },
     "homography": {
       "description": "Row-major 3x3 matrix mapping image pixels [u, v, 1] to floor coordinates, normalised so H[2][2] = 1.",
-      "type": "array", "minItems": 3, "maxItems": 3,
-      "items": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}}
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "array",
+        "minItems": 3,
+        "maxItems": 3,
+        "items": {
+          "type": "number"
+        }
+      }
     },
     "calibration": {
-      "type": "object", "additionalProperties": false, "required": ["points", "inliers", "heldOutMaxM", "heldOutMeanM"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "points",
+        "inliers",
+        "heldOutMaxM",
+        "heldOutMeanM"
+      ],
       "properties": {
         "points": {
-          "type": "array", "minItems": 4,
+          "type": "array",
+          "minItems": 4,
           "items": {
-            "type": "object", "additionalProperties": false, "required": ["image", "floor"],
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "image",
+              "floor"
+            ],
             "properties": {
-              "image": {"$ref": "#/$defs/point"},
-              "floor": {"$ref": "#/$defs/point"},
-              "inlier": {"type": "boolean"}
+              "image": {
+                "$ref": "#/$defs/point"
+              },
+              "floor": {
+                "$ref": "#/$defs/point"
+              },
+              "inlier": {
+                "type": "boolean"
+              }
             }
           }
         },
-        "inliers": {"type": "integer", "minimum": 4},
-        "heldOutMaxM": {"type": "number", "minimum": 0},
-        "heldOutMeanM": {"type": "number", "minimum": 0},
-        "calibratedAt": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"}
+        "inliers": {
+          "type": "integer",
+          "minimum": 4
+        },
+        "heldOutMaxM": {
+          "type": "number",
+          "minimum": 0
+        },
+        "heldOutMeanM": {
+          "type": "number",
+          "minimum": 0
+        },
+        "calibratedAt": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
       }
     },
     "zones": {
       "type": "array",
       "items": {
-        "type": "object", "additionalProperties": false, "required": ["id", "kind", "polygon"],
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "polygon"
+        ],
         "properties": {
-          "id": {"type": "string", "pattern": "^[a-z0-9-]{1,64}$"},
-          "kind": {"enum": ["zone", "queue"]},
-          "queueId": {"type": "string", "pattern": "^[a-z0-9-]{1,64}$", "description": "For kind=queue: the queue id used in queue.* events (defaults to the zone id)."},
-          "polygon": {"type": "array", "minItems": 3, "items": {"$ref": "#/$defs/point"}, "description": "Floor coordinates in `units`, in order around the boundary."},
-          "note": {"type": "string", "maxLength": 500}
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,64}$"
+          },
+          "kind": {
+            "enum": [
+              "zone",
+              "queue"
+            ]
+          },
+          "queueId": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,64}$",
+            "description": "For kind=queue: the queue id used in queue.* events (defaults to the zone id)."
+          },
+          "polygon": {
+            "type": "array",
+            "minItems": 3,
+            "items": {
+              "$ref": "#/$defs/point"
+            },
+            "description": "Floor coordinates in `units`, in order around the boundary."
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "openRegisters": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000,
+            "description": "For kind=queue: registers serving this queue, reported in queue.length until register events come from the till (billing connector). Default 1."
+          },
+          "head": {
+            "$ref": "#/$defs/point",
+            "description": "For kind=queue: the end of the queue nearest the register, in `units`. A member who leaves near it was served; elsewhere, abandoned. Without it, every exit counts as served."
+          },
+          "headRadius": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Distance from `head` (in `units`) that counts as leaving at the front. Default 0.75."
+          }
         }
       }
     },
     "membership": {
       "description": "Zone and queue membership timing (V4). Defaults apply when absent.",
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
       "properties": {
-        "enterSeconds": {"type": "number", "minimum": 0, "maximum": 60},
-        "exitSeconds": {"type": "number", "minimum": 0, "maximum": 60},
-        "boundaryMargin": {"type": "number", "minimum": 0, "description": "Hysteresis band in `units`: enter needs the point this far inside, exit this far outside."},
-        "queueMinDwellSeconds": {"type": "number", "minimum": 0, "maximum": 600},
-        "queueMaxSpeed": {"type": "number", "minimum": 0, "description": "Max foot-point speed in `units` per second to count as waiting."},
-        "speedWindowSeconds": {"type": "number", "minimum": 0.1, "maximum": 30}
+        "enterSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 60
+        },
+        "exitSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 60
+        },
+        "boundaryMargin": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Hysteresis band in `units`: enter needs the point this far inside, exit this far outside."
+        },
+        "queueMinDwellSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 600
+        },
+        "queueMaxSpeed": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Max foot-point speed in `units` per second to count as waiting."
+        },
+        "speedWindowSeconds": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 30
+        }
       }
     }
   },
   "$defs": {
-    "point": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}}
+    "point": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "number"
+      }
+    }
   }
 }
