@@ -1,0 +1,16 @@
+# Calibration points for `pqt-vision calibrate` (V3). Synthetic example numbers, not a real camera.
+# image: pixel position of a floor mark in one frame; floor: its measured position in metres.
+camera: cam-01
+store: store-001
+image: {width: 1920, height: 1080}
+points:
+  - {image: [700.0, 260.0], floor: [0.0, 0.0]}
+  - {image: [578.0, 339.4], floor: [0.0, 2.0]}
+  - {image: [474.6, 406.8], floor: [0.0, 4.0]}
+  - {image: [385.8, 464.6], floor: [0.0, 6.0]}
+  - {image: [964.2, 270.4], floor: [1.5, 0.0]}
+  - {image: [821.2, 348.5], floor: [1.5, 2.0]}
+  - {image: [699.8, 414.8], floor: [1.5, 4.0]}
+  - {image: [595.6, 471.8], floor: [1.5, 6.0]}
+  - {image: [1225.3, 280.6], floor: [3.0, 0.0]}
+  - {image: [1061.7, 357.5], floor: [3.0, 2.0]}

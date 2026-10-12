@@ -26,3 +26,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["pqt_vision*"]
+
+[tool.setuptools.package-data]
+pqt_vision = ["*.schema.json"]
