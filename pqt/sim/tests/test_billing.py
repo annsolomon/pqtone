@@ -237,3 +237,20 @@ def test_bill_references_never_repeat_even_after_a_whole_bill_is_cancelled():
                 ref = e["data"]["billRef"]
                 assert ref not in first_seen, f"{name}: {ref} started twice"
                 first_seen[ref] = e["time"]
+
+
+def test_export_writes_billing_system_style_csvs(day, tmp_path):
+    from store_sim.billing_export import export
+
+    counts = export(day.clean, tmp_path)
+    truth = day.billing_truth[0]["dayTotals"]
+    import csv as _csv
+
+    bills = list(_csv.DictReader(open(tmp_path / "bills.csv", encoding="utf-8")))
+    assert len({r["Bill No"] for r in bills}) == truth["bills"] and counts["bills"] == len(bills)
+    assert sum(round(float(r["Amount"]) * 100) for r in bills) == truth["salesMinor"]
+    day_row = next(_csv.DictReader(open(tmp_path / "day.csv", encoding="utf-8")))
+    assert day_row["Date"] == "01-01-2026" and day_row["Bills"] == str(truth["bills"])
+    for f in ("payments.csv", "movements.csv", "stock.csv"):
+        assert (tmp_path / f).read_text().count("\n") > 1
+    assert all(r["Bill No"].startswith("SIM-") for r in bills)  # invented numbers, not the HMAC references

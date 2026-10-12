@@ -84,6 +84,15 @@ def cmd_determinism(a) -> int:
     return 0 if same else 1
 
 
+def cmd_export_billing(a) -> int:
+    """X1: a run's billing as the CSV exports a billing system would write (edge/connectors generic profile)."""
+    from .billing_export import export
+
+    events = [json.loads(line) for line in (Path(a.run) / "events.jsonl").read_text().splitlines() if line.strip()]
+    print(json.dumps(export(events, a.out, store=a.store)))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format='{"level":"%(levelname)s","logger":"%(name)s","msg":"%(message)s"}')
     p = argparse.ArgumentParser(prog="store-sim")
@@ -112,6 +121,12 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--seed", type=int, default=42)
     d.add_argument("--scenario", default="sim/scenarios/baseline.yaml")
     d.set_defaults(fn=cmd_determinism)
+
+    xb = sub.add_parser("export-billing", help="X1: write a run's billing as billing-system CSV exports")
+    xb.add_argument("--run", required=True, help="a run directory (events.jsonl)")
+    xb.add_argument("--out", required=True)
+    xb.add_argument("--store", help="only this store (multi-store runs)")
+    xb.set_defaults(fn=cmd_export_billing)
 
     a = p.parse_args(argv)
     return a.fn(a)
