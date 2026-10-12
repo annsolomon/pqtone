@@ -35,3 +35,28 @@ buffer 30 frames at 30 fps, score fusion on. Metrics from `pqt_vision/metrics.py
 
 Detection accuracy (DetA) limits HOTA on 02 and 04, as the V1 recall predicted; association (AssA)
 is similar across sequences.
+
+## V6/V7 part 1: zone counts, four candidates
+
+Run on commit `1604229` (PR #43), 12 Oct 2026. Zones: `vision/lab/config/mot17/`, chosen from ground truth
+only (PR #40 run) and committed before any count was evaluated. Counts: zone occupancy from the emitted
+`zone.entered` / `zone.exited` events vs ground truth, one sample per second; every emitted event passed
+`schemas/` validation (0 schema errors). Proxy bar per sequence: ≥ 95% within ±1 **and** MAE ≤ 0.5.
+
+| Candidate | MOT17-02 (±1 / MAE) | MOT17-04 | MOT17-09 | Mean within ±1 | CPU ms/frame |
+|---|---|---|---|---|---|
+| yolox_s, full frame | 90.0% / 0.600 | 88.6% / 0.800 | 88.9% / 0.722 | 89.2% | 172 |
+| **yolox_s, zone crop (ROI)** | 90.0% / 0.650 | 100.0% / 0.571 | 94.4% / 0.500 | **94.8%** | 171 |
+| yolox_s, 2 × 2 tiles + full | 80.0% / 0.700 | 100.0% / 0.571 | 55.6% / 1.833 | 78.5% | 720 |
+| yolox_m, zone crop (ROI) | 85.0% / 0.750 | 97.1% / 0.571 | 72.2% / 1.111 | 84.8% | 467 |
+
+**No candidate meets the proxy bar on all three sequences.** By the rule fixed before the run (cheapest
+candidate that passes; otherwise the best mean within ±1), **yolox_s with the zone crop** is the default,
+and V7 stays open. What the numbers say:
+
+- The zone crop helps where people are small (04: recall@0.3 0.51 → 0.65 inside the region) at no extra
+  cost; tiling buys recall but its extra false positives and ID switches hurt counts (09).
+- Errors are mostly ±1 with a bias: over-counting on 02 and 09 (false positives, fragmented tracks),
+  under-counting on 04 (missed distant people).
+- Tuning more on these three sequences would fit the test set. V7 part 2 tunes on a separate
+  development set (MOT20 training sequences, zones chosen the same way) and evaluates MOT17 once.

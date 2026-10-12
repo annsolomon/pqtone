@@ -24,7 +24,7 @@ needed until P3–P5 and the real exit gate.
 | Project | State |
 |---|---|
 | Prep (P1–P5) | P1 and P2 done (P2 awaits a legal review); P3–P5 wait for the camera and consent |
-| vision-lab (V1–V8) | In progress on MOT17 |
+| vision-lab (V1–V8) | V1–V6 done on MOT17; V7 open (best candidate 94.8% within ±1, bar not yet met; see `vision/lab/reports/mot17-bench.md`); V8 in review |
 | noise-model (N1–N5) | After V7 |
 | edge-agent (A1–A6) | After V5 |
 | mtmc-fusion (F1–F5) | Optional, after the gate |
