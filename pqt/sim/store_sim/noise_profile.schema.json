@@ -63,7 +63,8 @@
           "required": ["probability"],
           "properties": {
             "probability": {"$ref": "#/$defs/probability"},
-            "extraTracks": {"$ref": "#/$defs/distribution"}
+            "extraTracks": {"$ref": "#/$defs/distribution"},
+            "gapMs": {"description": "How long the person goes untracked between the lost track and the new one (N5): the count is short by one for that time.", "$ref": "#/$defs/distribution"}
           }
         }
       }

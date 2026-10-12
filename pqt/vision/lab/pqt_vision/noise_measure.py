@@ -11,7 +11,9 @@ ground truth (people per mot.py) and the tracker's output (the same tracks the z
   frames ("phantom tracks"), per camera-minute; phantomTrackDurationMs: their durations (lognormal).
 - tracking.idSwitchesPerTrackMinute: a person's matched track id changes between consecutive frames.
 - tracking.fragmentation: a person's track id changes after a gap (lost, then found under a new id);
-  probability per person and the number of extra tracks (empirical).
+  probability per person, the number of extra tracks (empirical) and, since N5, the gap itself (gapMs:
+  last frame of the old track to the first frame of the new one, lognormal), during which the person is
+  not counted.
 - timing.entryJitterMs / exitJitterMs: emitted zone entry/exit time minus the true one, for people
   whose track entered/exited within 3 s of them (normal).
 - queueCountError: predicted minus true zone count, one sample per second (empirical).
@@ -47,6 +49,7 @@ class Samples:
     switches: int = 0
     gt_track_ms: float = 0.0
     fragments_per_person: list[int] = field(default_factory=list)
+    fragment_gaps_ms: list[float] = field(default_factory=list)
     entry_jitter: list[float] = field(default_factory=list)
     exit_jitter: list[float] = field(default_factory=list)
     count_errors: list[int] = field(default_factory=list)
@@ -63,6 +66,7 @@ class Samples:
         self.switches += o.switches
         self.gt_track_ms += o.gt_track_ms
         self.fragments_per_person += o.fragments_per_person
+        self.fragment_gaps_ms += o.fragment_gaps_ms
         self.entry_jitter += o.entry_jitter
         self.exit_jitter += o.exit_jitter
         self.count_errors += o.count_errors
@@ -132,6 +136,7 @@ def measure_sequence(gt: GroundTruth, tracks: dict[int, list[tuple[int, Box]]], 
                         s.switches += 1
                     else:
                         frags += 1
+                        s.fragment_gaps_ms.append(float(times[f] - times[last_f]))
                 last_id, last_f = tid, f
             if len(seq) * dt_ms >= 1000:
                 s.fragments_per_person.append(frags)
@@ -238,6 +243,9 @@ def profile(s: Samples, *, name: str, description: str, today: date | None = Non
                  "fragmentation": {"probability": round(len(fragmented) / len(frag), 4) if frag else 0.0}}
     if fragmented:
         trk["fragmentation"]["extraTracks"] = _empirical(fragmented)
+    gaps = _lognormal(s.fragment_gaps_ms)
+    if gaps:
+        trk["fragmentation"]["gapMs"] = gaps
     doc = {
         "apiVersion": "noise.pqt/v1", "name": name, "description": description[:1000],
         "measuredFrom": {"clips": len(s.cameras), "trackMinutes": round(track_minutes, 2), "cameras": sorted(set(s.cameras)),

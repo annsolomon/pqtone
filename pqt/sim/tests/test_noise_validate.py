@@ -162,3 +162,28 @@ def test_validate_profile_on_one_scenario_writes_a_verdict():
     assert 0 <= d["pValue"] <= 1 and d["rejected"] == (d["pValue"] < 0.05)
     md = nv.render_md(v, profile_path="config/noise/mot17-yolox-s-roi.yaml")
     assert "Two-sample KS" in md and "register_delay" in md
+
+
+# -- fragment gaps (what N5's second run changed in N2) --------------------------------------------
+
+def gap_profile(gap_ms: int | None) -> dict:
+    prof = copy.deepcopy(none_profile())
+    prof["tracking"]["fragmentation"] = {"probability": 1.0, "extraTracks": {"kind": "constant", "value": 1, "n": 40}}
+    if gap_ms is not None:
+        prof["tracking"]["fragmentation"]["gapMs"] = {"kind": "constant", "value": gap_ms, "n": 40}
+    return prof
+
+
+def test_a_fragment_leaves_the_person_uncounted_for_the_gap():
+    clean, truth = clip(people=3, seconds=30)
+    assert vision_noise.validate(gap_profile(2000)) == []
+    for seed in range(5):
+        errs = nv.clip_errors(clean, truth, gap_profile(2000), seeds=(seed,))
+        assert min(errs) >= -3 and max(errs) <= 0
+        assert -9 <= sum(errs) <= -3  # three people, each missing for about 2 s of 1-s samples
+
+
+def test_without_a_gap_a_fragment_is_an_instant_split_as_before():
+    clean, truth = clip(people=3, seconds=30)
+    assert set(nv.clip_errors(clean, truth, gap_profile(None), seeds=(1, 2))) == {0}
+    assert nv.clip_errors(clean, truth, gap_profile(None), seeds=(3,)) == nv.clip_errors(clean, truth, gap_profile(0), seeds=(3,))

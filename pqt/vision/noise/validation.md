@@ -42,6 +42,31 @@ samples with true occupancy 2-8.
    people come and go, which is far higher in MOT17's street scenes than in a queue. Design 1 cannot separate the mechanism
    from the scene, which is why design 2 is the decisive test.
 
-## Run 2: same clips
+## Run 2: same clips, with the visit miss rate (12 Oct 2026, PR #50, first bench run)
 
-Pending: the first `vision-bench.yml` run with N5 (measures `visitMissRate`, then runs the same-clip test).
+N1 now measures the visit miss rate: **0 of 56 visits** (≥ 1 s in a zone) went entirely untracked, which
+confirms run 1's first finding: the 8% per-frame miss rate must not drop whole visits.
+
+| Errors | n | Mean | SD | Exact | Within ±1 | Min | Max |
+|---|---|---|---|---|---|---|---|
+| Real pipeline | 73 | +0.055 | 0.949 | 50.7% | 95.9% | -1 | 5 |
+| store-sim + profile (30 seeds) | 2,190 | +0.416 | 1.222 | 43.1% | 81.6% | -6 | 5 |
+
+| Error | -6 | -5 | -4 | -3 | -2 | -1 | 0 | +1 | +2 | +3 | +4 | +5 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Real | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 26.0% | 50.7% | 19.2% | 2.7% | 0.0% | 0.0% | 1.4% |
+| Simulated | 0.1% | 0.1% | 0.3% | 0.7% | 2.4% | 12.8% | 43.1% | 25.7% | 9.5% | 3.2% | 1.9% | 0.2% |
+
+**KS D = 0.173, p = 0.026: rejected**, now in the other direction: the simulator over-counts (+0.42) and
+spreads too wide. With misses gone, nothing in N2 makes the count *drop*: a fragment was an instant split
+(old track out, new track in at the same moment), while on the clips a fragment means the person goes
+untracked for a while (the zone engine closes the lost track at its last sighting; the new track starts
+later), so the count is short by one during the gap and the entry/exit timing jitter's over-counts are
+partly cancelled.
+**Fix (this milestone):** N1 measures `tracking.fragmentation.gapMs` (last frame of the old track to the
+first frame of the new one) and N2 leaves the person untracked for that long at each fragment. Profiles
+without it keep the instant split.
+
+## Run 3: same clips, with fragment gaps
+
+Pending: the next `vision-bench.yml` run on this PR.

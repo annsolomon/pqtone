@@ -104,3 +104,14 @@ def test_whole_visits_never_tracked_are_counted_per_visit_not_per_frame():
     merged.merge(s)
     merged.merge(s2)
     assert (merged.visit_runs, merged.visit_missed) == (4, 1)
+
+
+def test_the_fragment_gap_is_measured():
+    gt, tracks, times = planted()
+    s = measure_sequence(gt, tracks, times, CAMERA, [], count_errors=[])
+    assert s.fragment_gaps_ms == [pytest.approx(1100.0)]  # A: last seen at frame 40, new id from frame 51
+    doc = profile(s, name="syn-gap", description="synthetic")
+    g = doc["tracking"]["fragmentation"]["gapMs"]
+    assert g["kind"] == "lognormal" and g["n"] == 1 and g["mu"] == pytest.approx(np.log(1100.0), abs=1e-3)
+    store_sim = pytest.importorskip("store_sim.vision_noise")
+    assert store_sim.validate(doc) == []
