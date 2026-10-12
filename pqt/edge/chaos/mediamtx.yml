@@ -8,6 +8,8 @@ webrtc: no
 srt: no
 paths:
   cam1:
-    # Publish over TCP: RTP over UDP inside the container is not needed and can silently lose every packet.
-    runOnInit: ffmpeg -hide_banner -loglevel warning -re -f lavfi -i testsrc2=size=640x360:rate=10 -c:v mjpeg -q:v 8 -f rtsp -rtsp_transport tcp rtsp://localhost:$RTSP_PORT/$MTX_PATH
+    # RTP/JPEG (RFC 2435) needs the standard Huffman tables; FFmpeg's encoder defaults to optimised ones,
+    # which its RTP packetiser refuses, so no frame was ever sent and MediaMTX dropped the silent publisher
+    # after its 10 s read timeout. Publish over TCP as well.
+    runOnInit: ffmpeg -hide_banner -loglevel warning -re -f lavfi -i testsrc2=size=640x360:rate=10 -pix_fmt yuvj420p -c:v mjpeg -huffman default -q:v 8 -f rtsp -rtsp_transport tcp rtsp://localhost:$RTSP_PORT/$MTX_PATH
     runOnInitRestart: yes
