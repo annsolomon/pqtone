@@ -64,3 +64,25 @@ def test_bench_scores_counts_when_a_zone_config_exists(tmp_path: Path, monkeypat
     z = c["score"]["zones"]["zone-1"]
     assert z["n"] == 6 and z["within1"] == 1.0 and z["pass"] is True
     assert "zone-1" in (tmp_path / "out" / "report.md").read_text()
+
+
+def test_roi_mode_needs_a_zone_config_and_judges_only_inside_the_region(tmp_path: Path, monkeypatch):
+    import yaml
+
+    rows = [f"{f},1,{5 + f},5,10,30,1,1,1.0" for f in range(1, 13)]
+    write_mot_sequence(tmp_path / "train", name="MOT17-02-FRCNN", gt_rows=rows, fps=2)
+    write_mot_sequence(tmp_path / "train", name="MOT17-04-FRCNN", gt_rows=rows, fps=2)
+    cfg = tmp_path / "cfg"
+    cfg.mkdir()
+    (cfg / "mot17-02.yaml").write_text(yaml.safe_dump({
+        "apiVersion": "camera.pqt/v1", "camera": "mot17-02", "store": "mot17", "units": "px",
+        "image": {"width": 64, "height": 48}, "homography": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        "zones": [{"id": "zone-1", "kind": "zone", "polygon": [[10, 20], [30, 20], [30, 40], [10, 40]]}]}), encoding="utf-8")
+    monkeypatch.setattr(bench, "resolve", lambda m: Path("unused.onnx"))
+    monkeypatch.setattr(bench, "YoloxOnnxDetector", GTDetector)
+    r = bench.bench_mot17(tmp_path / "train", model="fake", out=tmp_path / "out", sequences=("MOT17-02", "MOT17-04"),
+                          configs=cfg, mode="roi", schemas=Path(__file__).resolve().parents[3] / "schemas")
+    assert r["mode"] == "roi" and r["sequences"]["MOT17-04"] == {"skipped": "roi mode needs a zone config"}
+    s = r["sequences"]["MOT17-02"]
+    assert s["roi"] == [0, 0, 64, 48]  # zone grown by the 64 px minimum margin, clipped to the frame
+    assert "skipped" in (tmp_path / "out" / "report.md").read_text()
