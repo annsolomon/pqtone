@@ -14,13 +14,16 @@ import platform
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
+
 from . import __version__, cache
+from .detect.compose import Region, RoiDetector, TiledDetector, roi_for_zones
 from .detect.replay import ReplayDetector
 from .detect.yolox import YoloxOnnxDetector
 from .evaluate import evaluate
 from .metrics import evaluate_tracking
 from .models import MODELS, resolve
-from .mot import load_gt
+from .mot import FrameGT, GroundTruth, load_gt
 from .runner import run_detection
 from .sources import open_source
 from .track import ByteTrackConfig, frame_times, run_tracking, write_tracks
@@ -29,6 +32,19 @@ STATIC_SEQUENCES = ("MOT17-02", "MOT17-04", "MOT17-09")
 ATTRIBUTION = ("MOT17: Milan, Leal-Taixé, Reid, Roth, Schindler, \"MOT16: A Benchmark for Multi-Object "
                "Tracking\", arXiv:1603.00831. Licensed CC BY-NC-SA 3.0; used for benchmarking only (ADR-013).")
 DETECT_CONF = 0.05
+MODES = ("full", "roi", "tiled")
+
+
+def _in_region(b, r: Region) -> bool:
+    x, y = b.foot()
+    return r.x1 <= x < r.x2 and r.y1 <= y < r.y2
+
+
+def restrict(gt: GroundTruth, r: Region) -> GroundTruth:
+    """Ground truth limited to people whose foot point is inside the region (ROI mode is judged there)."""
+    return GroundTruth(gt.sequence, {f: FrameGT([(i, b) for i, b in fg.people if _in_region(b, r)],
+                                                 [b for b in fg.ignore if _in_region(b, r)])
+                                     for f, fg in gt.frames.items()}, gt.min_vis)
 
 
 def sequence_dir(root: Path, seq: str, variant: str = "FRCNN") -> Path:
@@ -42,36 +58,58 @@ def sequence_dir(root: Path, seq: str, variant: str = "FRCNN") -> Path:
 def bench_mot17(root: str | Path, *, model: str, out: str | Path, sequences: tuple[str, ...] = STATIC_SEQUENCES,
                 threads: int | None = None, max_frames: int | None = None,
                 tracker: ByteTrackConfig | None = None, configs: str | Path | None = None,
-                schemas: str | Path | None = None) -> dict:
+                schemas: str | Path | None = None, mode: str = "full") -> dict:
+    """mode: full (whole frame at the model's input size), roi (the zones' region plus a margin; needs a
+    zone config) or tiled (2 × 2 overlapping tiles plus the full frame)."""
+    if mode not in MODES:
+        raise ValueError(f"mode must be one of {MODES}")
     root, out = Path(root), Path(out)
     out.mkdir(parents=True, exist_ok=True)
     model_path = resolve(model)
-    det = YoloxOnnxDetector(model_path, name=model, conf=DETECT_CONF, threads=threads)
+    base = YoloxOnnxDetector(model_path, name=model, conf=DETECT_CONF, threads=threads)
     per_seq = {}
     for seq in sequences:
         sdir = sequence_dir(root, seq)
         src = open_source(sdir)
+        cam_path = Path(configs) / f"{seq.lower()}.yaml" if configs else None
+        region = None
+        if mode == "roi":
+            if cam_path is None or not cam_path.is_file():
+                per_seq[seq] = {"skipped": "roi mode needs a zone config"}
+                continue
+            from . import camera as cam
+
+            c = cam.load(cam_path)
+            region = roi_for_zones([np.array(z.polygon) for z in c.zones], width=c.width, height=c.height)
+            det = RoiDetector(base, region)
+        elif mode == "tiled":
+            det = TiledDetector(base)
+        else:
+            det = base
         stats = run_detection(src, det, out / "dets" / seq, max_frames=max_frames)
         meta, by_frame = cache.read(out / "dets" / seq)
-        gt = load_gt(sdir)
+        gt_full = load_gt(sdir)
+        gt = restrict(gt_full, region) if region else gt_full
         ev = evaluate(by_frame, gt, frames=meta["frames"])
         replay = ReplayDetector(out / "dets" / seq)
         tracks = run_tracking(replay, tracker)
         write_tracks(out / "tracks" / f"{seq}.parquet", tracks, times=frame_times(replay),
                      meta={"tracker": (tracker or ByteTrackConfig()).as_dict(), "detector": meta["detector"]})
+        tr_boxes = {f: [(t.track_id, t.box) for t in ts if region is None or _in_region(t.box, region)]
+                    for f, ts in tracks.items()}
         tr = evaluate_tracking({f: gt.people(f) for f in meta["frames"]}, {f: gt.ignore(f) for f in meta["frames"]},
-                               {f: [(t.track_id, t.box) for t in ts] for f, ts in tracks.items()}, meta["frames"])
+                               tr_boxes, meta["frames"])
         per_seq[seq] = {"source": src.info.as_dict(), "run": stats.as_dict(), "detection": ev.as_dict(),
-                        "tracking": tr}
-        cam_path = Path(configs) / f"{seq.lower()}.yaml" if configs else None
+                        "tracking": tr, **({"roi": region.as_list()} if region else {})}
         if cam_path is not None and cam_path.is_file():
-            per_seq[seq]["counts"] = _counts(seq, cam_path, tracks, frame_times(replay), gt, src.info.fps, out, schemas)
+            per_seq[seq]["counts"] = _counts(seq, cam_path, tracks, frame_times(replay), gt_full, src.info.fps, out,
+                                             schemas)
     report = {
-        "kind": "pqt.vision-bench/v1", "stage": "V6 detection + tracking + counts",
+        "kind": "pqt.vision-bench/v1", "stage": "V7 detection + tracking + counts", "mode": mode,
         "createdAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "commit": os.environ.get("GITHUB_SHA", "local"), "pqtVision": __version__,
         "model": {"name": model, **({"licence": MODELS[model].licence} if model in MODELS else {}),
-                  **{k: v for k, v in det.describe().items() if k in ("sha256", "input", "nms", "onnxruntime")}},
+                  **{k: v for k, v in base.describe().items() if k in ("sha256", "input", "nms", "onnxruntime")}},
         "detectConf": DETECT_CONF, "tracker": (tracker or ByteTrackConfig()).as_dict(),
         "runner": {"cpus": os.cpu_count(), "threads": threads, "python": platform.python_version(),
                    "machine": platform.machine()},
@@ -116,12 +154,15 @@ def _counts(seq: str, cam_path: Path, tracks: dict, times: dict[int, int], gt, f
 
 
 def render_md(r: dict) -> str:
-    lines = [f"# Vision bench: {r['model']['name']} on MOT17 (stage: {r['stage']})", "",
+    lines = [f"# Vision bench: {r['model']['name']}, {r.get('mode', 'full')} mode, on MOT17 (stage: {r['stage']})", "",
              f"Commit `{r['commit'][:12]}`, {r['createdAt']}, {r['runner']['cpus']} CPUs, "
              f"ONNX Runtime {r['model'].get('onnxruntime', '?')}, input {r['model'].get('input')}.", "",
              "| Sequence | Frames | GT people | AP50 | P@0.3 | R@0.3 | P@0.5 | R@0.5 | ms/frame |",
              "|---|---|---|---|---|---|---|---|---|"]
     for seq, s in r["sequences"].items():
+        if "skipped" in s:
+            lines.append(f"| {seq} | skipped: {s['skipped']} | | | | | | | |")
+            continue
         d, a3, a5 = s["detection"], s["detection"]["atThreshold"]["0.30"], s["detection"]["atThreshold"]["0.50"]
         lines.append(f"| {seq} | {d['frames']} | {d['gtPeople']} | {d['ap50']:.3f} | {a3['precision']:.3f} | "
                      f"{a3['recall']:.3f} | {a5['precision']:.3f} | {a5['recall']:.3f} | {s['run']['inferMsMean']:.0f} |")
