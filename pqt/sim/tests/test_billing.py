@@ -135,9 +135,14 @@ def test_every_served_shopper_gets_a_bill_or_a_cancelled_one(day):
     assert served - 4 <= day.billing_truth[0]["dayTotals"]["bills"] + cancelled <= served
 
 
-def test_stock_moves_with_sales_returns_and_deliveries(day):
+@pytest.mark.parametrize("name", ["billing_day", "stock_out"])
+def test_stock_moves_with_sales_returns_and_deliveries(name):
+    """Every stock snapshot equals the opening stock plus the movements dated before it (stock_out has a
+    delivery at the same instant as a snapshot: the case the reconcile job, B6, caught)."""
+    day = run(name)
+    overrides = (yaml.safe_load((SC / f"{name}.yaml").read_text())["billing"].get("stockOverrides") or {})
     cat = json.loads(Path("config/catalogue/store-001.json").read_text())
-    stock = {i["sku"]: i["initialStockMilli"] for i in cat["items"]}
+    stock = {i["sku"]: int(overrides.get(i["sku"], i["initialStockMilli"])) for i in cat["items"]}
     for e in billing_events(day):
         if e["type"] == "com.pqt.stock.movement":
             d = e["data"]

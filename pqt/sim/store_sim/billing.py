@@ -124,6 +124,7 @@ class BillingModel:
         self.anomalies: list[dict] = []
         self.stocked_out: set[str] = set()
         self.events = 0
+        self.watermark = 0  # latest record time so far: a snapshot is never dated before a movement it includes
 
     # -- helpers ------------------------------------------------------------------------------------
     def _hex(self, kind: str, number: str) -> str:
@@ -135,6 +136,7 @@ class BillingModel:
     def _rec(self, out: list[Rec], t: int, short: str, subject: str, data: dict) -> None:
         out.append((t, short, subject, {"storeId": self.store, **data}))
         self.events += 1
+        self.watermark = max(self.watermark, t)
 
     def _sale_line(self, out: list[Rec], t: int, b: Bill, n: int, ln: Line) -> None:
         self._rec(out, t, "pos.sale.line", f"till:{b.till}",
@@ -282,9 +284,12 @@ class BillingModel:
         return out
 
     def snapshot(self, t: int) -> list[Rec]:
+        """Stock on hand for every SKU, all dated at one instant no earlier than any movement already
+        applied (found by the reconcile job, B6: a snapshot dated before a delivery it included)."""
         out: list[Rec] = []
-        for k, sku in enumerate(self.skus):
-            self._rec(out, t + k, "stock.level", f"sku:{sku}",
+        at = max(t, self.watermark)
+        for sku in self.skus:
+            self._rec(out, at, "stock.level", f"sku:{sku}",
                       {"sku": sku, "qtyMilli": self.stock[sku], "unit": self.items[sku]["unit"], "source": SIM_SOURCE})
         return out
 
