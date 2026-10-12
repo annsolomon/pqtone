@@ -82,6 +82,52 @@ def _eval_track(a: argparse.Namespace) -> int:
     return 0
 
 
+HELD_OUT_LIMIT_M = 0.15  # plan V3: error < 15 cm on held-out points
+
+
+def _calibrate(a: argparse.Namespace) -> int:
+    import numpy as np
+    import yaml
+
+    from . import camera
+    from .geometry import CalibrationError, fit
+
+    doc = yaml.safe_load(Path(a.points).read_text(encoding="utf-8"))
+    pts = doc.get("points") or []
+    src = np.array([p["image"] for p in pts], dtype=float)
+    dst = np.array([p["floor"] for p in pts], dtype=float)
+    try:
+        cal = fit(src, dst, ransac_threshold=a.ransac_threshold)
+    except CalibrationError as e:
+        print(f"calibration failed: {e}", file=sys.stderr)
+        return 2
+    out = Path(a.out)
+    zones, membership = [], None
+    if out.is_file():  # keep zones and timing already configured for this camera
+        old = yaml.safe_load(out.read_text(encoding="utf-8")) or {}
+        zones, membership = old.get("zones", []), old.get("membership")
+    cfg = camera.calibrated_doc(camera=doc["camera"], store=doc["store"], width=doc["image"]["width"],
+                                height=doc["image"]["height"], src=src, dst=dst, cal=cal, zones=zones,
+                                membership=membership)
+    report = {"points": len(src), "inliers": int(cal.inliers.sum()),
+              "outliers": [i for i, ok in enumerate(cal.inliers) if not ok],
+              "fitErrorMaxM": round(float(cal.fit_error[cal.inliers].max()), 4),
+              "heldOutMaxM": cfg["calibration"]["heldOutMaxM"], "heldOutMeanM": cfg["calibration"]["heldOutMeanM"],
+              "limitM": HELD_OUT_LIMIT_M}
+    print(json.dumps(report, indent=2))
+    if cal.held_out_error.size == 0:
+        print("need at least 5 consistent points to measure held-out error; add points", file=sys.stderr)
+        return 2
+    if cal.held_out_max >= HELD_OUT_LIMIT_M:
+        print(f"held-out error {cal.held_out_max:.3f} m is not below {HELD_OUT_LIMIT_M} m; re-measure or add points",
+              file=sys.stderr)
+        return 2
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+    print(f"wrote {out}")
+    return 0
+
+
 def _bench(a: argparse.Namespace) -> int:
     from .bench import STATIC_SEQUENCES, bench_mot17
 
@@ -137,6 +183,12 @@ def main(argv: list[str] | None = None) -> int:
     et.add_argument("--tracks", required=True)
     et.add_argument("--min-vis", type=float, default=0.25)
     et.set_defaults(fn=_eval_track)
+
+    c = sub.add_parser("calibrate", help="fit the image-to-floor homography from measured points (V3)")
+    c.add_argument("--points", required=True, help="YAML: camera, store, image {width, height}, points [{image, floor}]")
+    c.add_argument("--out", required=True, help="camera config to write, e.g. config/cameras/cam-01.yaml")
+    c.add_argument("--ransac-threshold", type=float, default=0.10, help="metres")
+    c.set_defaults(fn=_calibrate)
 
     b = sub.add_parser("bench-mot17", help="detect and evaluate the fixed-camera MOT17 sequences (ADR-013)")
     b.add_argument("--root", required=True, help="the MOT17/train directory")
