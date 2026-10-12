@@ -7,19 +7,64 @@ This tier proves three things:
 2. the rules survive realistic vision noise;
 3. the edge never loses data.
 
+**Status (12 Oct 2026): in progress on the open-dataset track** (below). Your own footage is not
+needed until P3–P5 and the real exit gate.
+
 **Where it runs.**
 
 | Work | Machine |
 |---|---|
-| vision-lab training and evaluation, mtmc-fusion | A GPU rented by the hour |
-| Code, tests, pre-computed detections | Codespaces (CPU) |
-| edge-agent | Codespaces, with simulated cameras |
+| Benchmarks on open datasets (MOT17) | GitHub Actions, CPU (`.github/workflows/vision-bench.yml`); the dataset is downloaded there, never committed |
+| GPU work: detector challengers, fine-tuning, mtmc-fusion | Google Colab Pro (`vision/lab/notebooks/`); E2E Networks only as the fallback |
+| Code, tests, replay of pre-computed detections | Codespaces (CPU) |
+| edge-agent | Codespaces and CI, with simulated cameras |
+
+**Tier 2 status.**
+
+| Project | State |
+|---|---|
+| Prep (P1–P5) | P1 and P2 done (P2 awaits a legal review); P3–P5 wait for the camera and consent |
+| vision-lab (V1–V8) | In progress on MOT17 |
+| noise-model (N1–N5) | After V7 |
+| edge-agent (A1–A6) | After V5 |
+| mtmc-fusion (F1–F5) | Optional, after the gate |
 
 **Exit gate (T2 → T3).**
 - Queue count within ±1 of manual on at least 95% of samples, across 3 clips.
 - The edge chaos test passes with zero loss.
 - Rules re-scored under the measured noise profile, with thresholds held or revised in an ADR.
 - Privacy controls in place: blur, no identity, ephemeral embeddings.
+
+---
+
+## Open-dataset track (build before you have footage)
+
+Everything in vision-lab, noise-model and edge-agent can be built and benchmarked on a public dataset
+first, so the code is finished and measured when your own footage arrives. The open-dataset results are
+a **proxy**: they do not pass the exit gate above, which still needs 3 consented clips of your own.
+
+- **Dataset.** MOT17 (motchallenge.net), licensed CC BY-NC-SA 3.0. Its training split has exactly three
+  fixed-camera sequences with public ground truth: **MOT17-02, MOT17-04 and MOT17-09**. The moving-camera
+  sequences (05, 10, 11, 13) are excluded because a homography needs a fixed camera. ADR-013 records the
+  terms: benchmarking only, never training a shipped model, never committed to this repository.
+- **Where.** The dataset host is not reachable from Codespaces or this workspace, so
+  `.github/workflows/vision-bench.yml` downloads it on a GitHub runner, runs the pipeline on CPU, and
+  pushes only aggregate reports (metrics and per-sample count errors, no images, boxes or tracks) to the
+  `vision-results` branch.
+- **Ground truth.** Counts come from MOT17's annotations instead of a manual count: a person
+  (class 1 "pedestrian" or class 7 "static person", visibility ≥ 0.25, because a person standing still is
+  exactly what a queue holds) is in a zone when the bottom-centre of their box is inside
+  the zone polygon. This is exact and repeatable; a manual count of your own clips replaces it later.
+- **Zones.** One zone per sequence, in image pixels (MOT17 has no floor measurements, so the homography is
+  the identity), committed in `vision/lab/config/mot17/` **before** the first detector run. Each is sized
+  like a checkout queue area: its ground-truth occupancy is mostly between 1 and 10 people. Zones are
+  never changed after seeing predictions.
+- **Proxy bar (V7-OD).** On each of MOT17-02, 04 and 09: at least 95% of 1-second samples have
+  |predicted − ground truth| ≤ 1 and the mean absolute error is ≤ 0.5. Samples are 1 s apart, not 10 s,
+  because the clips are 17–35 s long. The metric is zone *occupancy*: MOT17's pedestrians walk, so the
+  dwell and speed conditions of queue membership (V4) are tested on synthetic tracks instead.
+- **Tags.** Open-dataset milestones are ticked with an `OD` note; the real-footage tag
+  `t2-vision-lab-v1` waits for your clips.
 
 ---
 
@@ -43,6 +88,16 @@ This tier proves three things:
    - Faces are blurred in any clip that is exported.
    - Write `docs/privacy/vision-data.md`: what you collect, why, how long you keep it, and who can see it.
 
+**Prep milestones.**
+
+| # | Milestone | Done when |
+|---|---|---|
+| ✅ P1 | **ADR-012: detector and licences.** YOLOX-S ships first; one Apache-2.0 challenger for V7; Ultralytics for learning only. Code and weight licences recorded for every vision dependency. | `docs/adr/012-detector-and-licences.md` merged |
+| ✅ P2 | **Privacy doc and consent form.** `docs/privacy/vision-data.md` and `docs/privacy/consent-form.md`, naming Google Colab and Drive as places consented research footage may be processed. | Both merged; a legal review before the first recording Note: Drafted; the legal review is still to do before the first recording. |
+| P3 | **Camera bring-up.** Camera on PoE, fixed mount, RTSP main and sub-stream identified; credentials in a local `.env`, never in git. | `ffprobe rtsp://…` prints the stream |
+| P4 | **Record.** 3–6 clips of 20–30 minutes with signed consent; video git-ignored; `vision/lab/data/MANIFEST.md` lists name, camera, duration and SHA-256. | Manifest merged; consent forms filed offline |
+| P5 | **Label.** CVAT, self-hosted: manual queue counts every 10 s as CSV, person boxes on sampled frames, at least 3 clips held out for the gate. | Count CSVs and the split are in the manifest |
+
 ---
 
 ## Project 6: vision-lab (`vision/lab/`)
@@ -56,8 +111,9 @@ The precise metric: on each of 3 held-out clips, at least 95% of 10-second sampl
 **Pipeline.**
 
 ```
-video/RTSP → decode (PyAV) → detector (people) → ByteTrack → foot point (bbox bottom-centre)
-  → homography H (image px → floor metres) → zone polygons (shapely) → per-track zone state
+video/RTSP → decode (OpenCV for files and image sequences; PyAV at the edge) → detector (people)
+  → ByteTrack → foot point (bbox bottom-centre)
+  → homography H (image px → floor metres) → zone polygons → per-track zone state
   → event emitter: zone.entered / zone.exited / queue.joined / queue.left / queue.length
   → CloudEvents (same schemas, source urn:pqt:edge:<store>:<camera>) → file | HTTP ingest
 ```
@@ -73,14 +129,18 @@ video/RTSP → decode (PyAV) → detector (people) → ByteTrack → foot point 
 | V7 | **Hit the bar.** Iterate on model size, input resolution, confidence, zone polygon and membership timing. Log every run in `vision/lab/experiments.md`: parameters, metric, commit. | ±1 on at least 95% of samples on 3 held-out clips. Tag `t2-vision-lab-v1`. | |
 | V8 | **Rules on real events.** Replay video events through the full stack (`make up`, then the HTTP sink). Score queue incidents against episodes derived from the manual counts with the same rule spec. | Precision and recall reported for real video. | |
 
-**GPU workflow.**
-- Use one Docker image (`vision/lab/Dockerfile.gpu`, CUDA base) for everything on the GPU.
-- Script `scripts/gpu-run.sh` with these steps:
-  1. rsync the code and clips to the box;
-  2. run the experiment;
-  3. pull back `reports/` and the Parquet detections;
-  4. **destroy the box**.
-- Billing is by the hour. Never leave it running, and never upload identifiable footage to a provider without a data-processing agreement.
+**GPU workflow (Colab Pro + Codespaces).** GitHub is the link; there is no second repository.
+1. Codespaces: code, tests and the notebook are merged to `main`.
+2. Colab Pro: `vision/lab/notebooks/detect.ipynb` clones the repository at a pinned commit, mounts Google
+   Drive, reads clips from `MyDrive/pqt/clips/`, runs the detector (an L4; an A100 only for fine-tuning) and
+   writes Parquet detections plus `run.json` to `MyDrive/pqt/runs/<run-id>/` as it goes, so a pre-empted
+   run resumes.
+3. Codespaces: download the run folder and place it in `vision/lab/data/runs/` (git-ignored); the replay
+   backend runs everything after detection on CPU.
+- Nothing pushes to GitHub from Colab. A compute unit burns while a GPU runtime is attached, even idle:
+  disconnect and delete the runtime after every run.
+- Fallback: E2E Networks with `scripts/gpu-run.sh` (rsync, run, pull back, **destroy the box**). Never
+  upload identifiable footage to any provider the consent form does not name.
 
 ---
 
