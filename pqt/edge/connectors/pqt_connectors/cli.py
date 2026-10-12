@@ -5,7 +5,8 @@
         --state /var/lib/pqt-edge/connector-state.db --outbox /var/lib/pqt-edge/outbox.db \\
         --bills bills.csv --payments payments.csv --movements purchases.csv --stock stock.csv --day-totals day.csv
 
-Exit codes: 0 every row imported; 2 some rows were reported (the rest was imported); 1 usage or setup error.
+Exit codes (import): 0 every row imported; 2 some rows were reported (the rest was imported); 1 usage or
+setup error. Exit codes (reconcile): 0 every day adds up; 3 at least one alert.
 """
 from __future__ import annotations
 
@@ -56,6 +57,21 @@ def _import(a: argparse.Namespace) -> int:
     return 2 if doc["errors"] else 0
 
 
+def _reconcile(a: argparse.Namespace) -> int:
+    from .reconcile import THRESHOLD_BP, reconcile
+
+    events = []
+    for path in a.events:
+        events += [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines() if line.strip()]
+    events = [e for e in events if e.get("type", "").startswith(("com.pqt.pos.", "com.pqt.stock."))]
+    reports = reconcile(events, tz=a.tz, threshold_bp=a.threshold_bp or THRESHOLD_BP)
+    if a.report:
+        Path(a.report).write_text(json.dumps(reports, indent=2) + "\n", encoding="utf-8")
+    for r in reports:
+        print(f"{r['storeId']} {r['businessDate']}: {'ok' if r['ok'] else 'ALERT ' + ', '.join(r['alerts'])}")
+    return 0 if all(r["ok"] for r in reports) else 3
+
+
 def _init_key(a: argparse.Namespace) -> int:
     new_key(a.key)
     print(f"wrote a new store key to {a.key} (mode 600). Back it up with the box: losing it orphans old references.")
@@ -84,6 +100,12 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("--day-totals")
     i.add_argument("--report", help="write the import report (files, events, bills, errors by row) here")
     i.set_defaults(fn=_import)
+    r = sub.add_parser("reconcile", help="B6: check a day's billing events against each other and the day totals")
+    r.add_argument("--events", nargs="+", required=True, help="JSONL files of X1 events")
+    r.add_argument("--tz", default="Asia/Kolkata", help="the store's time zone (business dates)")
+    r.add_argument("--threshold-bp", type=int, help="alert above this many basis points (default 50, ADR-034)")
+    r.add_argument("--report")
+    r.set_defaults(fn=_reconcile)
     a = p.parse_args(argv)
     try:
         return a.fn(a)
