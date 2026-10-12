@@ -214,7 +214,13 @@ def _bench(a: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="pqt-vision", description=__doc__)
+    args = sys.argv[1:] if argv is None else argv
+    if args and args[0] in ("e2e-post", "e2e-check"):  # V8 end-to-end steps (pqt_vision/e2e.py)
+        from . import e2e
+
+        return (e2e.main_post if args[0] == "e2e-post" else e2e.main_check)(args[1:])
+    p = argparse.ArgumentParser(prog="pqt-vision", description=__doc__,
+                                epilog="Also: e2e-post, e2e-check (V8 end-to-end steps; see pqt_vision/e2e.py).")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     d = sub.add_parser("detect", help="run a detector over a clip into a resumable Parquet cache")
@@ -306,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:
                    help="detect on the whole frame, on the zones' region, or on overlapping tiles (V7)")
     b.set_defaults(fn=_bench)
 
-    a = p.parse_args(argv)
+    a = p.parse_args(args)
     return a.fn(a)
 
 

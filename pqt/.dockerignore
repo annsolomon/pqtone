@@ -10,3 +10,7 @@ deploy/keycloak/generated
 **/__pycache__
 **/.pytest_cache
 **/*.egg-info
+# Tier 2: local clips, model files and detection caches never enter an image (docs/privacy/vision-data.md)
+vision/lab/data
+**/*.onnx
+**/*.parquet
