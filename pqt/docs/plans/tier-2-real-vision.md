@@ -24,7 +24,7 @@ needed until P3–P5 and the real exit gate.
 | Project | State |
 |---|---|
 | Prep (P1–P5) | P1 and P2 done (P2 awaits a legal review); P3–P5 wait for the camera and consent |
-| vision-lab (V1–V8) | V1–V6 done on MOT17; V7 open (best candidate 94.8% within ±1, bar not yet met; see `vision/lab/reports/mot17-bench.md`); V8 in review |
+| vision-lab (V1–V8) | V1–V6 and V8 done (open-dataset track); V7 open: best candidate 94.8% within ±1, bar not yet met (`vision/lab/reports/mot17-bench.md`) |
 | noise-model (N1–N5) | After V7 |
 | edge-agent (A1–A6) | After V5 |
 | mtmc-fusion (F1–F5) | Optional, after the gate |
@@ -124,10 +124,10 @@ video/RTSP → decode (OpenCV for files and image sequences; PyAV at the edge) �
 | ✅ V2 | **Tracking.** ByteTrack on top; tune `track_thresh`, `match_thresh`, buffer. Evaluate on your labelled frames with **TrackEval** (HOTA, IDF1, MOTA). | Metrics table in `vision/lab/reports/`. Note: OD: metrics table in vision/lab/reports/mot17-bench.md (HOTA, MOTA, IDF1 implemented in-house from the TrackEval definitions). |  |
 | ✅ V3 | **Homography.** Calibrate by clicking 4+ floor points with known metre positions (CLI tool now; becomes the onboarding wizard in Tier 3). Compute H with `cv2.findHomography` (RANSAC). Report reprojection error. | Error < 15 cm on held-out points; config saved as `config/cameras/<cam>.yaml`. Note: OD: `pqt-vision calibrate` refuses to write unless the leave-one-out error is < 15 cm; proven on synthetic geometry (1 px noise, a mis-measured point). The first real config/cameras/<cam>.yaml comes at P3. | 🧠 The homography maths |
 | ✅ V4 | **Zones and queue logic.** Polygons in floor metres. Queue membership = in the queue polygon **and** tracked for at least N s **and** moving below a speed threshold. Hysteresis on enter and exit to avoid boundary flicker. | Unit tests with synthetic tracks: boundary jitter does not toggle membership. Note: Synthetic tests: +-10 cm jitter for 60 s never toggles; walking through is not queueing; events released in event-time order. | 🧠 The membership state machine |
-| V5 | **Event emitter.** Emits the existing schemas. `trackId` is a pseudonymous per-camera id that rotates daily. Sends through the edge path (file now, edge-agent later). | Events pass `schemas/` validation; event-core accepts them. | |
+| ✅ V5 | **Event emitter.** Emits the existing schemas. `trackId` is a pseudonymous per-camera id that rotates daily. Sends through the edge path (file now, edge-agent later). | Events pass `schemas/` validation; event-core accepts them. Note: Events validated against schemas/ in tests; event-core accepted every one in make e2e-vision (CI, PR #44). |  |
 | ✅ V6 | **Ground truth from video.** Manual queue counts every 10 s as CSV → converted to the scorer's ground-truth format. The scorer gets a `count` mode (time-series error metrics) next to episode matching. | `pqt-scorer video --gt counts.csv --events events.jsonl` prints MAE and the % within ±1. Note: OD: ground truth from MOT17 annotations (pqt-vision gt-counts, 1 sample/s); manual 10 s counts use the same CSV. |  |
 | V7 | **Hit the bar.** Iterate on model size, input resolution, confidence, zone polygon and membership timing. Log every run in `vision/lab/experiments.md`: parameters, metric, commit. | ±1 on at least 95% of samples on 3 held-out clips. Tag `t2-vision-lab-v1`. | |
-| V8 | **Rules on real events.** Replay video events through the full stack (`make up`, then the HTTP sink). Score queue incidents against episodes derived from the manual counts with the same rule spec. | Precision and recall reported for real video. | |
+| ✅ V8 | **Rules on real events.** Replay video events through the full stack (`make up`, then the HTTP sink). Score queue incidents against episodes derived from the manual counts with the same rule spec. | Precision and recall reported for real video. Note: OD: synthetic camera tracks through gateway, event-core and rules engine (make e2e-vision, part of make all); R-QUEUE-001 matched the episode derived from the true queue length. Precision/recall on real video waits for our own clips (MOT17 clips are 17-35 s). |  |
 
 **GPU workflow (Colab Pro + Codespaces).** GitHub is the link; there is no second repository.
 1. Codespaces: code, tests and the notebook are merged to `main`.
