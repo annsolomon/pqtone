@@ -128,6 +128,28 @@ def _calibrate(a: argparse.Namespace) -> int:
     return 0
 
 
+def _propose_zones(a: argparse.Namespace) -> int:
+    import yaml
+
+    from .bench import STATIC_SEQUENCES, sequence_dir
+    from .mot import load_gt
+    from .mot_zones import camera_doc, propose_zone
+    from .sources import read_seqinfo
+
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    for seq in (a.sequences.split(",") if a.sequences else STATIC_SEQUENCES):
+        sdir = sequence_dir(Path(a.root), seq)
+        si = read_seqinfo(sdir)
+        w, h, fps = int(si["imwidth"]), int(si["imheight"]), float(si["framerate"])
+        prop = propose_zone(load_gt(sdir), width=w, height=h, fps=fps)
+        doc = camera_doc(seq, prop, width=w, height=h)
+        path = out / f"{seq.lower()}.yaml"
+        path.write_text(yaml.safe_dump(doc, sort_keys=False, width=120), encoding="utf-8")
+        print(f"{path.name}: zone {prop.polygon()} score {prop.score} mean {prop.mean} range {prop.min}-{prop.max}")
+    return 0
+
+
 def _bench(a: argparse.Namespace) -> int:
     from .bench import STATIC_SEQUENCES, bench_mot17
 
@@ -189,6 +211,12 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--out", required=True, help="camera config to write, e.g. config/cameras/cam-01.yaml")
     c.add_argument("--ransac-threshold", type=float, default=0.10, help="metres")
     c.set_defaults(fn=_calibrate)
+
+    z = sub.add_parser("propose-zones", help="queue-sized zones for MOT17 sequences from ground truth only (V4)")
+    z.add_argument("--root", required=True, help="the MOT17/train directory")
+    z.add_argument("--out", required=True)
+    z.add_argument("--sequences")
+    z.set_defaults(fn=_propose_zones)
 
     b = sub.add_parser("bench-mot17", help="detect and evaluate the fixed-camera MOT17 sequences (ADR-013)")
     b.add_argument("--root", required=True, help="the MOT17/train directory")
