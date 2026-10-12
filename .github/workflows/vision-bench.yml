@@ -81,6 +81,12 @@ jobs:
         run: pqt-vision fetch-model "$MODEL"
       - name: Unit tests (with the real model)
         run: python -m pytest -q vision/lab/tests 2>&1 | tee "$RUNNER_TEMP/tests.log"
+      - name: Zone proposals from ground truth only (V4)
+        run: |
+          pqt-vision propose-zones --root "$MOT17_DIR/MOT17/train" --out "$RUNNER_TEMP/zones" 2>&1 | tee "$RUNNER_TEMP/zones.log"
+          for f in "$RUNNER_TEMP"/zones/*.yaml; do
+            ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "zone proposal $(basename "$f")" "$f" 40
+          done
       - name: Bench
         run: |
           nproc
