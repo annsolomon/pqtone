@@ -19,7 +19,7 @@ HOT_SEED ?= $(shell echo $$(( $$(date +%s) + 15485863 )))
 export DOCKER_BUILDKIT := 1
 export COMPOSE_DOCKER_CLI_BUILD := 1
 
-.PHONY: all help bootstrap build offline up e2e e2e-pipeline e2e-http e2e-http-sim e2e-db e2e-ui e2e-hot-reload rules-publish rules-reset summary sim down clean logs ps
+.PHONY: all help bootstrap build offline up e2e e2e-pipeline e2e-http e2e-http-sim e2e-vision e2e-db e2e-ui e2e-hot-reload rules-publish rules-reset summary sim down clean logs ps
 
 all: bootstrap build test-it offline up e2e summary ## Build + unit tests, integration tests, offline quality gate, start the stack, live end-to-end tests, summary
 
@@ -44,7 +44,7 @@ up: bootstrap ## Start the stack and wait until it is healthy
 	$(COMPOSE) up -d
 	COMPOSE="$(COMPOSE)" ./scripts/wait-healthy.sh
 
-e2e: e2e-pipeline e2e-http e2e-http-sim e2e-db e2e-ui e2e-hot-reload ## Live end-to-end tests against the running stack
+e2e: e2e-pipeline e2e-http e2e-http-sim e2e-vision e2e-db e2e-ui e2e-hot-reload ## Live end-to-end tests against the running stack
 
 e2e-pipeline: ## Simulate SCENARIO through Kafka and score the incidents stored in PostgreSQL
 	rm -rf "$(WORK)/e2e" "$(WORK)/reports/e2e" && mkdir -p "$(WORK)/reports"
@@ -62,6 +62,15 @@ e2e-http-sim: ## The simulator's HTTP sink through the gateway with OAuth client
 	  PQT_INGEST_URL=http://localhost:8080/v1/events \
 	  store-sim run --seed $(HTTP_SEED) --scenario sim/scenarios/duplicates.yaml --out /work/http-sim --sink http'
 	$(RUN) tools pqt-scorer stored --case-dir /work/http-sim --timeout 180
+
+e2e-vision: ## Tier 2 V8: synthetic camera events through the gateway (edge client) and the rules engine; R-QUEUE as expected
+	rm -rf "$(WORK)/vision-e2e" && mkdir -p "$(WORK)/vision-e2e" "$(WORK)/reports"
+	$(COMPOSE) run --rm e2e-http sh -c 'PQT_CLIENT_SECRET="$$PQT_EDGE_CLIENT_SECRET" \
+	  PQT_CLIENT_ID=edge-demo \
+	  PQT_TOKEN_URL=http://localhost:8080/auth/realms/pqt/protocol/openid-connect/token \
+	  PQT_INGEST_URL=http://localhost:8080/v1/events \
+	  pqt-vision e2e-post --out /work/vision-e2e --rules config/rules.yaml --speed 4'
+	$(RUN) tools pqt-vision e2e-check --case-dir /work/vision-e2e --timeout 240 | tee "$(WORK)/reports/vision-e2e.json"
 
 openapi-check: ## Diff the running event-core's generated OpenAPI with services/event-core/openapi.yaml (E5)
 	$(COMPOSE) run --rm e2e-http python -m pytest -q -p no:cacheprovider tests/http/test_openapi_contract.py
