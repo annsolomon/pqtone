@@ -46,11 +46,13 @@ on an Intel N100-class edge box, where queue counting needs only 2–5 detection
 | pyarrow | Apache-2.0 | Parquet detection cache (the replay backend) |
 | PyYAML | MIT | Camera and zone configuration |
 | jsonschema | MIT | Event validation against `schemas/` |
-| motmetrics (py-motmetrics) | MIT | MOTA, IDF1 and identity switches in V2 |
 | pytest | MIT | Tests |
 
-Later milestones add PyAV (BSD-3-Clause) for RTSP at the edge, MediaMTX (MIT) for simulated cameras and
-toxiproxy (MIT) for chaos tests; each is restated in its milestone's PR.
+Tracking metrics (HOTA, MOTA, IDF1) are implemented in `pqt_vision/metrics.py` from the TrackEval
+definitions instead of adding py-motmetrics or TrackEval (V2).
+
+Later milestones add PyAV (BSD-3-Clause) for RTSP at the edge, MediaMTX (MIT) for simulated cameras
+and toxiproxy (MIT) for chaos tests; each is restated in its milestone's PR.
 
 ## Consequences
 

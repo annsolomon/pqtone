@@ -48,6 +48,40 @@ def _eval_det(a: argparse.Namespace) -> int:
     return 0
 
 
+def _tracker_config(a: argparse.Namespace):
+    from .track import ByteTrackConfig
+
+    base = ByteTrackConfig()
+    return ByteTrackConfig(**{k: (getattr(a, k) if getattr(a, k, None) is not None else v) for k, v in base.as_dict().items()})
+
+
+def _track(a: argparse.Namespace) -> int:
+    from .detect.replay import ReplayDetector
+    from .track import frame_times, run_tracking, write_tracks
+
+    replay = ReplayDetector(a.dets)
+    cfg = _tracker_config(a)
+    tracks = run_tracking(replay, cfg)
+    write_tracks(a.out, tracks, times=frame_times(replay), meta={"tracker": cfg.as_dict(), "detector": replay.meta["detector"]})
+    ids = {t.track_id for ts in tracks.values() for t in ts}
+    print(json.dumps({"frames": len(tracks), "tracks": len(ids), "boxes": sum(len(v) for v in tracks.values()),
+                      "tracker": cfg.as_dict()}, indent=2))
+    return 0
+
+
+def _eval_track(a: argparse.Namespace) -> int:
+    from .metrics import evaluate_tracking
+    from .mot import load_gt
+    from .track import read_tracks
+
+    _, tracks = read_tracks(a.tracks)
+    gt = load_gt(a.seq, min_vis=a.min_vis)
+    frames = sorted(tracks)
+    print(json.dumps(evaluate_tracking({f: gt.people(f) for f in frames}, {f: gt.ignore(f) for f in frames},
+                                       tracks, frames), indent=2))
+    return 0
+
+
 def _bench(a: argparse.Namespace) -> int:
     from .bench import STATIC_SEQUENCES, bench_mot17
 
@@ -89,6 +123,20 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("--dets", required=True)
     e.add_argument("--min-vis", type=float, default=0.25)
     e.set_defaults(fn=_eval_det)
+
+    t = sub.add_parser("track", help="ByteTrack over a detection cache into a tracks Parquet file")
+    t.add_argument("--dets", required=True)
+    t.add_argument("--out", required=True)
+    for name, typ in (("track_thresh", float), ("low_thresh", float), ("new_track_thresh", float),
+                      ("match_thresh", float), ("buffer_frames", int)):
+        t.add_argument("--" + name.replace("_", "-"), dest=name, type=typ)
+    t.set_defaults(fn=_track)
+
+    et = sub.add_parser("eval-track", help="HOTA, MOTA and IDF1 of a tracks file against MOT ground truth")
+    et.add_argument("--seq", required=True)
+    et.add_argument("--tracks", required=True)
+    et.add_argument("--min-vis", type=float, default=0.25)
+    et.set_defaults(fn=_eval_track)
 
     b = sub.add_parser("bench-mot17", help="detect and evaluate the fixed-camera MOT17 sequences (ADR-013)")
     b.add_argument("--root", required=True, help="the MOT17/train directory")
