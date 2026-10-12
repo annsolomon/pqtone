@@ -29,7 +29,7 @@ def zone_events(camera: CameraConfig, tracks: dict[int, list[tuple[int, Box]]], 
 
 
 def cloud_events(camera: CameraConfig, tracks: dict[int, list[tuple[int, Box]]], times: dict[int, int], *,
-                 start_ms: int, run_key: str, secret: bytes, trailing_ms: int = 0) -> list[dict]:
-    events, last = zone_events(camera, tracks, times)
+                 start_ms: int, run_key: str, secret: bytes, trailing_ms: int = 0, lost_after_s: float = 2.0) -> list[dict]:
+    events, last = zone_events(camera, tracks, times, lost_after_s=lost_after_s)
     em = Emitter(camera, start_ms, run_key, TrackPseudonymiser(secret, camera.camera))
     return em.begin() + em.emit(events) + em.end(last, trailing_ms=trailing_ms)
