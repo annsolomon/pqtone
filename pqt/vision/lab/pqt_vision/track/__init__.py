@@ -12,7 +12,7 @@ from ..detect.replay import ReplayDetector
 from ..types import Box, Frame
 from .bytetrack import ByteTrackConfig, ByteTracker, TrackOut
 
-__all__ = ["ByteTrackConfig", "ByteTracker", "TrackOut", "frame_times", "run_tracking", "write_tracks", "read_tracks"]
+__all__ = ["ByteTrackConfig", "ByteTracker", "TrackOut", "frame_times", "run_tracking", "write_tracks", "read_tracks", "read_times"]
 
 SCHEMA = pa.schema([
     ("frame", pa.int32()), ("t_ms", pa.int64()), ("track_id", pa.int32()),
@@ -43,12 +43,19 @@ def write_tracks(path: str | Path, tracks: dict[int, list[TrackOut]], *, times: 
     table = pa.Table.from_arrays([pa.array(c, type=fl.type) for c, fl in zip(cols, SCHEMA)], schema=SCHEMA)
     table = table.replace_schema_metadata({b"pqt.format": FORMAT.encode(),
                                            b"pqt.meta": json.dumps(meta, sort_keys=True).encode(),
-                                           b"pqt.frames": json.dumps(sorted(tracks)).encode()})
+                                           b"pqt.frames": json.dumps(sorted(tracks)).encode(),
+                                           b"pqt.times": json.dumps({str(f): times[f] for f in sorted(tracks)}).encode()})
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.tmp")
     pq.write_table(table, tmp)
     os.replace(tmp, path)
+
+
+def read_times(path: str | Path) -> dict[int, int]:
+    """Event time (ms) of every frame covered by a tracks file, including frames with no tracks."""
+    md = pq.read_schema(path).metadata or {}
+    return {int(f): int(t) for f, t in json.loads(md[b"pqt.times"]).items()}
 
 
 def read_tracks(path: str | Path) -> tuple[dict, dict[int, list[tuple[int, Box]]]]:

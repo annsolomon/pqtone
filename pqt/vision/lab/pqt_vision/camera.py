@@ -24,6 +24,9 @@ class ZoneSpec:
     kind: str  # "zone" | "queue"
     polygon: tuple[tuple[float, float], ...]
     queue_id: str | None = None
+    open_registers: int = 1
+    head: tuple[float, float] | None = None
+    head_radius: float = 0.75
 
     @property
     def queue(self) -> str:
@@ -76,7 +79,9 @@ def from_doc(doc: dict) -> CameraConfig:
     ids = [z["id"] for z in doc["zones"]]
     if len(ids) != len(set(ids)):
         raise CameraConfigError("zone ids must be unique")
-    zones = [ZoneSpec(z["id"], z["kind"], tuple((float(x), float(y)) for x, y in z["polygon"]), z.get("queueId"))
+    zones = [ZoneSpec(z["id"], z["kind"], tuple((float(x), float(y)) for x, y in z["polygon"]), z.get("queueId"),
+                      int(z.get("openRegisters", 1)), tuple(map(float, z["head"])) if "head" in z else None,
+                      float(z.get("headRadius", 0.75)))
              for z in doc["zones"]]
     m = doc.get("membership", {})
     d = Membership()

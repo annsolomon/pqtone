@@ -150,6 +150,46 @@ def _propose_zones(a: argparse.Namespace) -> int:
     return 0
 
 
+def _events(a: argparse.Namespace) -> int:
+    import os
+    import secrets as _secrets
+    import time
+
+    from . import camera as cam
+    from .emitter import contract_validator, parse_iso, schemas_dir_default, write_jsonl
+    from .pipeline import cloud_events
+    from .track import read_times, read_tracks
+
+    if a.ephemeral_secret:
+        secret = _secrets.token_bytes(32)  # benchmarks: ids are unlinkable even between runs
+    else:
+        value = os.environ.get(a.secret_env, "")
+        if len(value) < 16:
+            # Never echo anything secret-related from the command line (CodeQL py/clear-text-logging).
+            print("the track secret is not set or shorter than 16 characters (see --secret-env), "
+                  "or pass --ephemeral-secret", file=sys.stderr)
+            return 2
+        secret = value.encode()
+    camera = cam.load(a.camera)
+    _, tracks = read_tracks(a.tracks)
+    start = parse_iso(a.start) if a.start else int(time.time()) * 1000
+    events = cloud_events(camera, tracks, read_times(a.tracks), start_ms=start, run_key=a.run_key, secret=secret,
+                          trailing_ms=int(a.trailing_s * 1000))
+    if a.validate:
+        check = contract_validator(a.schemas or schemas_dir_default())
+        bad = [(e["type"], err) for e in events for err in check(e)]
+        if bad:
+            for t, err in bad[:20]:
+                print(f"{t}: {err}", file=sys.stderr)
+            return 1
+    n = write_jsonl(a.out, events)
+    counts: dict[str, int] = {}
+    for e in events:
+        counts[e["type"].removeprefix("com.pqt.store.")] = counts.get(e["type"].removeprefix("com.pqt.store."), 0) + 1
+    print(json.dumps({"events": n, "byType": counts, "source": events[0]["source"] if events else None}, indent=2))
+    return 0
+
+
 def _bench(a: argparse.Namespace) -> int:
     from .bench import STATIC_SEQUENCES, bench_mot17
 
@@ -217,6 +257,19 @@ def main(argv: list[str] | None = None) -> int:
     z.add_argument("--out", required=True)
     z.add_argument("--sequences")
     z.set_defaults(fn=_propose_zones)
+
+    ev = sub.add_parser("events", help="zone and queue CloudEvents from a tracks file and a camera config (V5)")
+    ev.add_argument("--tracks", required=True)
+    ev.add_argument("--camera", required=True)
+    ev.add_argument("--out", required=True, help="events.jsonl")
+    ev.add_argument("--run-key", required=True, help="names the input (clip id); same input, same event ids")
+    ev.add_argument("--start", help="wall-clock time of the clip's first frame, ISO-8601 with Z (default: now)")
+    ev.add_argument("--trailing-s", type=float, default=0.0, help="clock ticks after the end, so rule windows close")
+    ev.add_argument("--secret-env", default="PQT_TRACK_SECRET", help="environment variable holding the track secret")
+    ev.add_argument("--ephemeral-secret", action="store_true", help="random secret for this run only (benchmarks)")
+    ev.add_argument("--validate", action="store_true", help="check every event against schemas/")
+    ev.add_argument("--schemas", help="schemas/ directory (default: found from the package location)")
+    ev.set_defaults(fn=_events)
 
     b = sub.add_parser("bench-mot17", help="detect and evaluate the fixed-camera MOT17 sequences (ADR-013)")
     b.add_argument("--root", required=True, help="the MOT17/train directory")
