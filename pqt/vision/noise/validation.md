@@ -67,6 +67,42 @@ partly cancelled.
 first frame of the new one) and N2 leaves the person untracked for that long at each fragment. Profiles
 without it keep the instant split.
 
-## Run 3: same clips, with fragment gaps
+## Run 3: same clips, with fragment gaps (12 Oct 2026, PR #50, commit `e1dc1ef`)
 
-Pending: the next `vision-bench.yml` run on this PR.
+Measured gaps: lognormal μ = 6.60, σ = 1.20 (median 0.74 s, n = 21 fragments).
+
+| Errors | n | Mean | SD | Exact | Within ±1 | Min | Max |
+|---|---|---|---|---|---|---|---|
+| Real pipeline | 73 | +0.055 | 0.949 | 50.7% | 95.9% | -1 | 5 |
+| store-sim + profile (30 seeds) | 2,190 | +0.189 | 1.246 | 39.3% | 81.5% | -5 | 5 |
+
+| Error | -5 | -4 | -3 | -2 | -1 | 0 | +1 | +2 | +3 | +4 | +5 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Real | 0.0% | 0.0% | 0.0% | 0.0% | 26.0% | 50.7% | 19.2% | 2.7% | 0.0% | 0.0% | 1.4% |
+| Simulated | 0.1% | 0.3% | 1.1% | 5.2% | 18.6% | 39.3% | 23.6% | 7.4% | 2.9% | 1.4% | 0.1% |
+
+**KS D = 0.121, p = 0.236: not rejected.** The bias is now close (+0.19 vs +0.06). The simulator is still
+**wider** than reality (SD 1.25 vs 0.95; 81.5% vs 95.9% within ±1): each mechanism is applied
+independently, while on the clips misses, fragments and jitter partly cancel. For scoring rules that is
+the safe direction: the simulator is harsher than the camera. With 73 real samples, "not rejected" is weak
+evidence; the real sample grows with our own footage (P5).
+
+The committed profile `config/noise/mot17-yolox-s-roi.yaml` is the one measured in this run (it carries
+`visitMissRate` and `fragmentation.gapMs`).
+
+## Design 1 again, with the run 3 profile
+
+`make noise-validate`: simulated SD 0.20, 96.1% exact, KS D = 0.241, p < 0.001. Same mechanisms, same
+profile, very different errors: in our scenarios shoppers stay for minutes, so entries and exits (where
+almost all count errors happen) are rare per sample; on MOT17's streets people cross a zone every few
+seconds. Count error is a property of camera *and* scene, which is why design 2 is the test of the model
+and design 1 is not.
+
+## Conclusion (N5)
+
+- The model is not rejected on the decisive same-clip test (p = 0.236), after two fixes it forced: whole
+  visits are missed at the measured visit rate (0 of 56), not the per-frame rate; fragments leave a gap.
+- It errs on the harsh side (wider errors), which is acceptable for rule scoring (N3, N4).
+- Count error alone does not describe what noise does to rules: ID switches and fragments also cut one
+  person's visit into several tracks, which shortens per-track dwell. N3 and N4 score that directly.
+- Re-run on our own footage at P5; the procedure and code stay as they are.
