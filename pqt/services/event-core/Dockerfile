@@ -10,7 +10,10 @@ RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp -DskipITs verify
 
 # glibc base: the zstd native library used by the Kafka client needs it.
 FROM eclipse-temurin:21-jre
+# The base image ships Canonical's pebble service manager (/usr/bin/pebble), which nothing here runs; it is
+# removed so its Go runtime CVEs (e.g. CVE-2026-78667, -78669, -97031 on 12 Oct 2026) are not in our image.
 RUN apt-get update && apt-get install -y --no-install-recommends wget && rm -rf /var/lib/apt/lists/* \
+ && rm -f /usr/bin/pebble \
  && groupadd --system --gid 10001 app && useradd --system --uid 10001 --gid app --no-create-home app
 WORKDIR /app
 COPY --from=build /src/services/event-core/target/event-core.jar /app/event-core.jar
