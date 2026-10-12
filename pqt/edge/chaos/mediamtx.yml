@@ -1,11 +1,13 @@
 # Simulated camera for the edge chaos test (A1): MediaMTX (MIT) serves a synthetic FFmpeg test pattern
 # as RTSP. No footage of people anywhere.
-logLevel: warn
+# info: publisher and reader sessions (open, close and why) appear in `docker compose logs cam-sim`.
+logLevel: info
 rtmp: no
 hls: no
 webrtc: no
 srt: no
 paths:
   cam1:
-    runOnInit: ffmpeg -hide_banner -loglevel error -re -f lavfi -i testsrc2=size=640x360:rate=10 -c:v mjpeg -q:v 8 -f rtsp rtsp://localhost:$RTSP_PORT/$MTX_PATH
+    # Publish over TCP: RTP over UDP inside the container is not needed and can silently lose every packet.
+    runOnInit: ffmpeg -hide_banner -loglevel warning -re -f lavfi -i testsrc2=size=640x360:rate=10 -c:v mjpeg -q:v 8 -f rtsp -rtsp_transport tcp rtsp://localhost:$RTSP_PORT/$MTX_PATH
     runOnInitRestart: yes

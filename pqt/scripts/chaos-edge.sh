@@ -40,22 +40,31 @@ agent=$($EDGE ps -q edge-agent)
 net="$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$agent" | tr ' ' '\n' | grep '_edge$')"
 log "agent container ${agent:0:12} on network $net"
 
-# A1: the simulated camera answers as RTSP.
+camera_logs() { log "--- cam-sim logs ---"; $EDGE logs --no-color --tail 60 cam-sim | sed 's/^/[cam-sim] /'; }
+probe_camera() {
+  $EDGE exec -T cam-sim ffprobe -v error -rtsp_transport tcp -show_entries stream=codec_name,width,height \
+    -of csv=p=0 rtsp://localhost:8554/cam1 2>/dev/null || true
+}
+
+# A1: the simulated camera answers as RTSP with decodable frames (a non-zero size needs a decoded JPEG,
+# so a publisher whose packets never arrive does not pass).
 probe=""
 for _ in $(seq 1 20); do
-  probe=$($EDGE exec -T cam-sim ffprobe -v error -rtsp_transport tcp -show_entries stream=codec_name,width,height \
-            -of csv=p=0 rtsp://localhost:8554/cam1 2>/dev/null || true)
-  [ -n "$probe" ] && break
+  probe=$(probe_camera)
+  [[ "$probe" =~ ^[a-z0-9]+,[1-9][0-9]*,[1-9][0-9]*$ ]] && break
   sleep 1
 done
-[ -n "$probe" ] || { log "ffprobe could not read rtsp://cam-sim:8554/cam1"; $EDGE logs --tail 50 cam-sim; exit 1; }
+[[ "$probe" =~ ^[a-z0-9]+,[1-9][0-9]*,[1-9][0-9]*$ ]] || {
+  log "ffprobe could not read frames from rtsp://cam-sim:8554/cam1 (got '${probe}')"; camera_logs; exit 1; }
 log "ffprobe rtsp://cam-sim:8554/cam1 -> $probe"
 
 sleep "$WARM"
 sent0=$(status | jq_py 'd.get("uplink", {}).get("sent", 0)')
 frames0=$(status | jq_py 'd.get("cameras", [{}])[0].get("frames", 0)')
 log "warm-up: $frames0 frames, $sent0 events sent"
-[ "$frames0" -gt 0 ] || { log "no frames from the camera"; $EDGE logs --tail 80 edge-agent cam-sim; exit 1; }
+[ "$frames0" -gt 0 ] || {
+  log "no frames from the camera (ffprobe now: '$(probe_camera)')"; camera_logs
+  log "--- edge-agent logs ---"; $EDGE logs --no-color --tail 40 edge-agent; exit 1; }
 [ "$sent0" -gt 0 ] || { log "nothing reached event-core before the cut"; $EDGE logs --tail 80 edge-agent; exit 1; }
 
 log "CUT: disconnecting the agent from the gateway for ${CUT}s"
