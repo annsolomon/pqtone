@@ -117,6 +117,7 @@ class BillingModel:
         self.tender_p = np.array([cfg["tenders"][k] for k in self.tender_names], dtype=float)
         self.epoch_ms = epoch_ms
         self.bills: list[Bill] = []
+        self.n_issued = 0  # every bill number ever used, including bills cancelled whole: numbers never repeat
         self.out_by_tender: dict[str, int] = {}
         self.in_by_tender: dict[str, int] = {}
         self.refunds = 0
@@ -189,7 +190,8 @@ class BillingModel:
         lines = self._basket(t)
         if not lines:
             return out
-        b = Bill(len(self.bills) + 1, till, "", lines)
+        self.n_issued += 1
+        b = Bill(self.n_issued, till, "", lines)
         b.hexref = self._hex("bill", str(b.no))
         tt = t
         for n, ln in enumerate(b.lines, 1):

@@ -219,3 +219,16 @@ def test_the_catalogue_changes_the_run_id(tmp_path):
     ra = simulate(seed=1, layout_path=LAYOUT, scenario_path=str(a), rules_path=RULES)
     rb = simulate(seed=1, layout_path=LAYOUT, scenario_path=str(b), rules_path=RULES)
     assert ra.run_id != rb.run_id and ra.manifest["billing"]["catalogueSha256"] != rb.manifest["billing"]["catalogueSha256"]
+
+
+def test_bill_references_never_repeat_even_after_a_whole_bill_is_cancelled():
+    """A cancelled bill used to free its number, so the next bill reused its reference (found by the
+    connector round trip, B4)."""
+    for name in ("billing_day", "refund_abuse", "stock_out"):
+        out = run(name)
+        first_seen: dict[str, str] = {}
+        for e in billing_events(out):
+            if e["type"] == "com.pqt.pos.sale.line" and e["data"]["revision"] == 0 and e["data"]["lineNo"] == 1:
+                ref = e["data"]["billRef"]
+                assert ref not in first_seen, f"{name}: {ref} started twice"
+                first_seen[ref] = e["time"]
