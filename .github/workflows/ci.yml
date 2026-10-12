@@ -140,6 +140,7 @@ jobs:
         run: |
           [ -s .work/reports/chaos-edge.log ] && ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "chaos-edge (A4)" .work/reports/chaos-edge.log 30 || true
           [ -s .work/reports/vision-e2e.json ] && ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "e2e-vision (V8)" .work/reports/vision-e2e.json 40 || true
+          [ -s .work/reports/noise/noise.md ] && ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "offline-noise (N3)" .work/reports/noise/noise.md 80 || true
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
