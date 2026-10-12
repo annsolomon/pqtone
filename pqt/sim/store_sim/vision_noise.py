@@ -10,11 +10,13 @@ manifest and folded into the run id, so two runs with different profiles never s
 
 `apply` turns the clean events into what a camera pipeline with that profile would have reported:
 
-- visits (zone.entered → zone.exited of one track) are missed with probability
-  missRate(base + perPersonInZone × people already in the zone, capped at max; per-zone overrides);
+- visits (zone.entered → zone.exited of one track) are missed with probability visitMissRate when the
+  profile has one (N5); otherwise missRate(base + perPersonInZone × people already in the zone, capped at
+  max; per-zone overrides), a per-frame rate applied per visit, which overstates missed visits;
 - the rest get entry/exit timing jitter;
 - a visit can fragment (the tracker loses the person and finds them again under a new id) and suffer
-  ID switches (Poisson in the visit's length): each splits it into pieces with new track ids;
+  ID switches (Poisson in the visit's length): each splits it into pieces with new track ids; a fragment
+  leaves the person untracked for fragmentation.gapMs (N5) before the new piece starts;
 - phantom tracks appear at falsePositivesPerMinute with phantomTrackDurationMs durations;
 - queue membership (queue.joined → queue.left) follows its visit (dropped, shifted and split with it;
   a phantom joins a queue zone's queue after 5 s, the zone engine's minimum dwell), and queue.length is
@@ -118,7 +120,9 @@ def is_identity(doc: dict) -> bool:
     miss = det["missRate"]
     zones_zero = all(z.get("missRate", {}).get("base", 0) == 0 and not z.get("missRate", {}).get("perPersonInZone")
                      for z in doc.get("zones", {}).values())
-    return (miss["base"] == 0 and not miss.get("perPersonInZone") and zones_zero and det["falsePositivesPerMinute"] == 0
+    visit_zero = det.get("visitMissRate", {}).get("probability", 0) == 0
+    return (miss["base"] == 0 and not miss.get("perPersonInZone") and zones_zero and visit_zero
+            and det["falsePositivesPerMinute"] == 0
             and trk["idSwitchesPerTrackMinute"] == 0 and trk["fragmentation"]["probability"] == 0
             and _zero(tim["entryJitterMs"]) and _zero(tim["exitJitterMs"]))
 
@@ -139,6 +143,9 @@ def scale(doc: dict, factor: float, *, name: str | None = None) -> dict:
             m["max"] = min(1.0, m["max"] * factor)
 
     miss(d["detection"]["missRate"])
+    if "visitMissRate" in d["detection"]:
+        vm = d["detection"]["visitMissRate"]
+        vm["probability"] = min(1.0, vm["probability"] * factor)
     for z in d.get("zones", {}).values():
         if "missRate" in z:
             miss(z["missRate"])
@@ -178,6 +185,11 @@ class _QVisit:
 
 
 def _miss_p(doc: dict, zone: str, occupancy: int) -> float:
+    """Probability that a whole visit is missed: the measured visit miss rate when the profile has one (N5),
+    otherwise the per-frame miss rate applied per visit (the pre-N5 upper bound)."""
+    vm = doc["detection"].get("visitMissRate")
+    if vm is not None:
+        return float(vm["probability"])
     m = doc.get("zones", {}).get(zone, {}).get("missRate") or doc["detection"]["missRate"]
     p = m["base"] + m.get("perPersonInZone", 0.0) * occupancy
     return float(min(p, m.get("max", 1.0), 1.0))
@@ -298,10 +310,15 @@ def _apply_store(evs: list[dict], doc: dict, rng: np.random.Generator, counts: C
             if t_out <= t_in:
                 t_out = t_in  # squeezed against the end of the run
         splits: list[int] = []
+        gaps: dict[int, int] = {}  # fragment split time -> how long nobody tracks the person (N5)
         if t_out is not None and t_out - t_in > 2:
             if fr["probability"] > 0 and rng.random() < fr["probability"]:
                 extra = max(1, int(round(sample(fr.get("extraTracks"), rng, 1.0))))
-                splits += [int(t_in + 1 + rng.random() * (t_out - t_in - 2)) for _ in range(extra)]
+                frag_at = [int(t_in + 1 + rng.random() * (t_out - t_in - 2)) for _ in range(extra)]
+                splits += frag_at
+                if fr.get("gapMs"):  # drawn only for profiles that carry it: older profiles replay unchanged
+                    for s_ in frag_at:
+                        gaps[s_] = max(gaps.get(s_, 0), max(0, int(round(sample(fr["gapMs"], rng)))))
                 counts["visionFragments"] += extra
             if sw_rate > 0:
                 n_sw = int(rng.poisson(sw_rate * (t_out - t_in) / 60000.0))
@@ -313,6 +330,8 @@ def _apply_store(evs: list[dict], doc: dict, rng: np.random.Generator, counts: C
         for k, trk in enumerate(ids):
             start = bounds[k]
             end = bounds[k + 1] if k + 1 < len(bounds) else None
+            if k and gaps.get(start):  # a fragment: the new track starts after the untracked gap
+                start = min(start + gaps[start], t_max) if end is None else max(start, min(start + gaps[start], end - 1))
             tpl_in = v.i_in
             b.put(tpl_in, start, type_="zone.entered", subject=f"track:{trk}", data={"zoneId": v.zone, "trackId": trk},
                   rank=base_rank + k * 1e-3, key=f"{evs[v.i_in]['id']}:in:{k}")
@@ -333,10 +352,14 @@ def _apply_store(evs: list[dict], doc: dict, rng: np.random.Generator, counts: C
             qb = [j0] + cuts + ([j1] if j1 is not None else [])
             for k in range(len(qb) - (0 if j1 is None else 1)):
                 piece = ids[sum(1 for s in sorted(splits) if s <= qb[k])]
-                b.put(qv.i_join, qb[k], type_="queue.joined", subject=f"queue:{qv.queue}",
+                t_join = qb[k]
+                if k and gaps.get(qb[k]):  # rejoins only once the new track exists
+                    nxt = qb[k + 1] if k + 1 < len(qb) else None
+                    t_join = qb[k] + gaps[qb[k]] if nxt is None else max(qb[k], min(qb[k] + gaps[qb[k]], nxt - 1))
+                b.put(qv.i_join, t_join, type_="queue.joined", subject=f"queue:{qv.queue}",
                       data={"queueId": qv.queue, "trackId": piece}, rank=float(qv.i_join) + k * 1e-3,
                       key=f"{evs[qv.i_join]['id']}:join:{k}")
-                noisy_q.append((qb[k], +1, float(qv.i_join) + k * 1e-3, qv.queue))
+                noisy_q.append((t_join, +1, float(qv.i_join) + k * 1e-3, qv.queue))
                 if k + 1 < len(qb):
                     last = k + 1 == len(qb) - 1 and j1 is not None
                     b.put(qv.i_left if qv.i_left is not None else qv.i_join, qb[k + 1], type_="queue.left",
