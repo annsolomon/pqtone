@@ -165,7 +165,9 @@ def _events(a: argparse.Namespace) -> int:
     else:
         value = os.environ.get(a.secret_env, "")
         if len(value) < 16:
-            print(f"set {a.secret_env} to a secret of at least 16 characters (or pass --ephemeral-secret)", file=sys.stderr)
+            # Never echo anything secret-related from the command line (CodeQL py/clear-text-logging).
+            print("the track secret is not set or shorter than 16 characters (see --secret-env), "
+                  "or pass --ephemeral-secret", file=sys.stderr)
             return 2
         secret = value.encode()
     camera = cam.load(a.camera)
