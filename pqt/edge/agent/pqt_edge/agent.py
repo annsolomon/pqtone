@@ -102,6 +102,22 @@ class Agent:
                 if not w.paused:
                     log.error("outbox full of unsent events: pausing perception on %s", w.spec.id)
                 w.paused = True  # these events are not made again; the stream resumes from the next frame
+        self._flush(w)
+
+    def _flush(self, w: CameraWorker) -> None:
+        """On a clean stop, release what the zone engine still holds in its reorder buffer (up to
+        lost-after + queue hand-over + 1 s of events, N4) instead of losing it with the process. People
+        still in view are closed as lost; after a restart they come back as `appeared` and the rules
+        stitch their visits (ADR-035)."""
+        try:
+            tail = w.perception.finish(int(time.time() * 1000))
+            if tail:
+                self.outbox.append(tail)
+                w.events += len(tail)
+        except OutboxFull:
+            log.error("outbox full: the events %s's zone engine still held were not stored at stop", w.spec.id)
+        except Exception:  # noqa: BLE001 - a failed flush must not block the shutdown
+            log.exception("flushing %s at stop failed", w.spec.id)
 
     def _camera_rows(self) -> list[dict]:
         return [{"id": w.spec.id, "connected": w.reader.metrics.connected,

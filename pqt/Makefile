@@ -41,8 +41,8 @@ offline: bootstrap ## Rule-quality gate without Kafka: sim matrix -> rules engin
 	  --baseline scorer/baseline.json --out /work/reports/offline
 
 NOISE_PROFILE ?= config/noise/mot17-yolox-s-roi.yaml
-NOISE_GATE ?=
-offline-noise: bootstrap ## Tier 2 N3: the offline matrix under clean, measured and 2x measured vision noise (NOISE_GATE=--gate for N4)
+NOISE_GATE ?= --gate
+offline-noise: bootstrap ## Tier 2 N3: the offline matrix under clean, measured and 2x measured vision noise (N4 gate on: every enforce rule meets thresholds under the measured profile; NOISE_GATE= to report only)
 	rm -rf "$(WORK)/noise" "$(WORK)/reports/noise" && mkdir -p "$(WORK)/noise" "$(WORK)/reports/noise"
 	for spec in "clean:config/noise/none.yaml:1" "measured:$(NOISE_PROFILE):1" "measured-x2:$(NOISE_PROFILE):2"; do \
 	  IFS=: read -r label prof scale <<< "$$spec"; \

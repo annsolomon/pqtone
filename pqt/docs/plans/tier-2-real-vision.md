@@ -25,7 +25,7 @@ needed until P3–P5 and the real exit gate.
 |---|---|
 | Prep (P1–P5) | P1 and P2 done (P2 awaits a legal review); P3–P5 wait for the camera and consent |
 | vision-lab (V1–V8) | V1–V6 and V8 done (open-dataset track); V7 open: best candidate 94.8% within ±1, bar not yet met (`vision/lab/reports/mot17-bench.md`) |
-| noise-model (N1–N5) | After V7 |
+| noise-model (N1–N5) | N1–N3 and N5 built (N5: same-clip KS not rejected, p = 0.236, after two model fixes; `vision/noise/validation.md`); N4: entry/exit `how`, queue hand-over, R-DWELL stitching, R-FOOT real entries (ADR-035), gate on in `make all` |
 | edge-agent (A1–A6) | A1–A4 in review (simulated camera, ingest resilience, outbox + uplink, cable test in CI); A5, A6 next |
 | mtmc-fusion (F1–F5) | Optional, after the gate |
 

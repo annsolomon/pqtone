@@ -7,6 +7,10 @@
         {
           "dataschema": "https://schemas.pqt.local/store/zone.entered/1.0.0",
           "file": "data/store.zone.entered-1.0.0.schema.json"
+        },
+        {
+          "dataschema": "https://schemas.pqt.local/store/zone.entered/1.1.0",
+          "file": "data/store.zone.entered-1.1.0.schema.json"
         }
       ],
       "subjectPattern": "^track:trk-[a-z0-9]{1,32}$"
@@ -17,6 +21,10 @@
         {
           "dataschema": "https://schemas.pqt.local/store/zone.exited/1.0.0",
           "file": "data/store.zone.exited-1.0.0.schema.json"
+        },
+        {
+          "dataschema": "https://schemas.pqt.local/store/zone.exited/1.1.0",
+          "file": "data/store.zone.exited-1.1.0.schema.json"
         }
       ],
       "subjectPattern": "^track:trk-[a-z0-9]{1,32}$"

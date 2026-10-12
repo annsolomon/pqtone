@@ -20,6 +20,9 @@ public final class RuleConfig {
     public final Set<String> dwellZones;
     public final long dwellLimitMs;
     public final long dwellTtlMs;
+    /** R-DWELL-001 1.1.0 `stitch` (N4): a track lost inside a dwell zone keeps its visit open this long for
+     *  a track that appears there to continue it. 0 = off (1.0.0 behaviour). */
+    public final long dwellStitchMs;
     public final RuleMeta absence;
     public final long absenceWithinMs;
     public final String absenceExpectType;
@@ -28,7 +31,16 @@ public final class RuleConfig {
                       RuleMeta queue, int queueThreshold, long queueSustainMs, int queueHysteresis, long queueClearMs,
                       RuleMeta dwell, Set<String> dwellZones, long dwellLimitMs, long dwellTtlMs,
                       RuleMeta absence, long absenceWithinMs, String absenceExpectType) {
+        this(graceMs, queue, queueThreshold, queueSustainMs, queueHysteresis, queueClearMs,
+                dwell, dwellZones, dwellLimitMs, dwellTtlMs, 0L, absence, absenceWithinMs, absenceExpectType);
+    }
+
+    public RuleConfig(long graceMs,
+                      RuleMeta queue, int queueThreshold, long queueSustainMs, int queueHysteresis, long queueClearMs,
+                      RuleMeta dwell, Set<String> dwellZones, long dwellLimitMs, long dwellTtlMs, long dwellStitchMs,
+                      RuleMeta absence, long absenceWithinMs, String absenceExpectType) {
         if (graceMs < 0) throw new IllegalArgumentException("grace must be >= 0");
+        if (dwellStitchMs < 0) throw new IllegalArgumentException("stitch must be >= 0");
         if (queueThreshold - queueHysteresis < 0) throw new IllegalArgumentException("hysteresis exceeds threshold");
         this.graceMs = graceMs;
         this.queue = queue;
@@ -40,6 +52,7 @@ public final class RuleConfig {
         this.dwellZones = Set.copyOf(dwellZones);
         this.dwellLimitMs = dwellLimitMs;
         this.dwellTtlMs = dwellTtlMs;
+        this.dwellStitchMs = dwellStitchMs;
         this.absence = absence;
         this.absenceWithinMs = absenceWithinMs;
         this.absenceExpectType = absenceExpectType;

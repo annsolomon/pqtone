@@ -17,6 +17,12 @@ import java.util.UUID;
  * are late: counted and dropped. Timers (sustain, clear, absence deadline, dwell limit) are
  * evaluated in event time, so replaying the same input always yields the same incidents.
  *
+ * <p>R-DWELL-001 1.1.0 (Tier 2 N4) stitches visits across tracking breaks: when a track is lost inside a
+ * dwell zone (zone.exited with how=lost) its visit stays open for {@code stitch}; a track that appears in
+ * the same zone within that time (zone.entered with how=appeared) continues the visit under the original
+ * key, the most recently lost visit first. A visit nobody continues ends at the deadline. Real entries
+ * and exits (crossed, or no `how`) behave exactly as in 1.0.0.
+ *
  * <p>This class has no framework dependencies; it is the unit under test and is shared by
  * the Kafka Streams processor and the offline runner.
  */
@@ -32,6 +38,7 @@ public final class RuleEngine {
     private static final int A_OPEN = 2;
     private static final int D_OPEN = 3;
     private static final int D_EXPIRE = 4;
+    private static final int D_UNSTITCHED = 5;
 
     private record Timer(long deadline, int kind, String key) implements Comparable<Timer> {
         @Override
@@ -132,7 +139,12 @@ public final class RuleEngine {
         }
         for (Map.Entry<String, StoreState.DwellState> en : s.dwell.entrySet()) {
             StoreState.DwellState d = en.getValue();
-            if (!d.open) best = min(best, new Timer(d.entryMs + cfg.dwellLimitMs, D_OPEN, en.getKey()), t, inclusive);
+            if (d.lostMs != null) {
+                // Lost, waiting for a track to continue the visit: the limit waits too (N4).
+                best = min(best, new Timer(d.lostMs + cfg.dwellStitchMs, D_UNSTITCHED, en.getKey()), t, inclusive);
+            } else if (!d.open) {
+                best = min(best, new Timer(d.entryMs + cfg.dwellLimitMs, D_OPEN, en.getKey()), t, inclusive);
+            }
             best = min(best, new Timer(d.entryMs + cfg.dwellTtlMs, D_EXPIRE, en.getKey()), t, inclusive);
         }
         return best;
@@ -210,15 +222,29 @@ public final class RuleEngine {
                 StoreState.DwellState dw = s.dwell.get(key);
                 dw.open = true;
                 String zone = key.substring(key.indexOf('|') + 1);
-                Incident inc = incident(s, cfg.dwell, "OPENED", key, "zone:" + zone, dw.entryMs, d);
+                // A limit that passed while the visit was waiting to be continued is reported when it was.
+                long at = dw.resumedMs == null ? d : Math.max(d, dw.resumedMs);
+                Incident inc = incident(s, cfg.dwell, "OPENED", key, "zone:" + zone, dw.entryMs, at);
                 inc.summary = "A visit to " + zone + " has lasted more than " + seconds(cfg.dwellLimitMs);
                 inc.evidence.add(dw.entryEventId);
                 inc.attrs.put("zoneId", zone);
                 dw.incidentId = inc.incidentId;
                 emit(cfg.dwell, inc, out);
             }
+            case D_UNSTITCHED -> {
+                StoreState.DwellState dw = s.dwell.remove(key);
+                removeAliases(s, key);
+                if (dw.open) {
+                    String zone = key.substring(key.indexOf('|') + 1);
+                    Incident inc = incident(s, cfg.dwell, "RESOLVED", key, "zone:" + zone, dw.entryMs, d);
+                    inc.incidentId = dw.incidentId;
+                    inc.summary = "Visit to " + zone + " ended: the person was lost and not found again";
+                    emit(cfg.dwell, inc, out);
+                }
+            }
             case D_EXPIRE -> {
                 StoreState.DwellState dw = s.dwell.remove(key);
+                removeAliases(s, key);
                 if (dw.open) {
                     String zone = key.substring(key.indexOf('|') + 1);
                     Incident inc = incident(s, cfg.dwell, "RESOLVED", key, "zone:" + zone, dw.entryMs, d);
@@ -265,6 +291,9 @@ public final class RuleEngine {
             s.absence = new StoreState.AbsenceState();
         } else if (Event.ZONE_ENTERED.equals(type) && cfg.dwell.enabled() && e.zoneId != null
                 && e.trackId != null && cfg.dwellZones.contains(e.zoneId)) {
+            if (cfg.dwellStitchMs > 0 && Event.HOW_APPEARED.equals(e.how) && continueVisit(s, e)) {
+                return;
+            }
             String key = e.trackId + "|" + e.zoneId;
             StoreState.DwellState old = s.dwell.get(key);
             if (old != null && old.open) {
@@ -278,8 +307,16 @@ public final class RuleEngine {
             d.entryEventId = e.id;
             s.dwell.put(key, d);
         } else if (Event.ZONE_EXITED.equals(type) && cfg.dwell.enabled() && e.zoneId != null && e.trackId != null) {
-            String key = e.trackId + "|" + e.zoneId;
+            String raw = e.trackId + "|" + e.zoneId;
+            String key = s.dwellAlias.getOrDefault(raw, raw);
+            StoreState.DwellState held = s.dwell.get(key);
+            if (held != null && held.lostMs == null && cfg.dwellStitchMs > 0 && Event.HOW_LOST.equals(e.how)) {
+                held.lostMs = e.timeMs;  // keep the visit for a track that continues it (N4)
+                s.dwellAlias.remove(raw);
+                return;
+            }
             StoreState.DwellState d = s.dwell.remove(key);
+            removeAliases(s, key);
             if (d != null && d.open) {
                 Incident inc = incident(s, cfg.dwell, "RESOLVED", key, "zone:" + e.zoneId, d.entryMs, e.timeMs);
                 inc.incidentId = d.incidentId;
@@ -288,6 +325,33 @@ public final class RuleEngine {
                 emit(cfg.dwell, inc, out);
             }
         }
+    }
+
+    /** N4: an appearing track continues the most recently lost visit in the same zone, if one waits. */
+    private boolean continueVisit(StoreState s, Event e) {
+        String suffix = "|" + e.zoneId;
+        String best = null;
+        long bestLost = Long.MIN_VALUE;
+        for (Map.Entry<String, StoreState.DwellState> en : s.dwell.entrySet()) {
+            StoreState.DwellState d = en.getValue();
+            if (d.lostMs == null || !en.getKey().endsWith(suffix)) continue;
+            long gap = e.timeMs - d.lostMs;
+            if (gap < 0 || gap > cfg.dwellStitchMs) continue;
+            if (best == null || d.lostMs > bestLost) {  // ties: the first key in order
+                best = en.getKey();
+                bestLost = d.lostMs;
+            }
+        }
+        if (best == null) return false;
+        StoreState.DwellState d = s.dwell.get(best);
+        d.lostMs = null;
+        d.resumedMs = e.timeMs;
+        s.dwellAlias.put(e.trackId + suffix, best);
+        return true;
+    }
+
+    private static void removeAliases(StoreState s, String key) {
+        s.dwellAlias.values().removeIf(key::equals);
     }
 
     // ------------------------------------------------------------------ helpers

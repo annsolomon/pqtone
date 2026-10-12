@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pqt.local/store/zone.entered/1.1.0",
+  "title": "com.pqt.store.zone.entered data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "zoneId",
+    "trackId"
+  ],
+  "properties": {
+    "zoneId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,64}$"
+    },
+    "trackId": {
+      "type": "string",
+      "pattern": "^trk-[a-z0-9]{1,32}$"
+    },
+    "how": {
+      "type": "string",
+      "enum": [
+        "crossed",
+        "appeared"
+      ],
+      "description": "How the track came into the zone (N4): crossed its boundary, or appeared inside it (first seen there: a person found again after an occlusion, or a tracker identity change). Absent means crossed."
+    }
+  },
+  "description": "1.1.0 adds the optional `how` (Tier 2 N4), so rules can tell a real entry or exit from a tracking break. Everything 1.0.0 accepts is still accepted."
+}

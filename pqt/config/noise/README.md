@@ -31,6 +31,11 @@ profiles fall back to `missRate`, a per-frame rate, applied per visit (an upper 
 runs on its own RNG stream, before the transport faults (`outOfOrder`, `late`, `duplicates`,
 `malformed`), so turning it on never changes their draws.
 
+Like the zone engine (N4, ADR-035), the simulator marks split pieces: the piece before a split ends with
+`zone.exited` `how: lost`, the one after starts with `zone.entered` `how: appeared`; a new piece takes over
+a queue place at once when it appears within 5 s of the loss (otherwise it waits the 5 s minimum dwell),
+and `queue.length` is reported once per instant.
+
 `store-sim matrix --noise-profile <file> --noise-scale 2` runs the whole matrix with every rate
 doubled (jitter spread too); `make offline-noise` scores clean, measured and 2x measured side by side.
 
