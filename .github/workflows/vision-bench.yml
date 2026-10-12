@@ -1,0 +1,126 @@
+name: vision-bench
+# Tier 2 open-dataset track (ADR-013). Runs the vision pipeline on the fixed-camera MOT17 sequences
+# (02, 04, 09) on CPU. MOT17 is CC BY-NC-SA 3.0: it is downloaded here, used for benchmarking only and
+# never committed. Only aggregate reports leave the runner: as check annotations on pull requests, and
+# (manual runs) as a commit on the `vision-results` branch.
+on:
+  pull_request:
+    paths:
+      - "pqt/vision/**"
+      - ".github/workflows/vision-bench.yml"
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Detector
+        type: choice
+        options: [yolox_s, yolox_m, yolox_l, yolox_tiny, yolox_nano]
+        default: yolox_s
+      publish:
+        description: Commit the report to the vision-results branch
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: vision-bench-${{ github.ref }}-${{ inputs.model || 'yolox_s' }}
+  cancel-in-progress: true
+
+env:
+  MOT17_URL: https://motchallenge.net/data/MOT17.zip
+  MOT17_DIR: ${{ github.workspace }}/../mot17
+  PQT_MODEL_DIR: ${{ github.workspace }}/../models
+  MODEL: ${{ inputs.model || 'yolox_s' }}
+
+jobs:
+  bench:
+    name: MOT17 bench (${{ inputs.model || 'yolox_s' }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write   # only to push the vision-results branch on manual runs; never main
+    defaults:
+      run:
+        shell: bash
+        working-directory: pqt
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install vision-lab
+        run: pip install -q './vision/lab[test]'
+      - name: Restore the MOT17 fixed-camera sequences
+        id: mot17
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ env.MOT17_DIR }}
+          key: mot17-static-frcnn-v1
+      - name: Download MOT17 (benchmark use only, ADR-013)
+        if: steps.mot17.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$MOT17_DIR"
+          curl -fsSL --retry 4 --retry-delay 10 -o "$RUNNER_TEMP/MOT17.zip" "$MOT17_URL"
+          ls -l "$RUNNER_TEMP/MOT17.zip"
+          sha256sum "$RUNNER_TEMP/MOT17.zip" | tee "$MOT17_DIR/MOT17.zip.sha256"
+          unzip -q "$RUNNER_TEMP/MOT17.zip" 'MOT17/train/MOT17-02-FRCNN/*' 'MOT17/train/MOT17-04-FRCNN/*' \
+            'MOT17/train/MOT17-09-FRCNN/*' -d "$MOT17_DIR"
+          rm -f "$RUNNER_TEMP/MOT17.zip"
+          du -sh "$MOT17_DIR"
+      - name: Restore models
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ env.PQT_MODEL_DIR }}
+          key: models-${{ env.MODEL }}-${{ hashFiles('pqt/vision/lab/pqt_vision/models.py') }}
+      - name: Fetch and verify the model
+        run: pqt-vision fetch-model "$MODEL"
+      - name: Unit tests (with the real model)
+        run: python -m pytest -q vision/lab/tests 2>&1 | tee "$RUNNER_TEMP/tests.log"
+      - name: Bench
+        run: |
+          nproc
+          pqt-vision bench-mot17 --root "$MOT17_DIR/MOT17/train" --model "$MODEL" --out "../.work/vision-bench/$MODEL" \
+            2>&1 | tee "$RUNNER_TEMP/bench.log"
+          cat "../.work/vision-bench/$MODEL/report.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Report as a check annotation
+        if: always()
+        run: |
+          f="../.work/vision-bench/$MODEL/report.md"
+          if [ -s "$f" ]; then ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "vision bench $MODEL" "$f" 40; fi
+          if [ -s "$f" ]; then ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "vision bench $MODEL json" "../.work/vision-bench/$MODEL/report.json" 120; fi
+      - name: Failure details
+        if: failure()
+        run: |
+          ../.github/scripts/annotate.sh "vision bench log" "$RUNNER_TEMP/bench.log" 60
+          ../.github/scripts/annotate.sh "vision tests log" "$RUNNER_TEMP/tests.log" 60
+      - name: Publish the report to the vision-results branch
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        env:
+          RUN_ID: ${{ github.run_id }}
+        working-directory: .
+        run: |
+          # Same pattern as scale.yml: switch branches inside the checkout (its credentials) and push.
+          stage="$RUNNER_TEMP/publish"
+          mkdir -p "$stage"
+          cp ".work/vision-bench/$MODEL/report.json" ".work/vision-bench/$MODEL/report.md" "$stage/"
+          if [ -f "$MOT17_DIR/MOT17.zip.sha256" ]; then cp "$MOT17_DIR/MOT17.zip.sha256" "$stage/"; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch -q --depth 1 origin vision-results 2>/dev/null; then
+            git switch -q -c vision-results FETCH_HEAD
+          else
+            git switch -q --orphan vision-results
+            printf '# Vision bench results\n\nAggregate reports from `.github/workflows/vision-bench.yml` (ADR-013). No images, boxes or tracks.\n' > README.md
+          fi
+          dest="runs/$(date -u +%Y%m%dT%H%M%SZ)-${RUN_ID}-${MODEL}"
+          mkdir -p "$dest"
+          cp "$stage"/* "$dest/"
+          git add README.md "$dest"
+          git commit -q -m "vision-bench: ${MODEL} run ${RUN_ID} on ${GITHUB_SHA::12}"
+          git push -q origin HEAD:vision-results
+          echo "Report pushed to \`vision-results/$dest\`" >> "$GITHUB_STEP_SUMMARY"

@@ -12,3 +12,8 @@ deploy/keycloak/generated/
 .DS_Store
 .venv/
 .claude/settings.local.json
+
+# Tier 2 vision: clips, model files, detection caches and runs never enter git (docs/privacy/vision-data.md)
+vision/lab/data/
+*.onnx
+*.parquet

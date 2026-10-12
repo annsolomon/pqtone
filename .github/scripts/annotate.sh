@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Surface a report file as a GitHub error annotation, so a failure's details can be read
 # from the PR's checks (and through the checks API) without downloading the raw job log.
-# Usage: annotate.sh <title> <file> [max-lines]
+# Usage: annotate.sh <title> <file> [max-lines]   (ANNOTATE_LEVEL=notice|warning|error, default error)
 set -euo pipefail
 title=$1 file=$2 max=${3:-150}
 if [ ! -s "$file" ]; then
@@ -17,4 +17,4 @@ body=${body//$'\n'/'%0A'}
 title=${title//'%'/'%25'}
 title=${title//','/'%2C'}
 title=${title//':'/'%3A'}
-echo "::error title=${title}::${body}"
+echo "::${ANNOTATE_LEVEL:-error} title=${title}::${body}"
