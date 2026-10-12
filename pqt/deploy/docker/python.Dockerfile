@@ -23,6 +23,8 @@ COPY services/event-core/openapi.yaml services/event-core/openapi.yaml
 COPY scripts/openapi_surface.py scripts/openapi_surface.py
 # The R5 scale harness (make scale).
 COPY scripts/scale.py scripts/scale.py
+# The edge cable test verdict (make chaos-edge, milestone A4).
+COPY scripts/chaos_edge_check.py scripts/chaos_edge_check.py
 RUN python -m pytest -q -p no:cacheprovider sim/tests scorer/tests vision/lab/tests
 RUN useradd --system --uid 10001 --no-create-home app
 USER 10001

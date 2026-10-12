@@ -26,7 +26,7 @@ needed until P3–P5 and the real exit gate.
 | Prep (P1–P5) | P1 and P2 done (P2 awaits a legal review); P3–P5 wait for the camera and consent |
 | vision-lab (V1–V8) | V1–V6 done on MOT17; V7 open (best candidate 94.8% within ±1, bar not yet met; see `vision/lab/reports/mot17-bench.md`); V8 in review |
 | noise-model (N1–N5) | After V7 |
-| edge-agent (A1–A6) | After V5 |
+| edge-agent (A1–A6) | A1–A4 in review (simulated camera, ingest resilience, outbox + uplink, cable test in CI); A5, A6 next |
 | mtmc-fusion (F1–F5) | Optional, after the gate |
 
 **Exit gate (T2 → T3).**
@@ -165,7 +165,7 @@ video/RTSP → decode (OpenCV for files and image sequences; PyAV at the edge) �
 **Done when:** you pull the network cable, nothing is lost, and the agent backfills on reconnect.
 
 **Design.** One Docker Compose bundle runs on the edge box (an x86 mini-PC; later a Jetson). Containers:
-- `camera-ingest` per camera: RTSP via PyAV/FFmpeg with reconnect and exponential back-off and jitter, plus a frame-rate limiter.
+- `camera-ingest` per camera: RTSP via OpenCV's FFmpeg backend (the wheel bundles an LGPL FFmpeg, so PyAV is not needed) with reconnect and exponential back-off and jitter, plus a frame-rate limiter.
 - `perception`: vision-lab as a library.
 - `outbox`: **SQLite in WAL mode**. Every event is written before it is sent. Each camera has a monotonic `sequence`.
 - `uplink`: batches to `/v1/events/batch` with OAuth client credentials, using the existing API. Event-core dedup makes retries safe. Marks rows sent only on 200 with a per-item `accepted` or `duplicate`.

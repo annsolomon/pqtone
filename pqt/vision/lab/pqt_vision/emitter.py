@@ -142,6 +142,10 @@ class Emitter:
                 raise ValueError(f"unknown zone event {e.kind}")
         return out
 
+    def advance(self, t_ms: int) -> list[dict]:
+        """Clock ticks due up to `t_ms`, for a live stream where nobody may move for a while."""
+        return self._ticks_until(t_ms)
+
     def end(self, t_ms: int, *, trailing_ms: int = 0) -> list[dict]:
         """Ticks up to the end of the stream (plus `trailing_ms`, so rule windows can close)."""
         return self._ticks_until(t_ms + trailing_ms)

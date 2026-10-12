@@ -1,0 +1,15 @@
+# Edge agent configuration for `make chaos-edge` (A4). Secrets are written next to this file by the
+# script with mode 600; the camera URL is a secret too, because real ones carry the camera password.
+agent: {id: edge-chaos, store: store-001}
+uplink:
+  ingestUrl: http://gateway:8080/v1/events
+  tokenUrl: http://gateway:8080/auth/realms/pqt/protocol/openid-connect/token
+  clientId: edge-demo
+  clientSecretFile: client_secret
+trackSecretFile: track_secret
+outbox: {path: /var/lib/pqt-edge/outbox.db, quotaMb: 64}
+detector: {kind: synthetic-queue, speed: 8}
+cameras:
+  - {id: cam-01, urlFile: cam-01.url, config: cam-01.yaml, fps: 10}
+statusPath: /var/lib/pqt-edge/status.json
+statusEverySeconds: 1

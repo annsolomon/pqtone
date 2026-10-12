@@ -1,0 +1,17 @@
+# Synthetic camera for the edge chaos test: zones in image pixels, a queue along y = 200.
+apiVersion: camera.pqt/v1
+camera: cam-01
+store: store-001
+description: Synthetic camera for make chaos-edge; the people come from pqt_edge.synthetic, not from footage.
+image: {width: 640, height: 360}
+units: px
+homography: [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+zones:
+  - id: chaos-queue-zone
+    kind: queue
+    queueId: chaos-queue
+    openRegisters: 1
+    head: [0, 200]
+    headRadius: 60
+    polygon: [[20, 120], [460, 120], [460, 280], [20, 280]]
+membership: {enterSeconds: 0.5, exitSeconds: 0.5, boundaryMargin: 5, queueMinDwellSeconds: 1, queueMaxSpeed: 400, speedWindowSeconds: 1}

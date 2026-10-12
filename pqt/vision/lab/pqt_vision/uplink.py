@@ -25,6 +25,18 @@ class UplinkError(RuntimeError):
     pass
 
 
+class UplinkRefused(UplinkError):
+    """event-core refused the whole batch (a 4xx other than 429): resending it unchanged will not help."""
+
+    def __init__(self, status: int, detail: str) -> None:
+        super().__init__(f"ingest refused the batch: HTTP {status} {detail}")
+        self.status = status
+
+
+class UplinkUnavailable(UplinkError):
+    """Transient failures (network, 429, 5xx) outlasted the retries; try again later."""
+
+
 @dataclass
 class OAuthClient:
     token_url: str
@@ -76,10 +88,10 @@ class Uplink:
                 if e.code >= 500:
                     self.sleep(min(2 ** attempt, 30) * (0.5 + random.random() / 2))
                     continue
-                raise UplinkError(f"ingest refused the batch: HTTP {e.code} {e.read()[:300]!r}") from e
+                raise UplinkRefused(e.code, repr(e.read()[:300])) from e
             except (urllib.error.URLError, TimeoutError, ConnectionError):
                 self.sleep(min(2 ** attempt, 30) * (0.5 + random.random() / 2))
-        raise UplinkError(f"ingest kept failing after {self.max_attempts} attempts")
+        raise UplinkUnavailable(f"ingest kept failing after {self.max_attempts} attempts")
 
     def send(self, events: Iterable[dict], *, batch_size: int = 200) -> dict[str, int]:
         totals: dict[str, int] = {}
