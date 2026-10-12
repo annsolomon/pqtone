@@ -192,6 +192,19 @@ def cmd_stored(a) -> int:
     return 1 if problems else 0
 
 
+def cmd_video(a) -> int:
+    from . import video
+
+    gt = video.read_gt(a.gt)
+    events = video.read_events(a.events)
+    start = video.parse_time_ms(a.start) if a.start else None
+    result = video.score(gt, events, metric=a.metric, start_ms=start, min_within=a.min_within, max_mae=a.max_mae)
+    print(video.render(result))
+    if a.json:
+        Path(a.json).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return 0 if result["pass"] or not a.gate else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="pqt-scorer")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -213,6 +226,16 @@ def main(argv: list[str] | None = None) -> int:
     st.add_argument("--case-dir", required=True)
     st.add_argument("--timeout", type=int, default=120)
     st.set_defaults(fn=cmd_stored)
+    v = sub.add_parser("video", help="count accuracy of vision events against ground-truth counts (Tier 2 V6)")
+    v.add_argument("--gt", required=True, help="CSV: offset_s,zone,count")
+    v.add_argument("--events", required=True, help="events.jsonl from pqt-vision events or the edge agent")
+    v.add_argument("--metric", choices=["occupancy", "queue"], default="queue")
+    v.add_argument("--start", help="ISO time of the clip's first frame (default: earliest event)")
+    v.add_argument("--min-within", type=float, default=0.95)
+    v.add_argument("--max-mae", type=float, default=0.5)
+    v.add_argument("--json", help="also write the result as JSON")
+    v.add_argument("--gate", action="store_true", help="exit 1 when any zone misses the bar")
+    v.set_defaults(fn=cmd_video)
     a = p.parse_args(argv)
     return a.fn(a)
 

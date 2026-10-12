@@ -40,3 +40,27 @@ def test_bench_reports_detection_and_tracking_without_boxes(tmp_path: Path, monk
     assert "CC BY-NC-SA 3.0" in report["attribution"]
     md = (tmp_path / "out" / "report.md").read_text()
     assert "| MOT17-02 | 12 | 12 | 1.000 |" in md and "HOTA" in md
+
+
+def test_bench_scores_counts_when_a_zone_config_exists(tmp_path: Path, monkeypatch):
+    import yaml
+
+    rows = [f"{f},1,{5 + f},5,10,30,1,1,1.0" for f in range(1, 13)]
+    write_mot_sequence(tmp_path / "train", name="MOT17-02-FRCNN", gt_rows=rows, fps=2)
+    cfg = tmp_path / "cfg"
+    cfg.mkdir()
+    (cfg / "mot17-02.yaml").write_text(yaml.safe_dump({
+        "apiVersion": "camera.pqt/v1", "camera": "mot17-02", "store": "mot17", "units": "px",
+        "image": {"width": 64, "height": 48}, "homography": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        "zones": [{"id": "zone-1", "kind": "zone", "polygon": [[0, 0], [64, 0], [64, 48], [0, 48]]}],
+        "membership": {"enterSeconds": 0.5, "exitSeconds": 0.5, "boundaryMargin": 1}}), encoding="utf-8")
+    monkeypatch.setattr(bench, "resolve", lambda m: Path("unused.onnx"))
+    monkeypatch.setattr(bench, "YoloxOnnxDetector", GTDetector)
+    schemas = Path(__file__).resolve().parents[3] / "schemas"
+    r = bench.bench_mot17(tmp_path / "train", model="fake", out=tmp_path / "out", sequences=("MOT17-02",),
+                          configs=cfg, schemas=schemas)
+    c = r["sequences"]["MOT17-02"]["counts"]
+    assert c["schemaErrors"] == 0 and c["events"] > 0
+    z = c["score"]["zones"]["zone-1"]
+    assert z["n"] == 6 and z["within1"] == 1.0 and z["pass"] is True
+    assert "zone-1" in (tmp_path / "out" / "report.md").read_text()

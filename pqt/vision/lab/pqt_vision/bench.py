@@ -41,7 +41,8 @@ def sequence_dir(root: Path, seq: str, variant: str = "FRCNN") -> Path:
 
 def bench_mot17(root: str | Path, *, model: str, out: str | Path, sequences: tuple[str, ...] = STATIC_SEQUENCES,
                 threads: int | None = None, max_frames: int | None = None,
-                tracker: ByteTrackConfig | None = None) -> dict:
+                tracker: ByteTrackConfig | None = None, configs: str | Path | None = None,
+                schemas: str | Path | None = None) -> dict:
     root, out = Path(root), Path(out)
     out.mkdir(parents=True, exist_ok=True)
     model_path = resolve(model)
@@ -62,8 +63,11 @@ def bench_mot17(root: str | Path, *, model: str, out: str | Path, sequences: tup
                                {f: [(t.track_id, t.box) for t in ts] for f, ts in tracks.items()}, meta["frames"])
         per_seq[seq] = {"source": src.info.as_dict(), "run": stats.as_dict(), "detection": ev.as_dict(),
                         "tracking": tr}
+        cam_path = Path(configs) / f"{seq.lower()}.yaml" if configs else None
+        if cam_path is not None and cam_path.is_file():
+            per_seq[seq]["counts"] = _counts(seq, cam_path, tracks, frame_times(replay), gt, src.info.fps, out, schemas)
     report = {
-        "kind": "pqt.vision-bench/v1", "stage": "V2 detection + tracking",
+        "kind": "pqt.vision-bench/v1", "stage": "V6 detection + tracking + counts",
         "createdAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "commit": os.environ.get("GITHUB_SHA", "local"), "pqtVision": __version__,
         "model": {"name": model, **({"licence": MODELS[model].licence} if model in MODELS else {}),
@@ -76,6 +80,39 @@ def bench_mot17(root: str | Path, *, model: str, out: str | Path, sequences: tup
     (out / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     (out / "report.md").write_text(render_md(report), encoding="utf-8")
     return report
+
+
+COUNT_START = "2026-01-01T09:00:00Z"  # arbitrary wall-clock origin for offline clips
+
+
+def _counts(seq: str, cam_path: Path, tracks: dict, times: dict[int, int], gt, fps: float, out: Path,
+            schemas: str | Path | None) -> dict:
+    """Zone events from the tracks, ground-truth counts from the annotations, scored by pqt-scorer (V6)."""
+    import secrets
+
+    from . import camera as cam
+    from .counts import gt_counts, write_counts
+    from .emitter import contract_validator, parse_iso, schemas_dir_default, write_jsonl
+    from .pipeline import cloud_events
+
+    camera = cam.load(cam_path)
+    events = cloud_events(camera, {f: [(t.track_id, t.box) for t in ts] for f, ts in tracks.items()}, times,
+                          start_ms=parse_iso(COUNT_START), run_key=f"mot17:{seq}", secret=secrets.token_bytes(32))
+    check = contract_validator(schemas or schemas_dir_default())
+    schema_errors = sum(len(check(e)) for e in events)
+    write_jsonl(out / "events" / f"{seq}.jsonl", events)
+    rows = gt_counts(gt, camera, fps=fps, every_s=1.0)
+    write_counts(out / "counts" / f"{seq}.csv", rows)
+    result: dict = {"camera": camera.camera, "zones": [z.id for z in camera.zones], "events": len(events),
+                    "schemaErrors": schema_errors}
+    try:
+        from pqt_scorer import video
+    except ImportError:
+        result["score"] = "pqt-scorer not installed"
+        return result
+    gt_samples = video.read_gt(out / "counts" / f"{seq}.csv")
+    result["score"] = video.score(gt_samples, events, metric="occupancy", start_ms=parse_iso(COUNT_START))
+    return result
 
 
 def render_md(r: dict) -> str:
@@ -95,6 +132,18 @@ def render_md(r: dict) -> str:
         if t:
             lines.append(f"| {seq} | {t['HOTA']:.3f} | {t['DetA']:.3f} | {t['AssA']:.3f} | {t['MOTA']:.3f} | "
                          f"{t['IDF1']:.3f} | {t['IDSW']} | {t['MT']} | {t['ML']} | {t['gtIds']} | {t['trackerIds']} |")
+    count_rows = [(seq, s["counts"]) for seq, s in r["sequences"].items() if isinstance(s.get("counts", {}).get("score"), dict)]
+    if count_rows:
+        lines += ["", "| Sequence | Zone | Samples | Mean truth | MAE | Within ±1 | Bias | Max error | Gate | Events | Schema errors |",
+                  "|---|---|---|---|---|---|---|---|---|---|---|"]
+        for seq, c in count_rows:
+            for zone, z in c["score"]["zones"].items():
+                if z.get("n"):
+                    lines.append(f"| {seq} | {zone} | {z['n']} | {z['meanTruth']} | {z['mae']:.3f} | {z['within1']:.1%} | "
+                                 f"{z['bias']:+.3f} | {z['maxAbsError']} | {'ok' if z['pass'] else 'miss'} | {c['events']} | "
+                                 f"{c['schemaErrors']} |")
+        lines += ["", "Counts: zone occupancy from the emitted zone.entered/exited events vs ground truth, one sample per "
+                  "second; proxy bar ≥ 95% within ±1 and MAE ≤ 0.5 per sequence (open-dataset track)."]
     lines += ["", "People = MOT17 classes 1 and 7 with visibility ≥ 0.25; classes 2, 8, 12 and less visible "
               "people are ignore regions. Matching at IoU 0.5.", "", f"_{r['attribution']}_", ""]
     return "\n".join(lines)
