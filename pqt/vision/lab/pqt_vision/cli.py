@@ -188,11 +188,25 @@ def _events(a: argparse.Namespace) -> int:
     return 0
 
 
+def _gt_counts(a: argparse.Namespace) -> int:
+    from . import camera as cam
+    from .counts import gt_counts, write_counts
+    from .mot import load_gt
+    from .sources import read_seqinfo
+
+    si = read_seqinfo(Path(a.seq))
+    rows = gt_counts(load_gt(a.seq, min_vis=a.min_vis), cam.load(a.camera), fps=float(si["framerate"]), every_s=a.every_s)
+    write_counts(a.out, rows)
+    print(f"{len(rows)} samples -> {a.out}")
+    return 0
+
+
 def _bench(a: argparse.Namespace) -> int:
     from .bench import STATIC_SEQUENCES, bench_mot17
 
     seqs = tuple(a.sequences.split(",")) if a.sequences else STATIC_SEQUENCES
-    r = bench_mot17(a.root, model=a.model, out=a.out, sequences=seqs, threads=a.threads, max_frames=a.max_frames)
+    r = bench_mot17(a.root, model=a.model, out=a.out, sequences=seqs, threads=a.threads, max_frames=a.max_frames,
+                    configs=a.configs, schemas=a.schemas)
     print((Path(a.out) / "report.md").read_text(encoding="utf-8"))
     return 0 if r["sequences"] else 1
 
@@ -269,6 +283,14 @@ def main(argv: list[str] | None = None) -> int:
     ev.add_argument("--schemas", help="schemas/ directory (default: found from the package location)")
     ev.set_defaults(fn=_events)
 
+    g = sub.add_parser("gt-counts", help="ground-truth zone counts from MOT annotations, as the scorer's CSV (V6)")
+    g.add_argument("--seq", required=True)
+    g.add_argument("--camera", required=True)
+    g.add_argument("--out", required=True)
+    g.add_argument("--every-s", type=float, default=1.0)
+    g.add_argument("--min-vis", type=float, default=0.25)
+    g.set_defaults(fn=_gt_counts)
+
     b = sub.add_parser("bench-mot17", help="detect and evaluate the fixed-camera MOT17 sequences (ADR-013)")
     b.add_argument("--root", required=True, help="the MOT17/train directory")
     b.add_argument("--model", default="yolox_s")
@@ -276,6 +298,8 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--sequences", help="comma-separated, default MOT17-02,MOT17-04,MOT17-09")
     b.add_argument("--threads", type=int)
     b.add_argument("--max-frames", type=int)
+    b.add_argument("--configs", help="directory of per-sequence camera configs with zones (vision/lab/config/mot17)")
+    b.add_argument("--schemas", help="schemas/ directory for validating the emitted events")
     b.set_defaults(fn=_bench)
 
     a = p.parse_args(argv)

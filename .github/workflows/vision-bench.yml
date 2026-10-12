@@ -53,8 +53,8 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - name: Install vision-lab
-        run: pip install -q './vision/lab[test]'
+      - name: Install vision-lab and the scorer
+        run: pip install -q './scorer' './vision/lab[test]'
       - name: Restore the MOT17 fixed-camera sequences
         id: mot17
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
@@ -91,7 +91,7 @@ jobs:
         run: |
           nproc
           pqt-vision bench-mot17 --root "$MOT17_DIR/MOT17/train" --model "$MODEL" --out "../.work/vision-bench/$MODEL" \
-            2>&1 | tee "$RUNNER_TEMP/bench.log"
+            --configs vision/lab/config/mot17 --schemas schemas 2>&1 | tee "$RUNNER_TEMP/bench.log"
           cat "../.work/vision-bench/$MODEL/report.md" >> "$GITHUB_STEP_SUMMARY"
       - name: Report as a check annotation
         if: always()
