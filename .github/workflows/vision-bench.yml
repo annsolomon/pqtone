@@ -10,11 +10,9 @@ on:
       - ".github/workflows/vision-bench.yml"
   workflow_dispatch:
     inputs:
-      model:
-        description: Detector
-        type: choice
-        options: [yolox_s, yolox_m, yolox_l, yolox_tiny, yolox_nano]
-        default: yolox_s
+      experiments:
+        description: 'JSON list of {"model": ..., "mode": full|roi|tiled}'
+        default: '[{"model":"yolox_s","mode":"full"},{"model":"yolox_s","mode":"roi"},{"model":"yolox_s","mode":"tiled"},{"model":"yolox_m","mode":"roi"}]'
       publish:
         description: Commit the report to the vision-results branch
         type: boolean
@@ -28,20 +26,27 @@ defaults:
     shell: bash
 
 concurrency:
-  group: vision-bench-${{ github.ref }}-${{ inputs.model || 'yolox_s' }}
+  group: vision-bench-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   MOT17_URL: https://motchallenge.net/data/MOT17.zip
   MOT17_DIR: ${{ github.workspace }}/../mot17
   PQT_MODEL_DIR: ${{ github.workspace }}/../models
-  MODEL: ${{ inputs.model || 'yolox_s' }}
 
 jobs:
   bench:
-    name: MOT17 bench (${{ inputs.model || 'yolox_s' }})
+    name: MOT17 bench (${{ matrix.model }}, ${{ matrix.mode }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        # Pull requests run the V7 candidates; a manual run can pass its own list.
+        include: ${{ fromJSON(inputs.experiments || '[{"model":"yolox_s","mode":"full"},{"model":"yolox_s","mode":"roi"},{"model":"yolox_s","mode":"tiled"},{"model":"yolox_m","mode":"roi"}]') }}
+    env:
+      MODEL: ${{ matrix.model }}
+      MODE: ${{ matrix.mode }}
     permissions:
       contents: write   # only to push the vision-results branch on manual runs; never main
     defaults:
@@ -82,6 +87,7 @@ jobs:
       - name: Unit tests (with the real model)
         run: python -m pytest -q vision/lab/tests 2>&1 | tee "$RUNNER_TEMP/tests.log"
       - name: Zone proposals from ground truth only (V4)
+        if: matrix.model == 'yolox_s' && matrix.mode == 'full'
         run: |
           pqt-vision propose-zones --root "$MOT17_DIR/MOT17/train" --out "$RUNNER_TEMP/zones" 2>&1 | tee "$RUNNER_TEMP/zones.log"
           for f in "$RUNNER_TEMP"/zones/*.yaml; do
@@ -90,15 +96,15 @@ jobs:
       - name: Bench
         run: |
           nproc
-          pqt-vision bench-mot17 --root "$MOT17_DIR/MOT17/train" --model "$MODEL" --out "../.work/vision-bench/$MODEL" \
-            --configs vision/lab/config/mot17 --schemas schemas 2>&1 | tee "$RUNNER_TEMP/bench.log"
-          cat "../.work/vision-bench/$MODEL/report.md" >> "$GITHUB_STEP_SUMMARY"
+          pqt-vision bench-mot17 --root "$MOT17_DIR/MOT17/train" --model "$MODEL" --mode "$MODE" \
+            --out "../.work/vision-bench/$MODEL-$MODE" --configs vision/lab/config/mot17 --schemas schemas \
+            2>&1 | tee "$RUNNER_TEMP/bench.log"
+          cat "../.work/vision-bench/$MODEL-$MODE/report.md" >> "$GITHUB_STEP_SUMMARY"
       - name: Report as a check annotation
         if: always()
         run: |
-          f="../.work/vision-bench/$MODEL/report.md"
-          if [ -s "$f" ]; then ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "vision bench $MODEL" "$f" 40; fi
-          if [ -s "$f" ]; then ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "vision bench $MODEL json" "../.work/vision-bench/$MODEL/report.json" 120; fi
+          f="../.work/vision-bench/$MODEL-$MODE/report.md"
+          if [ -s "$f" ]; then ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "vision bench $MODEL $MODE" "$f" 40; fi
       - name: Failure details
         if: failure()
         run: |
@@ -113,7 +119,7 @@ jobs:
           # Same pattern as scale.yml: switch branches inside the checkout (its credentials) and push.
           stage="$RUNNER_TEMP/publish"
           mkdir -p "$stage"
-          cp ".work/vision-bench/$MODEL/report.json" ".work/vision-bench/$MODEL/report.md" "$stage/"
+          cp ".work/vision-bench/$MODEL-$MODE/report.json" ".work/vision-bench/$MODEL-$MODE/report.md" "$stage/"
           if [ -f "$MOT17_DIR/MOT17.zip.sha256" ]; then cp "$MOT17_DIR/MOT17.zip.sha256" "$stage/"; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -123,10 +129,14 @@ jobs:
             git switch -q --orphan vision-results
             printf '# Vision bench results\n\nAggregate reports from `.github/workflows/vision-bench.yml` (ADR-013). No images, boxes or tracks.\n' > README.md
           fi
-          dest="runs/$(date -u +%Y%m%dT%H%M%SZ)-${RUN_ID}-${MODEL}"
+          dest="runs/$(date -u +%Y%m%dT%H%M%SZ)-${RUN_ID}-${MODEL}-${MODE}"
           mkdir -p "$dest"
           cp "$stage"/* "$dest/"
           git add README.md "$dest"
-          git commit -q -m "vision-bench: ${MODEL} run ${RUN_ID} on ${GITHUB_SHA::12}"
-          git push -q origin HEAD:vision-results
+          git commit -q -m "vision-bench: ${MODEL} ${MODE} run ${RUN_ID} on ${GITHUB_SHA::12}"
+          # Matrix jobs push to the same branch: rebase and retry on a race.
+          for i in 1 2 3 4 5; do
+            git push -q origin HEAD:vision-results && break
+            sleep $((i * 5)); git pull -q --rebase origin vision-results
+          done
           echo "Report pushed to \`vision-results/$dest\`" >> "$GITHUB_STEP_SUMMARY"
