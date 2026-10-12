@@ -11,6 +11,7 @@ from . import SIM_VERSION
 from .config import RuleSet, load_layout, load_rules, load_scenario, parse_duration_ms, sha256_bytes, sha256_file
 from .events import canonical, iso_ms, make_event, parse_iso_ms
 from .faults import inject
+from . import billing as billing_mod
 from . import vision_noise
 from .model import StoreModel
 from .reference import FootfallRef, RefEngine
@@ -25,13 +26,16 @@ class RunOutput:
     emitted: list[dict]
     ground_truth: list[dict]
     manifest: dict
+    billing_truth: list | None = None  # X1 B2: per-store billing ground truth when the scenario has `billing:`
 
 
 def run_id_for(seed: int, scenario_bytes: bytes, layout_bytes: bytes, rules_bytes: bytes,
-               noise_sha256: str | None = None) -> str:
+               noise_sha256: str | None = None, catalogue_sha256: str | None = None) -> str:
     parts = [str(seed).encode(), scenario_bytes, layout_bytes, rules_bytes, SIM_VERSION.encode()]
     if noise_sha256:  # only when faults.vision is set, so every existing run id stays the same
         parts.append(noise_sha256.encode())
+    if catalogue_sha256:  # only when billing is on (X1 B2), for the same reason
+        parts.append(b"catalogue:" + catalogue_sha256.encode())
     h = sha256_bytes(b"|".join(parts))
     return f"run-{h[:12]}"
 
@@ -76,12 +80,20 @@ def simulate(*, seed: int, layout_path: str, scenario_path: str, rules_path: str
         raise ValueError("two layouts share a storeId")
     rules: RuleSet = load_rules(rules_path)
     noise = vision_noise.load(scenario_path, scenario.get("faults", {}).get("vision"))
+    bill_cfg = billing_mod.load(scenario_path, scenario.get("billing"))
     layout_bytes = b"|".join(Path(p).read_bytes() for p in paths)
     run_id = run_id_for(seed, Path(scenario_path).read_bytes(), layout_bytes,
-                        Path(rules_path).read_bytes(), noise.sha256 if noise else None)
+                        Path(rules_path).read_bytes(), noise.sha256 if noise else None,
+                        bill_cfg[2] if bill_cfg else None)
     epoch_ms = parse_iso_ms(scenario.get("epoch", DEFAULT_EPOCH))
 
-    models = [StoreModel(lay, scenario, store_seed(seed, i)) for i, lay in enumerate(layouts)]
+    def billing_for(i: int, lay: dict):
+        if not bill_cfg:
+            return None
+        return billing_mod.BillingModel(bill_cfg[0], bill_cfg[1], store_id=lay["storeId"], seed=store_seed(seed, i),
+                                        epoch_ms=epoch_ms)
+
+    models = [StoreModel(lay, scenario, store_seed(seed, i), billing_for(i, lay)) for i, lay in enumerate(layouts)]
     per_store = [m.run() for m in models]
     # One stream for the run: time order, then store order, then each store's own causal order.
     merged = sorted(((r.t_ms, i, r.order, r) for i, recs in enumerate(per_store) for r in recs),
@@ -97,8 +109,8 @@ def simulate(*, seed: int, layout_path: str, scenario_path: str, rules_path: str
         ref = RefEngine(rules)
         foot = FootfallRef(rules)
         for ev in clean:
-            if ev["storeid"] != sid:
-                continue
+            if ev["storeid"] != sid or not ev["type"].startswith("com.pqt.store."):
+                continue  # billing events (X1) are not rule input, as in rules-engine
             ref_ev = {"t": parse_iso_ms(ev["time"]), "type": ev["type"], "storeId": sid,
                       "simRunId": run_id, "id": ev["id"], "data": ev["data"]}
             ref.process(ref_ev)
@@ -133,6 +145,8 @@ def simulate(*, seed: int, layout_path: str, scenario_path: str, rules_path: str
         "layoutSha256": sha256_file(paths[0]), "scenarioSha256": sha256_file(scenario_path),
         "rulesSha256": sha256_file(rules_path),
         **({"visionNoise": {"profile": noise.name, "sha256": noise.sha256}} if noise else {}),
+        **({"billing": {"catalogueSha256": bill_cfg[2], "events": sum(m.billing.events for m in models)}}
+           if bill_cfg else {}),
         "epoch": iso_ms(epoch_ms), "durationMs": parse_duration_ms(scenario["duration"]),
         "endMs": end_ms, "horizonMs": max(horizons.values()), "graceMs": rules.grace_ms,
         "counts": {"cleanEvents": len(clean), "emittedEvents": len(emitted),
@@ -143,7 +157,8 @@ def simulate(*, seed: int, layout_path: str, scenario_path: str, rules_path: str
                                "endMs": epoch_ms + models[i].end_ms, "horizonMs": horizons[sid],
                                "shoppers": models[i].n_shoppers}
                               for i, (sid, p) in enumerate(zip(store_ids, paths))]
-    return RunOutput(run_id, clean, emitted, gt, manifest)
+    billing_truth = [m.billing.truth() for m in models] if bill_cfg else None
+    return RunOutput(run_id, clean, emitted, gt, manifest, billing_truth)
 
 
 def write_files(out: RunOutput, out_dir: str | Path) -> dict:
@@ -155,5 +170,9 @@ def write_files(out: RunOutput, out_dir: str | Path) -> dict:
     (d / "ground_truth.jsonl").write_bytes(gt_bytes)
     manifest = dict(out.manifest)
     manifest["sha256"] = {"events": sha256_bytes(ev_bytes), "groundTruth": sha256_bytes(gt_bytes)}
+    if out.billing_truth is not None:
+        bt_bytes = (json.dumps(out.billing_truth, indent=2, sort_keys=True) + "\n").encode()
+        (d / "billing_truth.json").write_bytes(bt_bytes)
+        manifest["sha256"]["billingTruth"] = sha256_bytes(bt_bytes)
     (d / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return manifest

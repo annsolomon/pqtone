@@ -91,7 +91,7 @@ def load_layout(path: str | Path) -> dict:
 
 
 SCENARIO_KEYS = {
-    None: {"name", "description", "duration", "epoch", "stores", "arrivals", "shoppers", "staffing", "faults"},
+    None: {"name", "description", "duration", "epoch", "stores", "arrivals", "shoppers", "staffing", "faults", "billing"},
     "shoppers": {"checkoutProbability", "fittingRoomProbability", "fittingRoomMedianSeconds",
                  "fittingRoomSigma", "serviceMedianSeconds"},
     "staffing": {"initialOpen", "minOpen", "maxOpen", "openAtQueueLength", "reactionMin", "reactionMax",
