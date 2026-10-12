@@ -259,7 +259,9 @@ services:
   cam-sim:
     image: bluenviron/mediamtx:1.9.3-ffmpeg
     profiles: [edge]
-    <<: *logging
+    <<: [*logging, *hardened]
+    read_only: true
+    tmpfs: [/tmp]
     volumes:
       - ../../edge/chaos/mediamtx.yml:/mediamtx.yml:ro
     networks: [cameras]

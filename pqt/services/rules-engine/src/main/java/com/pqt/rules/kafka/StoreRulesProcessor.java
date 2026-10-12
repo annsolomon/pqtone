@@ -79,6 +79,7 @@ public final class StoreRulesProcessor implements Processor<String, String, Stri
             log.warn("dropping unparseable event: {}", ex.getMessage());
             return;
         }
+        if (e == null) return;  // a valid event the rules do not use (e.g. an edge heartbeat)
         String key = Event.stateKey(e);
         StoreState s = store.get(key);
         if (s == null) s = new StoreState();

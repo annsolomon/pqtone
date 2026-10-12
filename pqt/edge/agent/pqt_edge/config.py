@@ -73,6 +73,7 @@ class AgentConfig:
     status_path: Path
     status_every_s: float = 10.0
     strict_secrets: bool = True
+    heartbeat_every_s: float = 30.0
 
     def client_secret(self) -> str:
         return read_secret(self.client_secret_file, strict=self.strict_secrets)
@@ -102,6 +103,7 @@ def load(path: str | Path) -> AgentConfig:
             track_secret_file=base / doc["trackSecretFile"], outbox_path=Path(ob.get("path", "/var/lib/pqt-edge/outbox.db")),
             outbox_quota_bytes=int(float(ob.get("quotaMb", 512)) * 1024 * 1024), detector=doc.get("detector", {}),
             cameras=cams, status_path=Path(doc.get("statusPath", "/var/lib/pqt-edge/status.json")),
-            status_every_s=float(doc.get("statusEverySeconds", 10)), strict_secrets=strict)
+            status_every_s=float(doc.get("statusEverySeconds", 10)), strict_secrets=strict,
+            heartbeat_every_s=float(doc.get("heartbeatEverySeconds", 30)))
     except KeyError as e:
         raise ConfigError(f"missing setting {e}") from e

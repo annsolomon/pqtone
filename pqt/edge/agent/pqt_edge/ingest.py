@@ -18,9 +18,13 @@ import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 
-import cv2
-
+# Before cv2 loads: RTSP over TCP, and OpenCV/FFmpeg kept quiet so a camera URL (with its password) never
+# reaches a log line through a library warning (A6).
 os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
+os.environ.setdefault("OPENCV_LOG_LEVEL", "SILENT")
+os.environ.setdefault("OPENCV_FFMPEG_LOGLEVEL", "-8")
+
+import cv2  # noqa: E402
 
 
 def redact(url: str) -> str:

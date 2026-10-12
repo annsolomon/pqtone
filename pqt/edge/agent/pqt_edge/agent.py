@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pqt_vision import camera as cam
 from pqt_vision.uplink import OAuthClient, Uplink
 
-from . import __version__
+from . import __version__, heartbeat
 from .config import AgentConfig, CameraSpec
 from .ingest import CameraReader, redact
 from .outbox import Outbox, OutboxFull
@@ -80,6 +80,9 @@ class Agent:
                 spec, CameraReader(spec.url(), fps=spec.fps),
                 Perception(camera, make_detector(cfg.detector, camera), start_ms=self.started_ms, secret=secret, fps=spec.fps)))
         self._lock = threading.Lock()
+        self.session = f"session-{int(self.started_ms)}"
+        self._hb_seq = 0
+        self.last_heartbeat: dict | None = None
 
     def _camera_loop(self, w: CameraWorker) -> None:
         for wall_ms, image in w.reader.frames(self.stop):
@@ -100,9 +103,32 @@ class Agent:
                     log.error("outbox full of unsent events: pausing perception on %s", w.spec.id)
                 w.paused = True  # these events are not made again; the stream resumes from the next frame
 
+    def _camera_rows(self) -> list[dict]:
+        return [{"id": w.spec.id, "connected": w.reader.metrics.connected,
+                 "fps": w.reader.metrics.fps(int(time.time() * 1000)), "frames": w.reader.metrics.frames,
+                 "readErrors": w.reader.metrics.read_errors, "reconnects": w.reader.metrics.reconnects,
+                 "paused": w.paused, "lastFrameMs": w.reader.metrics.last_frame_ms} for w in self.workers]
+
+    def beat(self) -> dict:
+        """Build one heartbeat and store it in the outbox like any other event (A5)."""
+        self._hb_seq += 1
+        hb = heartbeat.event(agent_id=self.cfg.agent_id, store=self.cfg.store, session=self.session, seq=self._hb_seq,
+                             now_ms=int(time.time() * 1000), started_ms=self.started_ms, cameras=self._camera_rows(),
+                             outbox=self.outbox.stats(), state_dir=self.cfg.outbox_path.parent,
+                             clock_offset_ms=self.uplinker.uplink.clock_offset_ms)
+        try:
+            self.outbox.append([hb])
+        except OutboxFull:
+            log.error("outbox full: heartbeat not stored")
+        self.last_heartbeat = hb
+        if hb["data"]["alarms"]:
+            log.warning("alarms: %s", ",".join(hb["data"]["alarms"]))
+        return hb
+
     def status(self) -> dict:
         return {"agent": self.cfg.agent_id, "version": __version__, "outbox": self.outbox.stats(),
-                "uplink": self.uplinker.metrics,
+                "uplink": self.uplinker.metrics, "clockOffsetMs": self.uplinker.uplink.clock_offset_ms,
+                "alarms": (self.last_heartbeat or {}).get("data", {}).get("alarms", []),
                 "cameras": [{"id": w.spec.id, "url": redact(w.spec.url()), "connected": w.reader.metrics.connected,
                              "frames": w.reader.metrics.frames, "readErrors": w.reader.metrics.read_errors,
                              "reconnects": w.reader.metrics.reconnects, "openFailures": w.reader.metrics.open_failures,
@@ -117,7 +143,11 @@ class Agent:
         if threading.current_thread() is threading.main_thread():  # tests run the agent in a thread
             signal.signal(signal.SIGTERM, lambda *_: self.stop.set())
             signal.signal(signal.SIGINT, lambda *_: self.stop.set())
+        next_beat = time.monotonic() + self.cfg.heartbeat_every_s
         while not self.stop.wait(self.cfg.status_every_s):
+            if time.monotonic() >= next_beat:
+                self.beat()
+                next_beat = time.monotonic() + self.cfg.heartbeat_every_s
             self.cfg.status_path.write_text(json.dumps(self.status(), indent=2) + "\n", encoding="utf-8")
             log.info("status %s", json.dumps({"outbox": self.outbox.stats(), "uplink": self.uplinker.metrics}))
         for t in threads:

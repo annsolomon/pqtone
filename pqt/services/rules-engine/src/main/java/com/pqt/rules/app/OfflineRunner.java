@@ -73,6 +73,7 @@ public final class OfflineRunner {
                 invalid++;
                 continue;
             }
+            if (e == null) continue;  // not rule input
             if (!seen.add(e.source + "\u0000" + e.id)) {
                 dups++;
                 continue;

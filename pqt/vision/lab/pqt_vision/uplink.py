@@ -9,6 +9,7 @@ because event-core deduplicates on (source, id): a resent event comes back as "d
 """
 from __future__ import annotations
 
+import email.utils
 import json
 import random
 import time
@@ -66,6 +67,19 @@ class Uplink:
     auth: OAuthClient
     max_attempts: int = 8
     sleep: Callable[[float], None] = time.sleep
+    wall: Callable[[], float] = time.time
+    clock_offset_ms: int | None = None  # our clock minus the server's, from the Date header (A5)
+
+    def _note_date(self, headers) -> None:
+        """Estimate clock offset from the response's Date header (1 s resolution: take the middle)."""
+        value = headers.get("Date") if headers is not None else None
+        if not value:
+            return
+        try:
+            server = email.utils.parsedate_to_datetime(value).timestamp() + 0.5
+        except (TypeError, ValueError):
+            return
+        self.clock_offset_ms = int(round((self.wall() - server) * 1000))
 
     def send_batch(self, events: list[dict]) -> list[dict]:
         """POST one batch; returns event-core's per-item results ({id, status, ...}) in order."""
@@ -76,6 +90,7 @@ class Uplink:
                 "Authorization": f"Bearer {self.auth.token()}", "Content-Type": CONTENT_TYPE})
             try:
                 with urllib.request.urlopen(req, timeout=30) as r:  # noqa: S310
+                    self._note_date(getattr(r, "headers", None))
                     return json.loads(r.read())["results"]
             except urllib.error.HTTPError as e:
                 if e.code == 429:
