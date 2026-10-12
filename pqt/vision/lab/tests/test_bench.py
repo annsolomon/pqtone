@@ -58,8 +58,10 @@ def test_bench_scores_counts_when_a_zone_config_exists(tmp_path: Path, monkeypat
     monkeypatch.setattr(bench, "YoloxOnnxDetector", GTDetector)
     schemas = Path(__file__).resolve().parents[3] / "schemas"
     r = bench.bench_mot17(tmp_path / "train", model="fake", out=tmp_path / "out", sequences=("MOT17-02",),
-                          configs=cfg, schemas=schemas)
+                          configs=cfg, schemas=schemas, noise_out=tmp_path / "noise.yaml")
     c = r["sequences"]["MOT17-02"]["counts"]
+    assert (tmp_path / "noise.yaml").is_file() and r["noiseProfile"]["name"] == "mot17-fake-full"
+    assert r["noiseProfile"]["summary"]["missRate"] == {"base": 0.0}  # the perfect detector misses nobody
     assert c["schemaErrors"] == 0 and c["events"] > 0
     z = c["score"]["zones"]["zone-1"]
     assert z["n"] == 6 and z["within1"] == 1.0 and z["pass"] is True

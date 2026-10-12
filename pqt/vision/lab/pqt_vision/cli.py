@@ -208,7 +208,7 @@ def _bench(a: argparse.Namespace) -> int:
 
     seqs = tuple(a.sequences.split(",")) if a.sequences else STATIC_SEQUENCES
     r = bench_mot17(a.root, model=a.model, out=a.out, sequences=seqs, threads=a.threads, max_frames=a.max_frames,
-                    configs=a.configs, schemas=a.schemas, mode=a.mode)
+                    configs=a.configs, schemas=a.schemas, mode=a.mode, noise_out=a.noise_profile)
     print((Path(a.out) / "report.md").read_text(encoding="utf-8"))
     return 0 if r["sequences"] else 1
 
@@ -310,6 +310,7 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--schemas", help="schemas/ directory for validating the emitted events")
     b.add_argument("--mode", choices=["full", "roi", "tiled"], default="full",
                    help="detect on the whole frame, on the zones' region, or on overlapping tiles (V7)")
+    b.add_argument("--noise-profile", help="also measure a store-sim noise profile and write it here (N1)")
     b.set_defaults(fn=_bench)
 
     a = p.parse_args(args)

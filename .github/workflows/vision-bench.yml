@@ -42,8 +42,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Pull requests run the V7 candidates; a manual run can pass its own list.
-        include: ${{ fromJSON(inputs.experiments || '[{"model":"yolox_s","mode":"full"},{"model":"yolox_s","mode":"roi"},{"model":"yolox_s","mode":"tiled"},{"model":"yolox_m","mode":"roi"}]') }}
+        # Pull requests run the selected candidate (V7: yolox_s, zone crop); a manual run defaults to all four.
+        include: ${{ fromJSON(inputs.experiments || '[{"model":"yolox_s","mode":"roi"}]') }}
     env:
       MODEL: ${{ matrix.model }}
       MODE: ${{ matrix.mode }}
@@ -58,8 +58,8 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - name: Install vision-lab and the scorer
-        run: pip install -q './scorer' './vision/lab[test]'
+      - name: Install vision-lab, the scorer and the simulator (noise-profile validation)
+        run: pip install -q './sim' './scorer' './vision/lab[test]'
       - name: Restore the MOT17 fixed-camera sequences
         id: mot17
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
@@ -98,13 +98,15 @@ jobs:
           nproc
           pqt-vision bench-mot17 --root "$MOT17_DIR/MOT17/train" --model "$MODEL" --mode "$MODE" \
             --out "../.work/vision-bench/$MODEL-$MODE" --configs vision/lab/config/mot17 --schemas schemas \
-            2>&1 | tee "$RUNNER_TEMP/bench.log"
+            --noise-profile "../.work/vision-bench/$MODEL-$MODE/noise-profile.yaml" 2>&1 | tee "$RUNNER_TEMP/bench.log"
           cat "../.work/vision-bench/$MODEL-$MODE/report.md" >> "$GITHUB_STEP_SUMMARY"
       - name: Report as a check annotation
         if: always()
         run: |
           f="../.work/vision-bench/$MODEL-$MODE/report.md"
           if [ -s "$f" ]; then ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "vision bench $MODEL $MODE" "$f" 40; fi
+          n="../.work/vision-bench/$MODEL-$MODE/noise-profile.yaml"
+          if [ -s "$n" ]; then ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "noise profile $MODEL $MODE" "$n" 60; fi
       - name: Failure details
         if: failure()
         run: |
@@ -120,6 +122,7 @@ jobs:
           stage="$RUNNER_TEMP/publish"
           mkdir -p "$stage"
           cp ".work/vision-bench/$MODEL-$MODE/report.json" ".work/vision-bench/$MODEL-$MODE/report.md" "$stage/"
+          cp ".work/vision-bench/$MODEL-$MODE/noise-profile.yaml" "$stage/" 2>/dev/null || true
           if [ -f "$MOT17_DIR/MOT17.zip.sha256" ]; then cp "$MOT17_DIR/MOT17.zip.sha256" "$stage/"; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
