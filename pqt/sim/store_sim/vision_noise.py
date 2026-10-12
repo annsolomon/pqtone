@@ -10,8 +10,9 @@ manifest and folded into the run id, so two runs with different profiles never s
 
 `apply` turns the clean events into what a camera pipeline with that profile would have reported:
 
-- visits (zone.entered → zone.exited of one track) are missed with probability
-  missRate(base + perPersonInZone × people already in the zone, capped at max; per-zone overrides);
+- visits (zone.entered → zone.exited of one track) are missed with probability visitMissRate when the
+  profile has one (N5); otherwise missRate(base + perPersonInZone × people already in the zone, capped at
+  max; per-zone overrides), a per-frame rate applied per visit, which overstates missed visits;
 - the rest get entry/exit timing jitter;
 - a visit can fragment (the tracker loses the person and finds them again under a new id) and suffer
   ID switches (Poisson in the visit's length): each splits it into pieces with new track ids;
@@ -118,7 +119,9 @@ def is_identity(doc: dict) -> bool:
     miss = det["missRate"]
     zones_zero = all(z.get("missRate", {}).get("base", 0) == 0 and not z.get("missRate", {}).get("perPersonInZone")
                      for z in doc.get("zones", {}).values())
-    return (miss["base"] == 0 and not miss.get("perPersonInZone") and zones_zero and det["falsePositivesPerMinute"] == 0
+    visit_zero = det.get("visitMissRate", {}).get("probability", 0) == 0
+    return (miss["base"] == 0 and not miss.get("perPersonInZone") and zones_zero and visit_zero
+            and det["falsePositivesPerMinute"] == 0
             and trk["idSwitchesPerTrackMinute"] == 0 and trk["fragmentation"]["probability"] == 0
             and _zero(tim["entryJitterMs"]) and _zero(tim["exitJitterMs"]))
 
@@ -139,6 +142,9 @@ def scale(doc: dict, factor: float, *, name: str | None = None) -> dict:
             m["max"] = min(1.0, m["max"] * factor)
 
     miss(d["detection"]["missRate"])
+    if "visitMissRate" in d["detection"]:
+        vm = d["detection"]["visitMissRate"]
+        vm["probability"] = min(1.0, vm["probability"] * factor)
     for z in d.get("zones", {}).values():
         if "missRate" in z:
             miss(z["missRate"])
@@ -178,6 +184,11 @@ class _QVisit:
 
 
 def _miss_p(doc: dict, zone: str, occupancy: int) -> float:
+    """Probability that a whole visit is missed: the measured visit miss rate when the profile has one (N5),
+    otherwise the per-frame miss rate applied per visit (the pre-N5 upper bound)."""
+    vm = doc["detection"].get("visitMissRate")
+    if vm is not None:
+        return float(vm["probability"])
     m = doc.get("zones", {}).get(zone, {}).get("missRate") or doc["detection"]["missRate"]
     p = m["base"] + m.get("perPersonInZone", 0.0) * occupancy
     return float(min(p, m.get("max", 1.0), 1.0))

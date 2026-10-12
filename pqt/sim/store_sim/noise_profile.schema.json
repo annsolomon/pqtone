@@ -29,7 +29,7 @@
       "required": ["missRate", "falsePositivesPerMinute"],
       "properties": {
         "missRate": {
-          "description": "Probability a present person is not detected: base + perPersonInZone x (people in the zone), capped at max.",
+          "description": "Probability a present person is not tracked in a frame (N1 measures it per person-frame): base + perPersonInZone x (people in the zone), capped at max. Without visitMissRate the simulator applies it per visit, which overstates missed visits (an upper bound, kept for profiles written before N5).",
           "type": "object",
           "additionalProperties": false,
           "required": ["base"],
@@ -38,6 +38,13 @@
             "perPersonInZone": {"type": "number", "minimum": 0, "maximum": 1},
             "max": {"$ref": "#/$defs/probability"}
           }
+        },
+        "visitMissRate": {
+          "description": "Probability that a whole zone visit (a person in the zone for at least 1 s) is never tracked (N5). When present, the simulator drops visits with this probability instead; short per-frame misses are already reflected in fragmentation.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["probability"],
+          "properties": {"probability": {"$ref": "#/$defs/probability"}, "n": {"$ref": "#/$defs/n"}}
         },
         "falsePositivesPerMinute": {"type": "number", "minimum": 0, "description": "Phantom detections per camera-minute."},
         "phantomTrackDurationMs": {"$ref": "#/$defs/distribution"}

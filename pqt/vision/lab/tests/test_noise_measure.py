@@ -82,3 +82,25 @@ def test_samples_merge():
     b.miss_by_k[1] = [2, 10]
     a.merge(b)
     assert (a.seconds, a.switches, a.miss_by_k[1], a.cameras) == (15, 3, [3, 20], ["a", "b"])
+
+
+def test_whole_visits_never_tracked_are_counted_per_visit_not_per_frame():
+    gt, tracks, times = planted()
+    s = measure_sequence(gt, tracks, times, CAMERA, [], count_errors=[])
+    assert (s.visit_runs, s.visit_missed) == (2, 0)  # A was lost for 1 s, but tracked during the visit
+    # Person C stands in the zone for 2 s (frames 30-49) and is never tracked: one whole visit missed.
+    rows = [f"{f},1,50,100,20,100,1,1,1.0" for f in range(1, N + 1)]
+    rows += [f"{f},5,220,100,20,100,1,1,1.0" for f in range(30, 50)]
+    rows += [f"{f},6,120,100,20,100,1,1,1.0" for f in range(70, 75)]  # D: 0.5 s, too short to be a visit
+    gt2 = build_gt(parse_gt("\n".join(rows)), sequence="SYN", frames=N)
+    tracks2 = {f: [(1, box(50))] for f in range(1, N + 1)}
+    s2 = measure_sequence(gt2, tracks2, times, CAMERA, [], count_errors=[])
+    assert (s2.visit_runs, s2.visit_missed) == (2, 1)
+    doc = profile(s2, name="syn-visit", description="synthetic")
+    assert doc["detection"]["visitMissRate"] == {"probability": 0.5, "n": 2}
+    store_sim = pytest.importorskip("store_sim.vision_noise")
+    assert store_sim.validate(doc) == []
+    merged = Samples()
+    merged.merge(s)
+    merged.merge(s2)
+    assert (merged.visit_runs, merged.visit_missed) == (4, 1)

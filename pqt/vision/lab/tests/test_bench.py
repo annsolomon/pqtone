@@ -88,3 +88,33 @@ def test_roi_mode_needs_a_zone_config_and_judges_only_inside_the_region(tmp_path
     s = r["sequences"]["MOT17-02"]
     assert s["roi"] == [0, 0, 64, 48]  # zone grown by the 64 px minimum margin, clipped to the frame
     assert "skipped" in (tmp_path / "out" / "report.md").read_text()
+
+
+def test_the_noise_profile_is_validated_on_the_same_clips(tmp_path: Path, monkeypatch):
+    import pytest
+    import yaml
+
+    pytest.importorskip("store_sim.noise_validate")
+    rows = [f"{f},1,{5 + f},5,10,30,1,1,1.0" for f in range(1, 13)]
+    write_mot_sequence(tmp_path / "train", name="MOT17-02-FRCNN", gt_rows=rows, fps=2)
+    cfg = tmp_path / "cfg"
+    cfg.mkdir()
+    (cfg / "mot17-02.yaml").write_text(yaml.safe_dump({
+        "apiVersion": "camera.pqt/v1", "camera": "mot17-02", "store": "mot17", "units": "px",
+        "image": {"width": 64, "height": 48}, "homography": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        "zones": [{"id": "zone-1", "kind": "zone", "polygon": [[0, 0], [64, 0], [64, 48], [0, 48]]}],
+        "membership": {"enterSeconds": 0.5, "exitSeconds": 0.5, "boundaryMargin": 1}}), encoding="utf-8")
+    monkeypatch.setattr(bench, "resolve", lambda m: Path("unused.onnx"))
+    monkeypatch.setattr(bench, "YoloxOnnxDetector", GTDetector)
+    r = bench.bench_mot17(tmp_path / "train", model="fake", out=tmp_path / "out", sequences=("MOT17-02",),
+                          configs=cfg, schemas=Path(__file__).resolve().parents[3] / "schemas",
+                          noise_out=tmp_path / "noise.yaml")
+    v = r["noiseValidation"]
+    assert v["clips"] == 1 and v["seeds"] == 30 and v["measured"]["n"] == 6
+    assert v["simulated"]["n"] == 6 * 30
+    # A perfect detector: the real errors are all zero, and so is what the profile it measured predicts.
+    assert v["measured"]["shares"] == {"0": 1.0} and v["simulated"]["shares"] == {"0": 1.0} and not v["rejected"]
+    assert r["noiseProfile"]["summary"]["visitMissRate"] == {"probability": 0.0, "n": 1}
+    md = (tmp_path / "out" / "noise-validation.md").read_text()
+    assert "Two-sample KS" in md and "x1" not in md
+    assert "N5 same-clip validation" in (tmp_path / "out" / "report.md").read_text()

@@ -5,6 +5,8 @@ ground truth (people per mot.py) and the tracker's output (the same tracks the z
 
 - detection.missRate: per person-frame, a person in the zone with no matching track (IoU ≥ 0.5); fitted
   as base + perPersonInZone × (people in the zone), capped at the highest well-sampled rate.
+- detection.visitMissRate (N5): the share of people's zone visits (a stretch of ≥ 1 s in the zone) during
+  which no track ever matched them: the visit the counts lose entirely.
 - detection.falsePositivesPerMinute: tracks in the zone that match nobody for ≥ 80% of their zone
   frames ("phantom tracks"), per camera-minute; phantomTrackDurationMs: their durations (lognormal).
 - tracking.idSwitchesPerTrackMinute: a person's matched track id changes between consecutive frames.
@@ -49,6 +51,8 @@ class Samples:
     exit_jitter: list[float] = field(default_factory=list)
     count_errors: list[int] = field(default_factory=list)
     cameras: list[str] = field(default_factory=list)
+    visit_runs: int = 0
+    visit_missed: int = 0
 
     def merge(self, o: "Samples") -> None:
         self.seconds += o.seconds
@@ -63,6 +67,8 @@ class Samples:
         self.exit_jitter += o.exit_jitter
         self.count_errors += o.count_errors
         self.cameras += o.cameras
+        self.visit_runs += o.visit_runs
+        self.visit_missed += o.visit_missed
 
 
 def _in(poly: np.ndarray, b: Box, camera: CameraConfig) -> bool:
@@ -129,6 +135,14 @@ def measure_sequence(gt: GroundTruth, tracks: dict[int, list[tuple[int, Box]]], 
                 last_id, last_f = tid, f
             if len(seq) * dt_ms >= 1000:
                 s.fragments_per_person.append(frags)
+        # whole visits never tracked (N5): every stretch of >= 1 s in the zone, matched or not
+        for gid, fs in gt_in_frames.items():
+            matched_at = {f for f, tid in gt_seq[gid] if tid is not None}
+            for a, b in _runs(fs, frames, pos):
+                if times[b] - times[a] + dt_ms >= 1000:
+                    s.visit_runs += 1
+                    if not any(f in matched_at for f in frames[pos[a]:pos[b] + 1]):
+                        s.visit_missed += 1
         # timing: true entry/exit per person vs the nearest emitted event of a track that matched them
         zid = zone.id
         ev_in = [e for e in zone_events if e.zone_id == zid and e.kind == "zone.entered"]
@@ -214,6 +228,8 @@ def profile(s: Samples, *, name: str, description: str, today: date | None = Non
     frag = s.fragments_per_person
     fragmented = [x for x in frag if x > 0]
     det: dict = {"missRate": fit_miss_rate(s.miss_by_k),
+                 **({"visitMissRate": {"probability": round(s.visit_missed / s.visit_runs, 4), "n": s.visit_runs}}
+                    if s.visit_runs else {}),
                  "falsePositivesPerMinute": round(len(s.phantom_durations_ms) / minutes, 3) if minutes else 0.0}
     ph = _lognormal(s.phantom_durations_ms)
     if ph:
