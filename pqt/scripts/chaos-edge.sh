@@ -102,7 +102,11 @@ deadline=$(( $(date +%s) + DRAIN ))
 while :; do
   pending=$(status | jq_py 'd.get("outbox", {}).get("pending", -1)')
   [ "$pending" = "0" ] && break
-  if [ "$(date +%s)" -gt "$deadline" ]; then log "outbox did not drain ($pending pending)"; break; fi
+  if [ "$(date +%s)" -gt "$deadline" ]; then
+    log "outbox did not drain ($pending pending); agent status: $(status | jq_py 'json.dumps({k: d.get(k) for k in ("uplink", "outbox", "clockOffsetMs", "alarms")})')"
+    $EDGE logs --no-color --tail 200 edge-agent | grep -v '"msg":"status ' | tail -n 25 | sed 's/^/[chaos-edge agent] /'
+    break
+  fi
   sleep 2
 done
 log "stopping the agent"
