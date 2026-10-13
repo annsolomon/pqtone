@@ -30,16 +30,28 @@ def source_for(store_id: str) -> str:
     return f"urn:pqt:sim:store-sim:{store_id}"
 
 
+BILLING_NAMESPACES = ("pos.", "stock.")  # X1: com.pqt.pos.* and com.pqt.stock.* (schemas/data/pos.*, stock.*)
+
+
+def type_and_schema(short_type: str) -> tuple[str, str]:
+    """CloudEvent type and dataschema for a model record's short type."""
+    if short_type.startswith(BILLING_NAMESPACES):
+        ns, rest = short_type.split(".", 1)
+        return f"com.pqt.{short_type}", f"https://schemas.pqt.local/{ns}/{rest}/1.0.0"
+    return TYPE_PREFIX + short_type, f"{SCHEMA_BASE}{short_type}/{SCHEMA_VERSION}"
+
+
 def make_event(*, order: int, short_type: str, t_ms: int, store_id: str, run_id: str,
                subject: str, data: dict) -> dict:
+    type_, dataschema = type_and_schema(short_type)
     return {
         "specversion": "1.0",
         "id": str(uuid.uuid5(NAMESPACE, f"{run_id}:{order}")),
         "source": source_for(store_id),
-        "type": TYPE_PREFIX + short_type,
+        "type": type_,
         "time": iso_ms(t_ms),
         "subject": subject,
-        "dataschema": f"{SCHEMA_BASE}{short_type}/{SCHEMA_VERSION}",
+        "dataschema": dataschema,
         "datacontenttype": "application/json",
         "storeid": store_id,
         "partitionkey": store_id,

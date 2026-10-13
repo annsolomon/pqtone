@@ -1,0 +1,14 @@
+name: stock_out
+description: >-
+  X1 B2: billing_day with little milk and bread on the shelf at opening and a delivery that comes late.
+  Both sell out (stock_out in the billing ground truth); sales of them stop until the delivery.
+duration: PT2H
+arrivals:
+  - {from: PT0S, to: PT2H, perHour: 110}
+billing:
+  catalogue: ../../config/catalogue/store-001.json
+  basketMeanLines: 4
+  stockSnapshotEvery: PT15M
+  stockOverrides: {MILK-1L: 12000, BREAD-400G: 6000}
+  deliveries:
+    - {at: PT1H30M, docNo: PB-2001, lines: [{sku: MILK-1L, qty: 48}, {sku: BREAD-400G, qty: 24}]}

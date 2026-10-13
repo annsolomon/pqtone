@@ -1,0 +1,436 @@
+{
+ "storeId": "store-001",
+ "currency": "INR",
+ "description": "Invented demo catalogue for store-sim's billing (X1 B2). Prices are tax-inclusive, in paise per unit (per kg for loose items).",
+ "items": [
+  {
+   "sku": "ATTA-5KG",
+   "name": "Wheat flour 5 kg",
+   "unit": "pcs",
+   "priceMinor": 24500,
+   "taxRateBp": 500,
+   "popularity": 6,
+   "initialStockMilli": 60000,
+   "qtyMilli": [
+    1000,
+    2000
+   ]
+  },
+  {
+   "sku": "RICE-BASMATI-1KG",
+   "name": "Basmati rice 1 kg",
+   "unit": "pcs",
+   "priceMinor": 14900,
+   "taxRateBp": 500,
+   "popularity": 5,
+   "initialStockMilli": 80000,
+   "qtyMilli": [
+    1000,
+    3000
+   ]
+  },
+  {
+   "sku": "DAL-TOOR-1KG",
+   "name": "Toor dal 1 kg",
+   "unit": "pcs",
+   "priceMinor": 16500,
+   "taxRateBp": 0,
+   "popularity": 4,
+   "initialStockMilli": 70000,
+   "qtyMilli": [
+    1000,
+    2000
+   ]
+  },
+  {
+   "sku": "SUGAR-1KG",
+   "name": "Sugar 1 kg",
+   "unit": "pcs",
+   "priceMinor": 4800,
+   "taxRateBp": 500,
+   "popularity": 5,
+   "initialStockMilli": 90000,
+   "qtyMilli": [
+    1000,
+    2000
+   ]
+  },
+  {
+   "sku": "SALT-1KG",
+   "name": "Iodised salt 1 kg",
+   "unit": "pcs",
+   "priceMinor": 2800,
+   "taxRateBp": 0,
+   "popularity": 3,
+   "initialStockMilli": 100000,
+   "qtyMilli": [
+    1000,
+    1000
+   ]
+  },
+  {
+   "sku": "OIL-SUN-1L",
+   "name": "Sunflower oil 1 l",
+   "unit": "pcs",
+   "priceMinor": 15500,
+   "taxRateBp": 500,
+   "popularity": 5,
+   "initialStockMilli": 60000,
+   "qtyMilli": [
+    1000,
+    2000
+   ]
+  },
+  {
+   "sku": "GHEE-500ML",
+   "name": "Ghee 500 ml",
+   "unit": "pcs",
+   "priceMinor": 32500,
+   "taxRateBp": 1200,
+   "popularity": 2,
+   "initialStockMilli": 30000,
+   "qtyMilli": [
+    1000,
+    1000
+   ]
+  },
+  {
+   "sku": "MILK-1L",
+   "name": "Toned milk 1 l",
+   "unit": "pcs",
+   "priceMinor": 6600,
+   "taxRateBp": 0,
+   "popularity": 9,
+   "initialStockMilli": 120000,
+   "qtyMilli": [
+    1000,
+    3000
+   ]
+  },
+  {
+   "sku": "CURD-400G",
+   "name": "Curd 400 g",
+   "unit": "pcs",
+   "priceMinor": 4500,
+   "taxRateBp": 500,
+   "popularity": 4,
+   "initialStockMilli": 50000,
+   "qtyMilli": [
+    1000,
+    2000
+   ]
+  },
+  {
+   "sku": "PANEER-200G",
+   "name": "Paneer 200 g",
+   "unit": "pcs",
+   "priceMinor": 9000,
+   "taxRateBp": 500,
+   "popularity": 3,
+   "initialStockMilli": 40000,
+   "qtyMilli": [
+    1000,
+    2000
+   ]
+  },
+  {
+   "sku": "BREAD-400G",
+   "name": "Bread 400 g",
+   "unit": "pcs",
+   "priceMinor": 4500,
+   "taxRateBp": 0,
+   "popularity": 6,
+   "initialStockMilli": 60000,
+   "qtyMilli": [
+    1000,
+    2000
+   ]
+  },
+  {
+   "sku": "EGGS-12",
+   "name": "Eggs, tray of 12",
+   "unit": "pcs",
+   "priceMinor": 8400,
+   "taxRateBp": 0,
+   "popularity": 4,
+   "initialStockMilli": 50000,
+   "qtyMilli": [
+    1000,
+    1000
+   ]
+  },
+  {
+   "sku": "ONION-LOOSE",
+   "name": "Onions, loose",
+   "unit": "kg",
+   "priceMinor": 4000,
+   "taxRateBp": 0,
+   "popularity": 6,
+   "initialStockMilli": 150000,
+   "qtyMilli": [
+    500,
+    3000
+   ]
+  },
+  {
+   "sku": "POTATO-LOOSE",
+   "name": "Potatoes, loose",
+   "unit": "kg",
+   "priceMinor": 3500,
+   "taxRateBp": 0,
+   "popularity": 6,
+   "initialStockMilli": 150000,
+   "qtyMilli": [
+    500,
+    3000
+   ]
+  },
+  {
+   "sku": "TOMATO-LOOSE",
+   "name": "Tomatoes, loose",
+   "unit": "kg",
+   "priceMinor": 3000,
+   "taxRateBp": 0,
+   "popularity": 5,
+   "initialStockMilli": 100000,
+   "qtyMilli": [
+    250,
+    2000
+   ]
+  },
+  {
+   "sku": "BANANA-DOZEN",
+   "name": "Bananas, dozen",
+   "unit": "pcs",
+   "priceMinor": 6000,
+   "taxRateBp": 0,
+   "popularity": 4,
+   "initialStockMilli": 40000,
+   "qtyMilli": [
+    1000,
+    1000
+   ]
+  },
+  {
+   "sku": "APPLE-LOOSE",
+   "name": "Apples, loose",
+   "unit": "kg",
+   "priceMinor": 18000,
+   "taxRateBp": 0,
+   "popularity": 3,
+   "initialStockMilli": 60000,
+   "qtyMilli": [
+    500,
+    2000
+   ]
+  },
+  {
+   "sku": "TEA-250G",
+   "name": "Tea 250 g",
+   "unit": "pcs",
+   "priceMinor": 14000,
+   "taxRateBp": 500,
+   "popularity": 3,
+   "initialStockMilli": 50000,
+   "qtyMilli": [
+    1000,
+    1000
+   ]
+  },
+  {
+   "sku": "COFFEE-100G",
+   "name": "Instant coffee 100 g",
+   "unit": "pcs",
+   "priceMinor": 31000,
+   "taxRateBp": 1800,
+   "popularity": 2,
+   "initialStockMilli": 30000,
+   "qtyMilli": [
+    1000,
+    1000
+   ]
+  },
+  {
+   "sku": "BISCUIT-PACK",
+   "name": "Biscuits, pack",
+   "unit": "pcs",
+   "priceMinor": 3000,
+   "taxRateBp": 1800,
+   "popularity": 6,
+   "initialStockMilli": 120000,
+   "qtyMilli": [
+    1000,
+    4000
+   ]
+  },
+  {
+   "sku": "NOODLES-4PK",
+   "name": "Instant noodles, 4-pack",
+   "unit": "pcs",
+   "priceMinor": 5600,
+   "taxRateBp": 1200,
+   "popularity": 5,
+   "initialStockMilli": 100000,
+   "qtyMilli": [
+    1000,
+    3000
+   ]
+  },
+  {
+   "sku": "CHIPS-100G",
+   "name": "Potato chips 100 g",
+   "unit": "pcs",
+   "priceMinor": 2000,
+   "taxRateBp": 1200,
+   "popularity": 5,
+   "initialStockMilli": 120000,
+   "qtyMilli": [
+    1000,
+    4000
+   ]
+  },
+  {
+   "sku": "SOAP-4PK",
+   "name": "Bath soap, 4-pack",
+   "unit": "pcs",
+   "priceMinor": 18000,
+   "taxRateBp": 1800,
+   "popularity": 3,
+   "initialStockMilli": 50000,
+   "qtyMilli": [
+    1000,
+    1000
+   ]
+  },
+  {
+   "sku": "DETERGENT-1KG",
+   "name": "Detergent powder 1 kg",
+   "unit": "pcs",
+   "priceMinor": 11000,
+   "taxRateBp": 1800,
+   "popularity": 3,
+   "initialStockMilli": 50000,
+   "qtyMilli": [
+    1000,
+    1000
+   ]
+  },
+  {
+   "sku": "TOOTHPASTE-150G",
+   "name": "Toothpaste 150 g",
+   "unit": "pcs",
+   "priceMinor": 9500,
+   "taxRateBp": 1800,
+   "popularity": 3,
+   "initialStockMilli": 60000,
+   "qtyMilli": [
+    1000,
+    2000
+   ]
+  },
+  {
+   "sku": "SHAMPOO-340ML",
+   "name": "Shampoo 340 ml",
+   "unit": "pcs",
+   "priceMinor": 26000,
+   "taxRateBp": 1800,
+   "popularity": 2,
+   "initialStockMilli": 30000,
+   "qtyMilli": [
+    1000,
+    1000
+   ]
+  },
+  {
+   "sku": "TSHIRT-M",
+   "name": "T-shirt, size M",
+   "unit": "pcs",
+   "priceMinor": 49900,
+   "taxRateBp": 500,
+   "popularity": 2,
+   "initialStockMilli": 40000,
+   "qtyMilli": [
+    1000,
+    2000
+   ]
+  },
+  {
+   "sku": "TSHIRT-L",
+   "name": "T-shirt, size L",
+   "unit": "pcs",
+   "priceMinor": 49900,
+   "taxRateBp": 500,
+   "popularity": 2,
+   "initialStockMilli": 40000,
+   "qtyMilli": [
+    1000,
+    2000
+   ]
+  },
+  {
+   "sku": "JEANS-32",
+   "name": "Jeans, waist 32",
+   "unit": "pcs",
+   "priceMinor": 149900,
+   "taxRateBp": 1200,
+   "popularity": 1,
+   "initialStockMilli": 20000,
+   "qtyMilli": [
+    1000,
+    1000
+   ]
+  },
+  {
+   "sku": "SOCKS-3PK",
+   "name": "Socks, 3-pack",
+   "unit": "pcs",
+   "priceMinor": 29900,
+   "taxRateBp": 500,
+   "popularity": 2,
+   "initialStockMilli": 40000,
+   "qtyMilli": [
+    1000,
+    2000
+   ]
+  },
+  {
+   "sku": "EARPHONES",
+   "name": "Wired earphones",
+   "unit": "pcs",
+   "priceMinor": 59900,
+   "taxRateBp": 1800,
+   "popularity": 1,
+   "initialStockMilli": 20000,
+   "qtyMilli": [
+    1000,
+    1000
+   ]
+  },
+  {
+   "sku": "CHARGER-USB",
+   "name": "USB charger",
+   "unit": "pcs",
+   "priceMinor": 79900,
+   "taxRateBp": 1800,
+   "popularity": 1,
+   "initialStockMilli": 15000,
+   "qtyMilli": [
+    1000,
+    1000
+   ]
+  },
+  {
+   "sku": "BATTERY-AA4",
+   "name": "AA batteries, 4-pack",
+   "unit": "pcs",
+   "priceMinor": 12000,
+   "taxRateBp": 1800,
+   "popularity": 2,
+   "initialStockMilli": 40000,
+   "qtyMilli": [
+    1000,
+    1000
+   ]
+  }
+ ]
+}
