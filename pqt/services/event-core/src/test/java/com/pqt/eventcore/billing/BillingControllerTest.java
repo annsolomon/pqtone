@@ -67,6 +67,10 @@ class BillingControllerTest {
         assertEquals("window-too-long", code(() ->
                 BillingController.window("store-001", "2026-05-20T00:00:00Z", TO, "hour", "UTC", null, null)));
         BillingController.window("store-001", "2026-05-20T00:00:00Z", TO, "day", "UTC", null, null);  // 9 days of days is fine
+        assertEquals(BillingService.Bucket.QUARTER_HOUR,
+                BillingController.window("store-001", "2026-05-27T00:00:00Z", TO, "15m", "UTC", null, null).bucket());
+        assertEquals("window-too-long", code(() ->
+                BillingController.window("store-001", "2026-05-26T23:59:59Z", TO, "15m", "UTC", null, null)));
     }
 
     @Test

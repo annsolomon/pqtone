@@ -29,6 +29,8 @@ public class BillingController {
     static final Duration MAX_SPAN = Duration.ofDays(35);
     /** Hourly buckets are for a day or a week, not a month of 840 rows per currency and tender. */
     static final Duration MAX_HOURLY_SPAN = Duration.ofDays(7);
+    /** 15-minute buckets line sales up with queue length and footfall over a trading day (B7). */
+    static final Duration MAX_QUARTER_HOUR_SPAN = Duration.ofDays(2);
     static final String DEFAULT_ZONE = "Asia/Kolkata";
     static final int MAX_LIMIT = 1000;
     private static final Pattern STORE_ID = StoreScope.STORE_ID;
@@ -43,7 +45,7 @@ public class BillingController {
         this.service = service;
     }
 
-    /** Bills and sales per hour or per day (in the store's time zone), optionally for one till. */
+    /** Bills and sales per 15 minutes, hour or day (in the store's time zone), optionally for one till. */
     @GetMapping("/sales")
     public Map<String, Object> sales(@PathVariable String storeId, @RequestParam String from, @RequestParam String to,
                                      @RequestParam(defaultValue = "day") String bucket,
@@ -53,7 +55,7 @@ public class BillingController {
         return service.sales(window(storeId, from, to, bucket, tz, till, run));
     }
 
-    /** Money in and out per tender, per hour or per day, optionally for one till. */
+    /** Money in and out per tender, per 15 minutes, hour or day, optionally for one till. */
     @GetMapping("/payments")
     public Map<String, Object> payments(@PathVariable String storeId, @RequestParam String from, @RequestParam String to,
                                         @RequestParam(defaultValue = "day") String bucket,
@@ -85,11 +87,17 @@ public class BillingController {
         if (till != null) check(till, TILL_ID, "bad-till", "invalid till id");
         if (run != null) check(run, RUN_ID, "bad-run", "run must be a simulator run id");
         BillingService.Bucket b = switch (bucket) {
+            case "15m" -> BillingService.Bucket.QUARTER_HOUR;
             case "hour" -> BillingService.Bucket.HOUR;
             case "day" -> BillingService.Bucket.DAY;
-            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "bad-bucket", "bucket must be hour or day");
+            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "bad-bucket", "bucket must be 15m, hour or day");
         };
-        Instant[] span = span(from, to, b == BillingService.Bucket.HOUR ? MAX_HOURLY_SPAN : MAX_SPAN);
+        Duration max = switch (b) {
+            case QUARTER_HOUR -> MAX_QUARTER_HOUR_SPAN;
+            case HOUR -> MAX_HOURLY_SPAN;
+            case DAY -> MAX_SPAN;
+        };
+        Instant[] span = span(from, to, max);
         return new BillingService.Window(storeId, run, span[0], span[1], b, zone(tz), till);
     }
 

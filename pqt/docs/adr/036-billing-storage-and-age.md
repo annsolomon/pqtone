@@ -45,9 +45,10 @@ and keep each store's sales to itself. Three things stood in the way:
    BFF prefix, session and `viewer` role, like the other console reads; `/v1/` stays the machine ingest API,
    which corrects the path written in the X1 plan). Sales use the reconcile's rules (B6, ADR-034): a bill
    counts once at its latest revision unless that revision was voided, at the time of that revision's first
-   line, so the console and the reconcile always agree. Buckets are hours or days in the store's time zone
-   (`tz`, IANA, default `Asia/Kolkata`), returned as UTC instants. A window covers at most 35 days (7 for
-   hourly buckets). `run` selects a simulator run; without it, live data. Money stays integer minor units.
+   line, so the console and the reconcile always agree. Buckets are 15 minutes, hours or days of the store's
+   local clock (`tz`, IANA, default `Asia/Kolkata`; PostgreSQL `date_bin` from local midnight, so a +05:45
+   zone still gets :00/:15/:30/:45 buckets), returned as UTC instants. A window covers at most 35 days (7 for
+   hourly, 2 for 15-minute buckets). `run` selects a simulator run; without it, live data. Money stays integer minor units.
 
 ## Alternatives considered
 

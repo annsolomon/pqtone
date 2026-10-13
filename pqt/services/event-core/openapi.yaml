@@ -158,7 +158,7 @@ components:
         - $ref: "#/components/schemas/BillingWindow"
         - type: object
           properties:
-            bucket: {type: string, enum: [hour, day]}
+            bucket: {type: string, enum: ["15m", hour, day]}
             timeZone: {type: string}
             tillId: {type: [string, "null"]}
             buckets:
@@ -182,7 +182,7 @@ components:
         - $ref: "#/components/schemas/BillingWindow"
         - type: object
           properties:
-            bucket: {type: string, enum: [hour, day]}
+            bucket: {type: string, enum: ["15m", hour, day]}
             timeZone: {type: string}
             tillId: {type: [string, "null"]}
             buckets:
@@ -230,8 +230,8 @@ components:
   parameters:
     BillingStore: {name: storeId, in: path, required: true, schema: {type: string, pattern: "^[a-z0-9-]{1,64}$"}}
     BillingFrom: {name: from, in: query, required: true, description: Start of the window (inclusive), RFC 3339, schema: {type: string, format: date-time}}
-    BillingTo: {name: to, in: query, required: true, description: End of the window (exclusive); at most 35 days after from (7 for hourly buckets), schema: {type: string, format: date-time}}
-    BillingBucket: {name: bucket, in: query, schema: {type: string, enum: [hour, day], default: day}}
+    BillingTo: {name: to, in: query, required: true, description: End of the window (exclusive); at most 35 days after from (7 for hourly, 2 for 15-minute buckets), schema: {type: string, format: date-time}}
+    BillingBucket: {name: bucket, in: query, description: "15m (at most 2 days), hour (at most 7 days) or day", schema: {type: string, enum: ["15m", hour, day], default: day}}
     BillingTz: {name: tz, in: query, description: IANA time zone for the buckets, schema: {type: string, default: Asia/Kolkata}}
     BillingTill: {name: till, in: query, schema: {type: string, pattern: "^[a-z0-9-]{1,64}$"}}
     BillingRun: {name: run, in: query, description: A simulator run id; omit for live data, schema: {type: string, pattern: "^run-[a-f0-9]{12}$"}}
@@ -285,7 +285,7 @@ paths:
       responses: {"200": {description: OK}}
   /api/stores/{storeId}/sales:
     get:
-      summary: Bills and sales per hour or day in the store's time zone (X1 B3)
+      summary: Bills and sales per 15 minutes, hour or day in the store's time zone (X1 B3)
       description: |
         Each bill counts once, at its latest revision, unless that revision was voided (then it is in voidedBills);
         its time is the first line of that revision. The same rules as the daily reconcile (ADR-034). Money is in
@@ -306,7 +306,7 @@ paths:
         "400": {description: A parameter is invalid (problem code bad-store-id, bad-time, bad-window, window-too-long, bad-bucket, bad-time-zone, bad-till or bad-run)}
   /api/stores/{storeId}/payments:
     get:
-      summary: Money in and out per tender, per hour or day (X1 B3)
+      summary: Money in and out per tender, per 15 minutes, hour or day (X1 B3)
       security: [{session: []}]
       parameters:
         - $ref: "#/components/parameters/BillingStore"

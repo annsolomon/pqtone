@@ -109,6 +109,8 @@ def test_billing_read_parameters_are_checked():
     assert v.get(f"/api/stores/{STORE}/sales?{window()}&bucket=week").json()["code"] == "bad-bucket"
     assert v.get(f"/api/stores/{STORE}/sales?{window(40)}").json()["code"] == "window-too-long"
     assert v.get(f"/api/stores/{STORE}/sales?{window(8)}&bucket=hour").json()["code"] == "window-too-long"
+    assert v.get(f"/api/stores/{STORE}/sales?{window(3)}&bucket=15m").json()["code"] == "window-too-long"
+    assert v.get(f"/api/stores/{STORE}/sales?{window(1)}&bucket=15m").status_code == 200
     assert v.get(f"/api/stores/{STORE}/payments?{window()}&tz=Mars/Olympus").json()["code"] == "bad-time-zone"
     assert v.get(f"/api/stores/{STORE}/stock?{window()}&limit=0").json()["code"] == "bad-limit"
     assert v.get(f"/api/stores/{STORE}/sales?to=2026-01-01T00:00:00Z").status_code == 400

@@ -352,6 +352,19 @@ class BillingIT {
     }
 
     @Test
+    void quarterHourBucketsFollowTheLocalClockEvenAtAQuarterHourOffset() {
+        // Nepal is UTC+05:45: card at 04:30Z is 10:15 local, cash at 05:31Z is 11:16 local -> the 11:15 bucket.
+        List<Map<String, Object>> b = list(billing.payments(window("2026-05-28T04:00:00Z", "2026-05-28T06:00:00Z",
+                Bucket.QUARTER_HOUR, ZoneId.of("Asia/Kathmandu"), null)), "buckets");
+        assertEquals(List.of("2026-05-28T04:30:00Z", "2026-05-28T05:30:00Z"), b.stream().map(x -> x.get("start")).toList());
+        assertEquals(List.of("card", "cash"), b.stream().map(x -> x.get("tender")).toList());
+        List<Map<String, Object>> sales = list(billing.sales(window("2026-05-28T04:00:00Z", "2026-05-28T07:00:00Z",
+                Bucket.QUARTER_HOUR, IST, null)), "buckets");
+        assertEquals(List.of("2026-05-28T04:30:00Z", "2026-05-28T05:30:00Z", "2026-05-28T06:30:00Z"),
+                sales.stream().map(x -> x.get("start")).toList(), "10:00, 11:00 (B2's 11:01 revision) and 12:00 IST");
+    }
+
+    @Test
     void paymentsInAndOutPerTenderAddUpToSalesMinusRefunds() {
         Map<String, Object> r = billing.payments(window("2026-05-27T18:30:00Z", "2026-05-29T18:30:00Z", Bucket.DAY, IST, null));
         List<Map<String, Object>> b = list(r, "buckets");

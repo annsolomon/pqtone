@@ -31,17 +31,20 @@ public class BillingService {
                          String tillId) {
     }
 
+    /** Bucket widths; each bins local wall-clock time from local midnight (PostgreSQL date_bin). */
     public enum Bucket {
-        HOUR("hour"), DAY("day");
+        QUARTER_HOUR("15m", "15 minutes"), HOUR("hour", "1 hour"), DAY("day", "1 day");
 
-        final String sql;
+        final String label;
+        final String interval;
 
-        Bucket(String sql) {
-            this.sql = sql;
+        Bucket(String label, String interval) {
+            this.label = label;
+            this.interval = interval;
         }
 
         public String label() {
-            return sql;
+            return label;
         }
     }
 
@@ -76,7 +79,7 @@ public class BillingService {
                          WHERE l.store_id = ? AND l.sim_run_id IS NOT DISTINCT FROM ?
                          GROUP BY l.store_id, l.sim_run_id, l.bill_ref, x.revision, l.currency
                     )
-                    SELECT date_trunc(?, bill_time AT TIME ZONE ?) AS bucket_start, currency,
+                    SELECT date_bin(?::interval, bill_time AT TIME ZONE ?, timestamp '2000-01-01 00:00:00') AS bucket_start, currency,
                            (count(*) FILTER (WHERE NOT voided))::int,
                            (coalesce(sum(amount) FILTER (WHERE NOT voided), 0))::bigint,
                            (coalesce(sum(tax) FILTER (WHERE NOT voided), 0))::bigint,
@@ -100,7 +103,7 @@ public class BillingService {
                     w.storeId(), w.runId(), utc(w.from()), utc(w.to()),
                     w.storeId(), w.runId(),
                     w.storeId(), w.runId(),
-                    w.bucket().sql, w.zone().getId(),
+                    w.bucket().interval, w.zone().getId(),
                     utc(w.from()), utc(w.to()), w.tillId(), w.tillId());
         });
         Map<String, Object> out = header(w);
@@ -114,7 +117,7 @@ public class BillingService {
         List<Map<String, Object>> buckets = readOnly.execute(status -> {
             StoreScope.set(jdbc, w.storeId());
             return jdbc.query("""
-                    SELECT date_trunc(?, event_time AT TIME ZONE ?) AS bucket_start, currency, tender,
+                    SELECT date_bin(?::interval, event_time AT TIME ZONE ?, timestamp '2000-01-01 00:00:00') AS bucket_start, currency, tender,
                            (coalesce(sum(amount_minor) FILTER (WHERE direction = 'in'), 0))::bigint,
                            (coalesce(sum(amount_minor) FILTER (WHERE direction = 'out'), 0))::bigint,
                            (count(*) FILTER (WHERE direction = 'in'))::int,
@@ -138,7 +141,7 @@ public class BillingService {
                         m.put("paymentsOut", rs.getInt(7));
                         return m;
                     },
-                    w.bucket().sql, w.zone().getId(), w.storeId(), w.runId(), utc(w.from()), utc(w.to()),
+                    w.bucket().interval, w.zone().getId(), w.storeId(), w.runId(), utc(w.from()), utc(w.to()),
                     w.tillId(), w.tillId());
         });
         Map<String, Object> out = header(w);
@@ -249,7 +252,7 @@ public class BillingService {
         out.put("simRunId", w.runId());
         out.put("from", w.from().toString());
         out.put("to", w.to().toString());
-        out.put("bucket", w.bucket().sql);
+        out.put("bucket", w.bucket().label);
         out.put("timeZone", w.zone().getId());
         return out;
     }
