@@ -162,6 +162,85 @@ class EventValidatorTest {
         assertThrows(InvalidEventException.class, () -> validator.validate(customer));
     }
 
+    // X1 milestone B3 (ADR-036): billing exports arrive after the day closes, so billing types get 35 days;
+    // every other type keeps the 24-hour bound. Same configuration as application.yml.
+
+    static final Map<String, Duration> BILLING_AGES = Map.of("com.pqt.pos.", Duration.ofDays(35),
+            "com.pqt.stock.", Duration.ofDays(35));
+    static final Instant NOW = Instant.parse("2026-06-01T00:00:00Z");
+
+    EventValidator withBillingAges() throws Exception {
+        SchemaRegistry reg = new SchemaRegistry(Path.of(System.getProperty("pqt.schemas", "../../schemas")), m);
+        PqtProperties.Ingest cfg = new PqtProperties.Ingest(Duration.ofMinutes(5), Duration.ofHours(24), 500, 65536,
+                1048576, 100, 200, 1, "urn:pqt:sim:", Map.of(), List.of(), BILLING_AGES);
+        return new EventValidator(reg, cfg, Clock.fixed(NOW, ZoneOffset.UTC));
+    }
+
+    ObjectNode realCameraEvent(Instant time) throws Exception {
+        ObjectNode n = valid();
+        n.put("source", "urn:pqt:edge:store-001:cam-1");
+        n.remove("simrunid");
+        n.put("time", time.toString());
+        return n;
+    }
+
+    @Test
+    void aThreeDayOldBillIsAcceptedAndAThreeDayOldCameraEventIsStillRefused() throws Exception {
+        EventValidator v = withBillingAges();
+        Instant threeDaysAgo = NOW.minus(Duration.ofDays(3));
+        for (String t : BILLING) {
+            ObjectNode bill = billingSample(t);
+            bill.put("time", threeDaysAgo.toString());
+            assertEquals("com.pqt." + t, v.validate(bill).type(), t);
+        }
+        InvalidEventException ex = assertThrows(InvalidEventException.class, () -> v.validate(realCameraEvent(threeDaysAgo)));
+        assertTrue(ex.errors().contains("time: older than PT24H"), ex.errors().toString());
+        assertEquals("store-001", v.validate(realCameraEvent(NOW.minus(Duration.ofHours(23)))).storeId(),
+                "a camera event inside 24 h is still accepted");
+    }
+
+    @Test
+    void billingTypesStillHaveAnAgeLimit() throws Exception {
+        ObjectNode old = billingSample("pos.sale.line");
+        old.put("time", NOW.minus(Duration.ofDays(35)).minusSeconds(1).toString());
+        InvalidEventException ex = assertThrows(InvalidEventException.class, () -> withBillingAges().validate(old));
+        assertTrue(ex.errors().contains("time: older than PT840H"), ex.errors().toString());
+    }
+
+    @Test
+    void withoutPerTypeAgesBillingKeepsTheDefaultBound() throws Exception {
+        ObjectNode bill = billingSample("pos.payment");
+        bill.put("time", NOW.minus(Duration.ofDays(3)).toString());
+        assertThrows(InvalidEventException.class, () -> validator.validate(bill), "the 11-argument configuration has no per-type ages");
+    }
+
+    @Test
+    void theLongestMatchingPrefixDecidesTheAge() {
+        PqtProperties.Ingest cfg = new PqtProperties.Ingest(Duration.ofMinutes(5), Duration.ofHours(24), 500, 65536,
+                1048576, 100, 200, 1, "urn:pqt:sim:", Map.of(), List.of(),
+                Map.of("com.pqt.", Duration.ofDays(2), "com.pqt.pos.", Duration.ofDays(35)));
+        assertEquals(Duration.ofDays(35), cfg.maxAgeFor("com.pqt.pos.sale.line"));
+        assertEquals(Duration.ofDays(2), cfg.maxAgeFor("com.pqt.store.queue.length"));
+        assertEquals(Duration.ofHours(24), cfg.maxAgeFor("org.example.other"));
+        assertEquals(Duration.ofHours(24), cfg.maxAgeFor(null));
+    }
+
+    @Test
+    void aZeroOrNegativePerTypeAgeIsAConfigurationError() {
+        assertThrows(IllegalArgumentException.class, () -> new PqtProperties.Ingest(Duration.ofMinutes(5), Duration.ofHours(24),
+                500, 65536, 1048576, 100, 200, 1, "urn:pqt:sim:", Map.of(), List.of(), Map.of("com.pqt.pos.", Duration.ZERO)));
+        assertThrows(IllegalArgumentException.class, () -> new PqtProperties.Ingest(Duration.ofMinutes(5), Duration.ofHours(24),
+                500, 65536, 1048576, 100, 200, 1, "urn:pqt:sim:", Map.of(), List.of(), Map.of(" ", Duration.ofDays(1))));
+    }
+
+    @Test
+    void aBillingPayloadForAnotherStoreIsRefused() throws Exception {
+        ObjectNode n = billingSample("pos.sale.line");
+        ((ObjectNode) n.get("data")).put("storeId", "store-002");
+        InvalidEventException ex = assertThrows(InvalidEventException.class, () -> validator.validate(n));
+        assertTrue(ex.errors().contains("data.storeId: must equal storeid"), ex.errors().toString());
+    }
+
     @Test
     void anUnregisteredVersionIsRejected() throws Exception {
         ObjectNode n = valid();

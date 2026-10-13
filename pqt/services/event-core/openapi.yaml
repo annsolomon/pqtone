@@ -146,6 +146,95 @@ components:
         resolvedAt: {type: [string, "null"], format: date-time}
         status: {type: string, enum: [OPEN, ACKNOWLEDGED, CONFIRMED, DISMISSED, AUTO_RESOLVED, CLOSED]}
         version: {type: integer}
+    BillingWindow:
+      type: object
+      properties:
+        storeId: {type: string}
+        simRunId: {type: [string, "null"], description: null for live data}
+        from: {type: string, format: date-time}
+        to: {type: string, format: date-time}
+    Sales:
+      allOf:
+        - $ref: "#/components/schemas/BillingWindow"
+        - type: object
+          properties:
+            bucket: {type: string, enum: [hour, day]}
+            timeZone: {type: string}
+            tillId: {type: [string, "null"]}
+            buckets:
+              type: array
+              items:
+                type: object
+                properties:
+                  start: {type: string, format: date-time}
+                  currency: {type: string}
+                  bills: {type: integer}
+                  salesMinor: {type: integer, format: int64}
+                  taxMinor: {type: integer, format: int64}
+                  lines: {type: integer, format: int64}
+                  voidedBills: {type: integer}
+            totals:
+              type: array
+              description: Per currency, over the whole window.
+              items: {type: object}
+    Payments:
+      allOf:
+        - $ref: "#/components/schemas/BillingWindow"
+        - type: object
+          properties:
+            bucket: {type: string, enum: [hour, day]}
+            timeZone: {type: string}
+            tillId: {type: [string, "null"]}
+            buckets:
+              type: array
+              items:
+                type: object
+                properties:
+                  start: {type: string, format: date-time}
+                  currency: {type: string}
+                  tender: {type: string, enum: [cash, card, upi, wallet, credit, voucher, other]}
+                  inMinor: {type: integer, format: int64}
+                  outMinor: {type: integer, format: int64}
+                  netMinor: {type: integer, format: int64}
+                  paymentsIn: {type: integer}
+                  paymentsOut: {type: integer}
+            totals:
+              type: array
+              description: Per currency and tender, over the whole window.
+              items: {type: object}
+    Stock:
+      allOf:
+        - $ref: "#/components/schemas/BillingWindow"
+        - type: object
+          properties:
+            skus:
+              type: array
+              items:
+                type: object
+                properties:
+                  sku: {type: string}
+                  unit: {type: string}
+                  inMilli: {type: integer, format: int64, description: Thousandths of the unit}
+                  outMilli: {type: integer, format: int64}
+                  netMilli: {type: integer, format: int64}
+                  inByReason: {type: object, additionalProperties: {type: integer, format: int64}}
+                  outByReason: {type: object, additionalProperties: {type: integer, format: int64}}
+                  movements: {type: integer}
+                  level:
+                    type: [object, "null"]
+                    description: The latest reported level at or before `to`
+                    properties:
+                      qtyMilli: {type: integer, format: int64}
+                      at: {type: string, format: date-time}
+            next: {type: [string, "null"], description: The `after` value for the next page; null on the last page}
+  parameters:
+    BillingStore: {name: storeId, in: path, required: true, schema: {type: string, pattern: "^[a-z0-9-]{1,64}$"}}
+    BillingFrom: {name: from, in: query, required: true, description: Start of the window (inclusive), RFC 3339, schema: {type: string, format: date-time}}
+    BillingTo: {name: to, in: query, required: true, description: End of the window (exclusive); at most 35 days after from (7 for hourly buckets), schema: {type: string, format: date-time}}
+    BillingBucket: {name: bucket, in: query, schema: {type: string, enum: [hour, day], default: day}}
+    BillingTz: {name: tz, in: query, description: IANA time zone for the buckets, schema: {type: string, default: Asia/Kolkata}}
+    BillingTill: {name: till, in: query, schema: {type: string, pattern: "^[a-z0-9-]{1,64}$"}}
+    BillingRun: {name: run, in: query, description: A simulator run id; omit for live data, schema: {type: string, pattern: "^run-[a-f0-9]{12}$"}}
 paths:
   /v1/events:
     post:
@@ -194,6 +283,61 @@ paths:
       security: [{session: []}]
       parameters: [{name: storeId, in: path, required: true, schema: {type: string}}]
       responses: {"200": {description: OK}}
+  /api/stores/{storeId}/sales:
+    get:
+      summary: Bills and sales per hour or day in the store's time zone (X1 B3)
+      description: |
+        Each bill counts once, at its latest revision, unless that revision was voided (then it is in voidedBills);
+        its time is the first line of that revision. The same rules as the daily reconcile (ADR-034). Money is in
+        minor units. Bucket starts are UTC instants of the local hour or midnight.
+      security: [{session: []}]
+      parameters:
+        - $ref: "#/components/parameters/BillingStore"
+        - $ref: "#/components/parameters/BillingFrom"
+        - $ref: "#/components/parameters/BillingTo"
+        - $ref: "#/components/parameters/BillingBucket"
+        - $ref: "#/components/parameters/BillingTz"
+        - $ref: "#/components/parameters/BillingTill"
+        - $ref: "#/components/parameters/BillingRun"
+      responses:
+        "200":
+          description: OK
+          content: {application/json: {schema: {$ref: "#/components/schemas/Sales"}}}
+        "400": {description: A parameter is invalid (problem code bad-store-id, bad-time, bad-window, window-too-long, bad-bucket, bad-time-zone, bad-till or bad-run)}
+  /api/stores/{storeId}/payments:
+    get:
+      summary: Money in and out per tender, per hour or day (X1 B3)
+      security: [{session: []}]
+      parameters:
+        - $ref: "#/components/parameters/BillingStore"
+        - $ref: "#/components/parameters/BillingFrom"
+        - $ref: "#/components/parameters/BillingTo"
+        - $ref: "#/components/parameters/BillingBucket"
+        - $ref: "#/components/parameters/BillingTz"
+        - $ref: "#/components/parameters/BillingTill"
+        - $ref: "#/components/parameters/BillingRun"
+      responses:
+        "200":
+          description: OK
+          content: {application/json: {schema: {$ref: "#/components/schemas/Payments"}}}
+        "400": {description: A parameter is invalid}
+  /api/stores/{storeId}/stock:
+    get:
+      summary: Stock in and out per SKU and reason, with the latest reported level (X1 B3)
+      description: Paged by SKU in byte order; pass the response's `next` as `after` for the next page.
+      security: [{session: []}]
+      parameters:
+        - $ref: "#/components/parameters/BillingStore"
+        - $ref: "#/components/parameters/BillingFrom"
+        - $ref: "#/components/parameters/BillingTo"
+        - {name: after, in: query, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,64}$"}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 1000, default: 200}}
+        - $ref: "#/components/parameters/BillingRun"
+      responses:
+        "200":
+          description: OK
+          content: {application/json: {schema: {$ref: "#/components/schemas/Stock"}}}
+        "400": {description: A parameter is invalid}
   /api/events/recent:
     get:
       summary: Most recent events for a store
