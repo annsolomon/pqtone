@@ -275,7 +275,7 @@ class BillingIT {
     void theReadOnlyRoleReadsEveryStore() throws Exception {
         try (Connection c = DriverManager.getConnection(db.container.getJdbcUrl(), "pqt_read", db.readPassword)) {
             JdbcTemplate read = new JdbcTemplate(new SingleConnectionDataSource(c, true));
-            assertEquals(List.of(OTHER, STORE), read.queryForList(
+            assertEquals(List.of(STORE, OTHER), read.queryForList(
                     "SELECT DISTINCT store_id FROM pqt.pos_sale_line ORDER BY 1", String.class));
             Exception denied = assertThrows(Exception.class, () -> read.update("DELETE FROM pqt.pos_sale_line"));
             assertTrue(NestedExceptionUtils.getMostSpecificCause(denied).getMessage().matches("(?s).*(read-only|permission denied).*"));
