@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import random
 import threading
 import time
@@ -10,6 +11,8 @@ from collections.abc import Callable
 from pqt_vision.uplink import Uplink, UplinkRefused, UplinkUnavailable
 
 from .outbox import Outbox
+
+log = logging.getLogger("pqt_edge.uplinker")
 
 
 class Uplinker:
@@ -20,7 +23,8 @@ class Uplinker:
         self.idle_s, self.backoff_max_s = idle_s, backoff_max_s
         self.sleep = sleep
         self.backoff = 1.0
-        self.metrics = {"batches": 0, "sent": 0, "rejected": 0, "transientFailures": 0, "refused": 0}
+        self.metrics = {"batches": 0, "sent": 0, "rejected": 0, "transientFailures": 0, "refused": 0,
+                        "unexpectedErrors": 0}
 
     def step(self) -> str:
         """One batch. Returns idle | sent | retry | split | rejected."""
@@ -49,8 +53,15 @@ class Uplinker:
         return "sent"
 
     def run(self, stop: threading.Event) -> None:
+        """Forever, until `stop`. Nothing may end this loop early: an error nobody planned for is logged,
+        counted and retried with back-off, because a dead uplink thread means a silent backlog (A4)."""
         while not stop.is_set():
-            outcome = self.step()
+            try:
+                outcome = self.step()
+            except Exception:  # noqa: BLE001 - deliberately broad: see the docstring
+                log.exception("uplink step failed unexpectedly; retrying with back-off")
+                self.metrics["unexpectedErrors"] += 1
+                outcome = "retry"
             if outcome == "retry":
                 self.sleep(self.backoff * (0.5 + random.random() / 2))
                 self.backoff = min(self.backoff_max_s, self.backoff * 2)
