@@ -58,7 +58,7 @@ def sequence_dir(root: Path, seq: str, variant: str = "FRCNN") -> Path:
 def bench_mot17(root: str | Path, *, model: str, out: str | Path, sequences: tuple[str, ...] = STATIC_SEQUENCES,
                 threads: int | None = None, max_frames: int | None = None,
                 tracker: ByteTrackConfig | None = None, configs: str | Path | None = None,
-                schemas: str | Path | None = None, mode: str = "full") -> dict:
+                schemas: str | Path | None = None, mode: str = "full", noise_out: str | Path | None = None) -> dict:
     """mode: full (whole frame at the model's input size), roi (the zones' region plus a margin; needs a
     zone config) or tiled (2 × 2 overlapping tiles plus the full frame)."""
     if mode not in MODES:
@@ -68,6 +68,7 @@ def bench_mot17(root: str | Path, *, model: str, out: str | Path, sequences: tup
     model_path = resolve(model)
     base = YoloxOnnxDetector(model_path, name=model, conf=DETECT_CONF, threads=threads)
     per_seq = {}
+    noise_samples = []
     for seq in sequences:
         sdir = sequence_dir(root, seq)
         src = open_source(sdir)
@@ -103,7 +104,8 @@ def bench_mot17(root: str | Path, *, model: str, out: str | Path, sequences: tup
                         "tracking": tr, **({"roi": region.as_list()} if region else {})}
         if cam_path is not None and cam_path.is_file():
             per_seq[seq]["counts"] = _counts(seq, cam_path, tracks, frame_times(replay), gt_full, src.info.fps, out,
-                                             schemas)
+                                             schemas, noise_samples if noise_out else None)
+    noise = _write_noise_profile(noise_samples, Path(noise_out), model=model, mode=mode) if noise_out else None
     report = {
         "kind": "pqt.vision-bench/v1", "stage": "V7 detection + tracking + counts", "mode": mode,
         "createdAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -113,7 +115,7 @@ def bench_mot17(root: str | Path, *, model: str, out: str | Path, sequences: tup
         "detectConf": DETECT_CONF, "tracker": (tracker or ByteTrackConfig()).as_dict(),
         "runner": {"cpus": os.cpu_count(), "threads": threads, "python": platform.python_version(),
                    "machine": platform.machine()},
-        "sequences": per_seq, "attribution": ATTRIBUTION,
+        "sequences": per_seq, "attribution": ATTRIBUTION, **({"noiseProfile": noise} if noise else {}),
     }
     (out / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     (out / "report.md").write_text(render_md(report), encoding="utf-8")
@@ -123,8 +125,38 @@ def bench_mot17(root: str | Path, *, model: str, out: str | Path, sequences: tup
 COUNT_START = "2026-01-01T09:00:00Z"  # arbitrary wall-clock origin for offline clips
 
 
+def _write_noise_profile(samples: list, path: Path, *, model: str, mode: str) -> dict:
+    """N1: pool the per-sequence measurements into one noise profile, validate it, flag thin evidence."""
+    import yaml
+
+    from .noise_measure import Samples, profile, thin_evidence
+
+    pooled = Samples()
+    for s in samples:
+        pooled.merge(s)
+    name = f"mot17-{model.replace('_', '-')}-{mode}"
+    doc = profile(pooled, name=name, description=(f"Measured on MOT17 fixed-camera sequences with {model} ({mode} mode), "
+                                                   "ByteTrack defaults and the V4 zone engine (open-dataset track)."))
+    errors: list[str] = []
+    try:
+        from store_sim import vision_noise
+
+        errors = vision_noise.validate(doc)
+    except ImportError:
+        errors = ["store-sim not installed: profile not validated"]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("# Measured by pqt-vision bench-mot17 (milestone N1). Rates and distributions only.\n"
+                    + yaml.safe_dump(doc, sort_keys=False, width=120), encoding="utf-8")
+    return {"name": name, "file": str(path), "schemaErrors": errors, "thinEvidence": thin_evidence(doc),
+            "summary": {"missRate": doc["detection"]["missRate"],
+                        "falsePositivesPerMinute": doc["detection"]["falsePositivesPerMinute"],
+                        "idSwitchesPerTrackMinute": doc["tracking"]["idSwitchesPerTrackMinute"],
+                        "fragmentation": doc["tracking"]["fragmentation"].get("probability"),
+                        "entryJitterMs": doc["timing"]["entryJitterMs"], "exitJitterMs": doc["timing"]["exitJitterMs"]}}
+
+
 def _counts(seq: str, cam_path: Path, tracks: dict, times: dict[int, int], gt, fps: float, out: Path,
-            schemas: str | Path | None) -> dict:
+            schemas: str | Path | None, noise_samples: list | None = None) -> dict:
     """Zone events from the tracks, ground-truth counts from the annotations, scored by pqt-scorer (V6)."""
     import secrets
 
@@ -150,6 +182,16 @@ def _counts(seq: str, cam_path: Path, tracks: dict, times: dict[int, int], gt, f
         return result
     gt_samples = video.read_gt(out / "counts" / f"{seq}.csv")
     result["score"] = video.score(gt_samples, events, metric="occupancy", start_ms=parse_iso(COUNT_START))
+    if noise_samples is not None:
+        from .noise_measure import measure_sequence
+        from .pipeline import zone_events
+
+        tl = video.timelines(events, "occupancy")
+        start = parse_iso(COUNT_START)
+        errs = [video.count_at(tl.get(g.zone), start + g.offset_ms) - g.count for g in gt_samples]
+        zev, _ = zone_events(camera, {f: [(t.track_id, t.box) for t in ts] for f, ts in tracks.items()}, times)
+        noise_samples.append(measure_sequence(gt, {f: [(t.track_id, t.box) for t in ts] for f, ts in tracks.items()},
+                                              times, camera, zev, errs))
     return result
 
 
@@ -185,6 +227,13 @@ def render_md(r: dict) -> str:
                                  f"{c['schemaErrors']} |")
         lines += ["", "Counts: zone occupancy from the emitted zone.entered/exited events vs ground truth, one sample per "
                   "second; proxy bar ≥ 95% within ±1 and MAE ≤ 0.5 per sequence (open-dataset track)."]
+    nz = r.get("noiseProfile")
+    if nz:
+        sm = nz["summary"]
+        lines += ["", f"Noise profile `{nz['name']}` (N1): miss rate {sm['missRate']}, phantom tracks "
+                  f"{sm['falsePositivesPerMinute']}/min, ID switches {sm['idSwitchesPerTrackMinute']}/track-min, "
+                  f"fragmentation {sm['fragmentation']}, entry jitter {sm['entryJitterMs']}, exit jitter {sm['exitJitterMs']}. "
+                  f"Schema errors: {nz['schemaErrors'] or 'none'}. Thin evidence (n < 30): {nz['thinEvidence'] or 'none'}."]
     lines += ["", "People = MOT17 classes 1 and 7 with visibility ≥ 0.25; classes 2, 8, 12 and less visible "
               "people are ignore regions. Matching at IoU 0.5.", "", f"_{r['attribution']}_", ""]
     return "\n".join(lines)
