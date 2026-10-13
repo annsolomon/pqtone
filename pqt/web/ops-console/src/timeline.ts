@@ -6,7 +6,8 @@
  * per minute as bars. The x-domain starts at the window start and ends at the later of detection + 5 min
  * and the last data point, never past the window end, so an ongoing incident isn't mostly empty space.
  */
-import type { IncidentTimelineData } from "./types";
+import { money, TILL_LABELS } from "./billing";
+import type { IncidentTimelineData, TillKind, TimelineMarker } from "./types";
 
 export interface ChartSize {
   width: number;
@@ -48,6 +49,8 @@ export interface ChartModel {
   thresholdY: number | null;
   moments: Moment[];
   markers: { x: number; label: string; opened: boolean }[];
+  /** X1 B7: till events (voids, refunds, no-sales...) at the tills serving the queue. */
+  tills: { x: number; label: string; kind: TillKind }[];
   xTicks: Tick[];
   yTicks: { y: number; label: string }[];
   empty: boolean;
@@ -118,12 +121,16 @@ export function buildChart(d: IncidentTimelineData, size: ChartSize = DEFAULT_SI
   }
 
   const markers = d.markers
-    .filter((m) => Date.parse(m.t) <= x1)
+    .filter((m) => Date.parse(m.t) <= x1 && !isTill(m))
     .map((m) => ({
       x: r(sx(Date.parse(m.t))),
       label: `${m.registerId} ${m.kind === "register.opened" ? "opened" : "closed"} at ${hhmm(Date.parse(m.t))}`,
       opened: m.kind === "register.opened",
     }));
+
+  const tills = d.markers
+    .filter((m) => Date.parse(m.t) <= x1 && isTill(m))
+    .map((m) => ({ x: r(sx(Date.parse(m.t))), label: `${tillLabel(m)} at ${hhmm(Date.parse(m.t))}`, kind: m.kind.slice(5) as TillKind }));
 
   const span = x1 - x0;
   const step = [60_000, 120_000, 300_000, 600_000, 900_000, 1_800_000, 3_600_000].find((s) => span / s <= 8) ?? 3_600_000;
@@ -143,6 +150,7 @@ export function buildChart(d: IncidentTimelineData, size: ChartSize = DEFAULT_SI
     thresholdY: d.kind === "queue" && d.threshold != null ? r(sy(d.threshold)) : null,
     moments,
     markers,
+    tills,
     xTicks,
     yTicks,
     empty: d.series.length === 0,
@@ -158,6 +166,20 @@ export function describe(d: IncidentTimelineData): string {
   }
   const peak = Math.max(...d.series.map((p) => p.length ?? 0));
   const thr = d.threshold != null ? ` against a threshold of ${d.threshold}` : "";
-  const regs = d.markers.length ? `, with ${d.markers.length} register change${d.markers.length === 1 ? "" : "s"}` : "";
-  return `Length of queue ${d.target} over time, peaking at ${peak}${thr}${regs}.`;
+  const nRegs = d.markers.filter((m) => !isTill(m)).length;
+  const nTills = d.markers.filter(isTill).length;
+  const regs = nRegs ? `, with ${nRegs} register change${nRegs === 1 ? "" : "s"}` : "";
+  const tills = nTills ? `${nRegs ? " and" : ", with"} ${nTills} till event${nTills === 1 ? "" : "s"}` : "";
+  return `Length of queue ${d.target} over time, peaking at ${peak}${thr}${regs}${tills}.`;
+}
+
+export function isTill(m: TimelineMarker): boolean {
+  return m.kind.startsWith("till.");
+}
+
+/** "reg-3 void ₹45.00": the till, what happened and the amount, never a bill reference. */
+export function tillLabel(m: TimelineMarker): string {
+  const what = TILL_LABELS[m.kind.slice(5) as TillKind] ?? m.kind.slice(5);
+  const amount = m.amountMinor != null && m.currency ? ` ${money(m.amountMinor, m.currency)}` : "";
+  return `${m.registerId} ${what}${amount}`;
 }

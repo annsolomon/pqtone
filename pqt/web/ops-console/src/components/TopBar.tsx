@@ -23,6 +23,7 @@ export function TopBar() {
         <NavLink to="/" end>Floor</NavLink>
         <NavLink to="/review">Review queue</NavLink>
         <NavLink to="/incidents">All incidents</NavLink>
+        <NavLink to="/sales">Sales</NavLink>
         {admin && <NavLink to="/shadow">Shadow rules</NavLink>}
         {admin && <NavLink to="/metrics">Review metrics</NavLink>}
         {admin && <NavLink to="/audit">Audit log</NavLink>}

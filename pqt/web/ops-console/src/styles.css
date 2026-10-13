@@ -217,6 +217,8 @@ th { font-size: var(--s-1); color: var(--ink-2); font-weight: 600; }
 .tl-cleared line { stroke: var(--live); }
 .tl-reg-open path { fill: var(--live); }
 .tl-reg-close path { fill: var(--ink-2); }
+.tl-till path { fill: var(--open); stroke: var(--shelf); stroke-width: 1; }
+.tl-till-no_sale path, .tl-till-drawer_open path, .tl-till-shift_open path, .tl-till-shift_close path { fill: var(--ink-2); }
 .tl-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; list-style: none; padding: 0; margin: 8px 0; color: var(--ink-2); }
 .tl-legend .sw { display: inline-block; width: 16px; height: 0; vertical-align: middle; border-top: 2px solid var(--ink-2); margin-right: 4px; }
 .tl-legend .sw-line { border-top-color: var(--ink); }
@@ -225,10 +227,25 @@ th { font-size: var(--s-1); color: var(--ink-2); font-weight: 600; }
 .tl-legend .sw-onset { border-top: 2px dotted var(--open); }
 .tl-legend .sw-detected { border-top-color: var(--open); }
 .tl-legend .sw-cleared { border-top-color: var(--live); }
+.tl-legend .sw-till { width: 8px; height: 8px; border: 0; background: var(--open); transform: rotate(45deg); }
 .tl-legend .sw-reg { width: 0; height: 0; border-top: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 8px solid var(--live); }
 .tl-table { margin-top: 8px; }
 .tl-table table { border-collapse: collapse; margin: 8px 0; width: auto; }
 .tl-table th, .tl-table td { padding: 2px 12px 2px 0; text-align: left; }
+
+/* ---------------------------------------------------------------- sales page (X1 B7) */
+.sales-page { max-width: 1200px; }
+.sales-page section { margin: 24px 0; }
+.sales-page h2 { margin-bottom: 8px; }
+.sales-controls { display: flex; gap: 16px; flex-wrap: wrap; align-items: end; margin-bottom: 8px; }
+.sales-controls .field { display: grid; gap: 4px; }
+.sales-controls input { font: inherit; border: 1px solid var(--aisle); border-radius: 4px; padding: 6px 9px; background: var(--shelf); color: var(--ink); }
+.sales-facts { background: var(--shelf); border: 1px solid var(--aisle); border-radius: 8px; padding: 14px 18px; }
+.sales-facts dd { font-size: var(--s-3); font-weight: 700; }
+.sales-chart { width: 100%; height: auto; display: block; background: var(--shelf); border: 1px solid var(--aisle); border-radius: 8px; }
+.sales-chart text { font-size: 12px; fill: var(--ink-2); }
+.sales-bar { fill: var(--live); fill-opacity: 0.8; }
+.sales-queue { fill: none; stroke: var(--ink); stroke-width: 2; }
 
 /* ---------------------------------------------------------------- floor table alternative (C3) */
 .floor-table { margin: 8px 0 16px; }

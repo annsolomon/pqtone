@@ -38,11 +38,13 @@ public class StoreController {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final PqtProperties props;
+    private final Layouts layouts;
 
     public StoreController(JdbcTemplate jdbc, ObjectMapper mapper, PqtProperties props) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.props = props;
+        this.layouts = new Layouts(mapper, props);
     }
 
     /** Any signed-in user, even without a console role, so the UI can explain missing access. */
@@ -85,13 +87,20 @@ public class StoreController {
     @GetMapping("/api/stores/{storeId}/state")
     public Map<String, Object> state(@PathVariable String storeId) {
         checkId(storeId);
-        List<String> runs = jdbc.queryForList("""
-                SELECT sim_run_id FROM pqt.event WHERE store_id = ? ORDER BY received_at DESC, event_seq DESC LIMIT 1""",
-                String.class, storeId);
-        String run = runs.isEmpty() ? null : runs.get(0);
+        List<Map<String, Object>> latest = jdbc.query("""
+                SELECT sim_run_id, event_time FROM pqt.event WHERE store_id = ? ORDER BY received_at DESC, event_seq DESC LIMIT 1""",
+                (rs, i) -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("run", rs.getString(1));
+                    m.put("at", rs.getObject(2, OffsetDateTime.class).toInstant().toString());
+                    return m;
+                }, storeId);
+        String run = latest.isEmpty() ? null : (String) latest.get(0).get("run");
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("storeId", storeId);
         out.put("simRunId", run);
+        // X1 B7: the event time of the most recent event, so the Sales page can open a simulated run on its own day.
+        out.put("lastEventAt", latest.isEmpty() ? null : latest.get(0).get("at"));
         Map<String, Object> queues = new TreeMap<>();
         jdbc.query("""
                 SELECT DISTINCT ON (data->>'queueId') data->>'queueId', (data->>'length')::int, (data->>'openRegisters')::int, event_time
@@ -165,13 +174,7 @@ public class StoreController {
      */
     private Path layoutPath(String storeId) throws IOException {
         checkId(storeId);
-        String wanted = storeId + ".json";
-        try (DirectoryStream<Path> ds = Files.newDirectoryStream(Path.of(props.paths().layouts()), "*.json")) {
-            for (Path p : ds) {
-                if (Files.isRegularFile(p) && p.getFileName().toString().equals(wanted)) return p;
-            }
-        }
-        return null;
+        return layouts.path(storeId);
     }
 
     private static void checkId(String storeId) {

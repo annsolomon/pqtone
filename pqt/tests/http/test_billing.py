@@ -119,3 +119,16 @@ def test_billing_read_parameters_are_checked():
 
 def test_billing_reads_need_a_session():
     assert requests.get(f"{BASE}/api/stores/{STORE}/sales?{window()}", timeout=10).status_code == 401
+
+
+def test_traffic_counts_visitors_and_queues_in_the_same_buckets():
+    """X1 B7: the traffic read lines up with the sales buckets, names the entrance zones and returns counts only."""
+    v = login("viewer")
+    r = v.get(f"/api/stores/{STORE}/traffic?{window(1)}&bucket=15m&tz=UTC")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["entranceZones"] == ["entrance"]
+    assert len(body["buckets"]) in (100, 101), "25 hours of 15-minute buckets, every one present"
+    assert all(set(b) == {"start", "visitors", "queues"} for b in body["buckets"])
+    assert "trk-" not in r.text, "no track id leaves the server"
+    assert v.get(f"/api/stores/store-999/traffic?{window(1)}").status_code == 404

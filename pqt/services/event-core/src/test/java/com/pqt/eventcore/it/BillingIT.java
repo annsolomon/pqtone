@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.pqt.eventcore.billing.BillingService;
 import com.pqt.eventcore.billing.BillingService.Bucket;
 import com.pqt.eventcore.billing.BillingService.Window;
+import com.pqt.eventcore.billing.TrafficService;
 import com.pqt.eventcore.config.PqtProperties;
+import com.pqt.eventcore.ingest.Canonical;
 import com.pqt.eventcore.ingest.EventValidator;
 import com.pqt.eventcore.ingest.IngestService;
 import com.pqt.eventcore.ingest.SchemaRegistry;
@@ -53,6 +55,7 @@ class BillingIT {
     static EventValidator validator;
     static JdbcTemplate app;
     static BillingService billing;
+    static TrafficService traffic;
     static int seq;
 
     @BeforeAll
@@ -62,6 +65,7 @@ class BillingIT {
         ingest = Fixtures.ingest(db.app());
         app = new JdbcTemplate(db.app());
         billing = new BillingService(app, Fixtures.tx(db.app()));
+        traffic = new TrafficService(app, Fixtures.tx(db.app()));
         SchemaRegistry reg = new SchemaRegistry(Path.of(System.getProperty("pqt.schemas", "../../schemas")), Fixtures.MAPPER);
         validator = new EventValidator(reg, new PqtProperties.Ingest(Duration.ofMinutes(5), Duration.ofHours(24), 500, 65536,
                 1048576, 100, 200, 1, "urn:pqt:sim:", Map.of(), List.of(),
@@ -97,6 +101,17 @@ class BillingIT {
         level("rice.loose", 25000, "kg", "2026-05-20T00:00:00Z");
 
         dayTotal("2026-05-28", 22000, 5000, 3, Map.of("card", 10000L, "cash", 3000L, "upi", 4000L), "2026-05-28T20:30:00Z");
+
+        // X1 B7: what the cameras saw on 31 May, 10:00-11:00 IST (04:30-05:30 UTC), for the traffic read.
+        queueLength("2026-05-31T04:20:00Z", 2);  // carried into the window
+        queueLength("2026-05-31T04:35:00Z", 5);
+        queueLength("2026-05-31T04:50:00Z", 1);
+        queueLength("2026-05-31T05:10:00Z", 0);
+        entered("entrance", "2026-05-31T04:31:00Z", null);
+        entered("entrance", "2026-05-31T04:40:00Z", null);
+        entered("entrance", "2026-05-31T04:46:00Z", null);
+        entered("entrance", "2026-05-31T04:47:00Z", "appeared");  // a track that appeared inside the zone: not a visitor
+        entered("checkout", "2026-05-31T04:48:00Z", null);         // not an entrance
 
         // Another store's bill, the same day.
         accept(event(OTHER, "com.pqt.pos.sale.line", "pos/sale.line", "till:till-1", "2026-05-28T05:00:00Z", Map.of(
@@ -171,6 +186,39 @@ class BillingIT {
         accept(event(STORE, "com.pqt.pos.day.total", "pos/day.total", "store:" + STORE, time, Map.of(
                 "storeId", STORE, "businessDate", date, "salesMinor", sales, "refundsMinor", refunds, "bills", bills,
                 "paymentsByTender", tenders, "currency", "INR", "source", "file")));
+    }
+
+    static void queueLength(String time, int length) {
+        accept(event(STORE, "com.pqt.store.queue.length", "store/queue.length", "queue:checkout-1", time, Map.of(
+                "queueId", "checkout-1", "length", length, "openRegisters", 1)));
+    }
+
+    /**
+     * A zone entry. {@code how} is the N4 field of zone.entered 1.1.0; this branch may not register that version yet,
+     * so an entry with {@code how} is written straight to the write path, as the validator would hand it over.
+     */
+    static void entered(String zone, String time, String how) {
+        String track = "trk-it" + (++seq);
+        Map<String, Object> data = new java.util.LinkedHashMap<>(Map.of("zoneId", zone, "trackId", track));
+        if (how == null) {
+            accept(event(STORE, "com.pqt.store.zone.entered", "store/zone.entered", "track:" + track, time, data));
+            return;
+        }
+        data.put("how", how);
+        ObjectNode n = Fixtures.MAPPER.createObjectNode();
+        n.put("specversion", "1.0");
+        n.put("id", "it-billing-" + (++seq));
+        n.put("source", "urn:pqt:edge:" + STORE + ":cam-1");
+        n.put("type", "com.pqt.store.zone.entered");
+        n.put("time", time);
+        n.put("subject", "track:" + track);
+        n.put("dataschema", "https://schemas.pqt.local/store/zone.entered/1.1.0");
+        n.put("datacontenttype", "application/json");
+        n.put("storeid", STORE);
+        n.put("partitionkey", STORE);
+        n.set("data", Fixtures.MAPPER.valueToTree(data));
+        accept(new ValidatedEvent(n.get("id").asText(), n.get("source").asText(), n.get("type").asText(), Instant.parse(time),
+                n.get("subject").asText(), n.get("dataschema").asText(), STORE, null, null, n, Canonical.eventHash(n)));
     }
 
     static Window window(String from, String to, Bucket bucket, ZoneId zone, String till) {
@@ -407,6 +455,31 @@ class BillingIT {
         assertEquals(Map.of("qtyMilli", 25000L, "at", "2026-05-20T00:00:00Z"), rest.get(0).get("level"),
                 "the latest level before the window's end, even from before the window");
         assertNull(p2.get("next"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void trafficCountsVisitorsAndTimeWeightsTheQueueInTheSalesBuckets() {
+        Map<String, Object> r = traffic.traffic(window("2026-05-31T04:30:00Z", "2026-05-31T05:30:00Z", Bucket.QUARTER_HOUR, IST, null),
+                List.of("entrance"), List.of("checkout-1"));
+        List<Map<String, Object>> b = list(r, "buckets");
+        assertEquals(List.of("2026-05-31T04:30:00Z", "2026-05-31T04:45:00Z", "2026-05-31T05:00:00Z", "2026-05-31T05:15:00Z"),
+                b.stream().map(x -> x.get("start")).toList(), "every bucket, empty ones included");
+        assertEquals(List.of(2, 1, 0, 0), b.stream().map(x -> x.get("visitors")).toList(),
+                "entrance entries only; the appeared track and the checkout entry are not visitors");
+        List<Map<String, Object>> q = b.stream().map(x -> ((List<Map<String, Object>>) x.get("queues")).get(0)).toList();
+        assertEquals(List.of(4.0, 2.33, 0.67, 0.0), q.stream().map(x -> x.get("meanLength")).toList(),
+                "(2x5 + 5x10)/15, (5x5 + 1x10)/15, (1x10 + 0x5)/15, 0");
+        assertEquals(List.of(5, 5, 1, 0), q.stream().map(x -> x.get("maxLength")).toList());
+        assertEquals(false, r.get("truncated"));
+        assertTrue(!Fixtures.MAPPER.valueToTree(r).toString().contains("trk-"), "no track id leaves the database");
+    }
+
+    @Test
+    void withoutAnEntranceZoneVisitorsAreUnknown() {
+        Map<String, Object> r = traffic.traffic(window("2026-05-31T04:30:00Z", "2026-05-31T05:00:00Z", Bucket.QUARTER_HOUR, IST, null),
+                List.of(), List.of());
+        assertEquals(java.util.Arrays.asList(null, null), list(r, "buckets").stream().map(x -> x.get("visitors")).toList());
     }
 
     @Test

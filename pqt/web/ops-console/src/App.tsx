@@ -12,6 +12,7 @@ import { FloorPage } from "./pages/FloorPage";
 import { IncidentDetailPage } from "./pages/IncidentDetailPage";
 import { IncidentListPage } from "./pages/IncidentListPage";
 import { ReviewMetricsPage } from "./pages/ReviewMetricsPage";
+import { SalesPage } from "./pages/SalesPage";
 import { SessionContext, hasRole } from "./session";
 import type { Me } from "./types";
 
@@ -55,6 +56,7 @@ export function App() {
                   intro="Every alerting incident, including reviewed and closed ones."
                   empty="No incidents have been raised yet." />} />
               <Route path="/incidents/:id" element={<IncidentDetailPage />} />
+              <Route path="/sales" element={<SalesPage />} />
               {admin && <Route path="/shadow" element={
                 <IncidentListPage title="Shadow rules" query="mode=shadow&limit=200"
                   intro="Shadow rules run silently so their accuracy can be measured before they alert anyone. Nothing here notifies staff."

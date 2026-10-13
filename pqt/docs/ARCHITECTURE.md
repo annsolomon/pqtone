@@ -492,6 +492,7 @@ R-FOOT-001's window, history and zones are structural and still need a restart.
 - **Review queue**: acknowledge, confirm, dismiss. Dismiss requires a reason code (`false_positive`, `duplicate`, `expected_activity`, `test`, `other` + note).
 - **Shadow view** (admin only).
 - **Degraded banner** when the pipeline heartbeat is stale (§12.4).
+- **Sales and stock** (X1 B7): for one store and one day on the store's clock, the billing system's sales, voids, refunds and payments by tender next to the cameras' visitors and queue lengths every 15 minutes (bills per 100 visitors), with a table alternative to the chart, and stock movements per SKU with the last reported level. Reads `GET /api/stores/{id}/sales|payments|traffic|stock` (§5.6); `traffic` returns counts only, never a track id. Queue incident timelines also show the till events of the tills serving that queue.
 
 ### 9.2 Incident lifecycle
 

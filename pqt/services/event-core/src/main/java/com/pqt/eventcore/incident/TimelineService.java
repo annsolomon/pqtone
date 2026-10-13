@@ -1,13 +1,17 @@
 package com.pqt.eventcore.incident;
 
+import com.pqt.eventcore.store.Layouts;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,7 +21,8 @@ import java.util.Optional;
  * Milestone C4: the evidence around one incident, read from the append-only event table.
  *
  * Queue incidents get the queue's length and open registers over time plus register opened/closed
- * markers; zone incidents get zone entries per minute. Only aggregates and queue counters leave the
+ * markers and, from the billing system (X1 B7), the till events (voids, refunds, no-sales, drawer openings,
+ * price overrides) of the tills serving that queue; zone incidents get zone entries per minute. Only aggregates and queue counters leave the
  * database: no track ids, so the timeline can't be used to follow a person.
  *
  * Every query is parameterised and bounded by store, run, event-time window and a row limit.
@@ -28,11 +33,14 @@ public class TimelineService {
     static final String REGISTER_OPENED = "com.pqt.store.register.opened";
     static final String REGISTER_CLOSED = "com.pqt.store.register.closed";
     static final String ZONE_ENTERED = "com.pqt.store.zone.entered";
+    static final String TILL_EVENT = "com.pqt.pos.till.event";
 
     private final JdbcTemplate jdbc;
+    private final Layouts layouts;
 
-    public TimelineService(JdbcTemplate jdbc) {
+    public TimelineService(JdbcTemplate jdbc, Layouts layouts) {
         this.jdbc = jdbc;
+        this.layouts = layouts;
     }
 
     @Transactional(readOnly = true)
@@ -62,6 +70,9 @@ public class TimelineService {
             if (t.kind() == Timeline.Kind.QUEUE) {
                 truncated = queueSeries(incident, t.id(), w, series);
                 markers.addAll(registerMarkers(incident, w));
+                markers.addAll(tillMarkers(incident, t.id(), w));
+                markers.sort(Comparator.comparing(m -> Instant.parse((String) m.get("t"))));
+                if (markers.size() > Timeline.MAX_MARKERS) markers.subList(Timeline.MAX_MARKERS, markers.size()).clear();
             } else {
                 truncated = zoneEntries(incident, t.id(), w, series);
             }
@@ -117,6 +128,44 @@ public class TimelineService {
                     return m;
                 },
                 inc.storeId(), REGISTER_OPENED, REGISTER_CLOSED, inc.simRunId(), ts(w.from()), ts(w.to()), Timeline.MAX_MARKERS);
+    }
+
+    /**
+     * Till events at the tills serving this queue (the layout's registers; a register naming no queue serves the
+     * first). Amounts only; bill references stay in the database.
+     */
+    private List<Map<String, Object>> tillMarkers(IncidentView inc, String queueId, Timeline.Window w) {
+        List<String> tills;
+        try {
+            tills = layouts.read(inc.storeId()).map(l -> Layouts.registersServing(l, queueId)).orElse(List.of());
+        } catch (IOException | IllegalArgumentException e) {
+            return List.of();
+        }
+        if (tills.isEmpty()) return List.of();
+        String in = String.join(", ", Collections.nCopies(tills.size(), "?"));  // placeholders only
+        List<Object> args = new ArrayList<>(List.of(inc.storeId(), TILL_EVENT));
+        args.add(inc.simRunId());
+        args.add(ts(w.from()));
+        args.add(ts(w.to()));
+        args.addAll(tills);
+        args.add(Timeline.MAX_MARKERS);
+        return jdbc.query("""
+                SELECT event_time, data->>'kind', data->>'tillId', (data->>'amountMinor')::bigint, data->>'currency'
+                  FROM pqt.event
+                 WHERE store_id = ? AND type = ? AND sim_run_id IS NOT DISTINCT FROM ?
+                   AND event_time >= ? AND event_time <= ?
+                   AND data->>'tillId' IN (%s)
+                 ORDER BY event_time, event_seq
+                 LIMIT ?""".formatted(in),
+                (rs, i) -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("t", rs.getObject(1, OffsetDateTime.class).toInstant().toString());
+                    m.put("kind", "till." + rs.getString(2));
+                    m.put("registerId", rs.getString(3));
+                    m.put("amountMinor", rs.getObject(4) == null ? null : rs.getLong(4));
+                    m.put("currency", rs.getString(5));
+                    return m;
+                }, args.toArray());
     }
 
     /** Zone entries per minute, buckets aligned to the window start; empty minutes are filled with 0. */

@@ -1,5 +1,5 @@
 import { describe as suite, expect, it } from "vitest";
-import { buildChart, describe, domainOf, niceMax, DEFAULT_SIZE } from "./timeline";
+import { buildChart, describe, domainOf, niceMax, tillLabel, DEFAULT_SIZE } from "./timeline";
 import type { IncidentTimelineData } from "./types";
 
 const base: IncidentTimelineData = {
@@ -121,5 +121,33 @@ suite("empty timeline", () => {
     const none = { ...base, kind: "none" as const, series: [], markers: [], target: null };
     expect(buildChart(none).empty).toBe(true);
     expect(describe(none)).toBe("No events were recorded around this incident.");
+  });
+});
+
+suite("till events on a queue timeline (X1 B7)", () => {
+  const withTills: IncidentTimelineData = {
+    ...base,
+    markers: [
+      { t: "2026-01-01T09:02:00Z", kind: "till.void", registerId: "reg-3", amountMinor: 4500, currency: "INR" },
+      { t: "2026-01-01T09:03:00Z", kind: "register.opened", registerId: "reg-2" },
+      { t: "2026-01-01T09:04:00Z", kind: "till.no_sale", registerId: "reg-3", amountMinor: null, currency: null },
+    ],
+  };
+
+  it("keeps till events apart from register changes", () => {
+    const m = buildChart(withTills);
+    expect(m.markers.map((x) => x.label)).toEqual(["reg-2 opened at 09:03"]);
+    expect(m.tills.map((x) => [x.kind, x.label])).toEqual([
+      ["void", "reg-3 void ₹45.00 at 09:02"],
+      ["no_sale", "reg-3 no-sale at 09:04"],
+    ]);
+  });
+
+  it("counts them in the accessible description", () => {
+    expect(describe(withTills)).toContain("with 1 register change and 2 till events");
+  });
+
+  it("labels a till event without any bill reference", () => {
+    expect(tillLabel(withTills.markers[0]!)).toBe("reg-3 void ₹45.00");
   });
 });
