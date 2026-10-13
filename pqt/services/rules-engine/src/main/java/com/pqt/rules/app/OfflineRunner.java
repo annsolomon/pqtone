@@ -40,6 +40,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * Runs the production rule engine over a recorded event file in emission order, mimicking
@@ -151,25 +155,43 @@ public final class OfflineRunner {
         if (a.containsKey("--matrix")) {
             Path dir = Path.of(a.get("--matrix"));
             JsonNode cases = Json.MAPPER.readTree(Files.readAllBytes(dir.resolve("cases.json")));
-            for (JsonNode c : cases) {
-                Path caseDir = Path.of(c.path("dir").asText());
-                writeStats(caseDir, run(caseDir.resolve("events.jsonl"), caseDir.resolve("incidents.jsonl"), engine, footfall));
+            // Cases are independent (own state, own footfall driver, own output files) and the engine holds
+            // only its configuration, so they run in parallel; results are reported in case order.
+            int threads = Integer.parseInt(a.getOrDefault("--threads",
+                    String.valueOf(Math.max(1, Runtime.getRuntime().availableProcessors()))));
+            ExecutorService pool = Executors.newFixedThreadPool(threads);
+            try {
+                List<Future<String>> done = new ArrayList<>();
+                for (JsonNode c : cases) {
+                    Path caseDir = Path.of(c.path("dir").asText());
+                    done.add(pool.submit(() -> writeStats(caseDir,
+                            run(caseDir.resolve("events.jsonl"), caseDir.resolve("incidents.jsonl"), engine, footfall))));
+                }
+                for (Future<String> f : done) {
+                    try {
+                        System.out.println(f.get());
+                    } catch (ExecutionException ex) {
+                        throw ex.getCause() instanceof Exception e ? e : new IllegalStateException(ex.getCause());
+                    }
+                }
+            } finally {
+                pool.shutdownNow();
             }
-            System.out.println("{\"cases\":" + cases.size() + "}");
+            System.out.println("{\"cases\":" + cases.size() + ",\"threads\":" + threads + "}");
         } else {
             Path events = Path.of(required(a, "--events"));
             Path out = Path.of(required(a, "--out"));
             Stats s = run(events, out, engine, footfall);
-            writeStats(out.getParent() == null ? Path.of(".") : out.getParent(), s);
+            System.out.println(writeStats(out.getParent() == null ? Path.of(".") : out.getParent(), s));
         }
     }
 
-    private static void writeStats(Path dir, Stats s) throws IOException {
+    private static String writeStats(Path dir, Stats s) throws IOException {
         ObjectNode n = Json.MAPPER.createObjectNode();
         n.put("events", s.events()).put("invalid", s.invalid()).put("duplicates", s.duplicates())
                 .put("lateDropped", s.late()).put("incidents", s.incidents());
         Files.writeString(dir.resolve("offline_stats.json"), n.toString() + "\n");
-        System.out.println(dir + " " + n);
+        return dir + " " + n;
     }
 
     private static String required(Map<String, String> a, String key) {
