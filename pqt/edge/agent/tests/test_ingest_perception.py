@@ -56,6 +56,23 @@ def test_reconnects_after_open_failures_and_stream_drops():
     assert "hunter2" not in repr(r)
 
 
+def test_a_camera_that_is_away_for_long_is_still_probed_every_two_seconds():
+    """A4 cable test: after a 15 s outage the 10 s back-off cap kept the reader asleep for up to 8 s after the
+    camera was back (10.8 s recovery against the 10 s bar). The cap is 2 s now."""
+    stop = threading.Event()
+    sleeps = []
+    attempts = iter(range(30))
+
+    def opener(url, a, b):
+        if next(attempts) == 29:
+            stop.set()
+        return Closed()
+
+    r = CameraReader("rtsp://cam", fps=5, opener=opener, sleep=sleeps.append)
+    list(r.frames(stop))
+    assert len(sleeps) >= 25 and max(sleeps) <= 2.0 and max(sleeps) > 1.0
+
+
 def test_the_limiter_keeps_at_most_fps_frames_per_second():
     stop = threading.Event()
     t = iter(range(0, 10**9, 40))  # a 25 fps camera
