@@ -10,7 +10,7 @@ from pqt_vision import camera as cam
 from pqt_vision.emitter import contract_validator
 from pqt_vision.pipeline import cloud_events, zone_events
 from pqt_vision.synthetic import DEFAULT, Scenario, camera_doc, expected_queue_incidents, tracks
-from pqt_vision.uplink import OAuthClient, Uplink, UplinkError
+from pqt_vision.uplink import OAuthClient, Uplink, UplinkError, UplinkUnavailable
 
 SCHEMAS = Path(__file__).resolve().parents[3] / "schemas"
 RULE = dict(threshold=6, sustain_ms=60_000, hysteresis=2, clear_sustain_ms=30_000)
@@ -79,3 +79,41 @@ def test_uplink_refreshes_the_token_once_on_401_and_fails_fast_on_400(monkeypatc
     with pytest.raises(UplinkError):
         Uplink("http://gw/v1/events", OAuthClient("http://gw/token", "e", "s"), sleep=lambda s: None).send([{"id": "a"}])
     assert "secret-value" not in repr(OAuthClient("http://gw/token", "edge-demo", "secret-value"))
+
+
+class TokenTrouble(FakeHTTP):
+    """The token endpoint fails first (`token_replies`: an exception class or an HTTP status), then works."""
+
+    def __init__(self, token_replies, replies):
+        super().__init__(replies)
+        self.token_replies = list(token_replies)
+
+    def __call__(self, req, timeout):
+        if req.full_url.endswith("/token") and self.token_replies:
+            self.calls.append(req.full_url)
+            r = self.token_replies.pop(0)
+            if isinstance(r, int):
+                raise urllib.error.HTTPError(req.full_url, r, "x", {}, io.BytesIO(b"{}"))
+            raise r("no route to gateway")
+        return super().__call__(req, timeout)
+
+
+def test_an_unreachable_token_endpoint_is_a_transient_failure_not_a_crash(monkeypatch):
+    """A4 cable test finding: after a restart while cut off, the first token fetch raised URLError out of
+    send_batch and killed the uplink thread; nothing was sent after the cable came back."""
+    monkeypatch.setattr("urllib.request.urlopen", TokenTrouble([urllib.error.URLError, 503], [[{"status": "accepted"}]]))
+    up = Uplink("http://gw/v1/events", OAuthClient("http://gw/token", "edge-demo", "s"), sleep=lambda s: None)
+    assert up.send_batch([{"id": "a"}]) == [{"status": "accepted"}]
+    monkeypatch.setattr("urllib.request.urlopen", TokenTrouble([urllib.error.URLError] * 10, []))
+    with pytest.raises(UplinkUnavailable):
+        Uplink("http://gw/v1/events", OAuthClient("http://gw/token", "e", "s"), max_attempts=3,
+               sleep=lambda s: None).send_batch([{"id": "a"}])
+
+
+def test_a_refused_token_keeps_events_pending_instead_of_rejecting_them(monkeypatch):
+    """A wrong client secret is a configuration fault: the batch must stay in the outbox (transient), never
+    be marked invalid event by event."""
+    monkeypatch.setattr("urllib.request.urlopen", TokenTrouble([401] * 10, []))
+    with pytest.raises(UplinkUnavailable, match="token"):
+        Uplink("http://gw/v1/events", OAuthClient("http://gw/token", "e", "s"), max_attempts=2,
+               sleep=lambda s: None).send_batch([{"id": "a"}])

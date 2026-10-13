@@ -151,3 +151,30 @@ def test_uplinker_run_loop_backs_off_while_down_and_drains_when_back(box: Outbox
     assert box.stats()["sent"] == 10
     assert sleeps[:5] == sorted(sleeps[:5]) and max(sleeps[:5]) > min(sleeps[:5])  # exponential back-off
     assert up.metrics["transientFailures"] == 5
+
+
+def test_an_unexpected_error_never_stops_the_uplink_thread(box: Outbox):
+    """A4 cable test finding: an exception the uplinker did not expect killed its thread for good. Now it
+    is counted, logged and retried with back-off like any other failure."""
+    box.append([ev(i) for i in range(1, 4)])
+
+    class Flaky(FakeUplink):
+        def __init__(self):
+            super().__init__([])
+            self.boom = 2
+
+        def send_batch(self, events):
+            if self.boom:
+                self.boom -= 1
+                raise OSError("something nobody planned for")
+            return super().send_batch(events)
+
+    stop = threading.Event()
+
+    def sleep(s):
+        if box.stats()["pending"] == 0:
+            stop.set()
+
+    up = Uplinker(box, Flaky(), batch_size=4, sleep=sleep)
+    up.run(stop)
+    assert box.stats()["sent"] == 3 and up.metrics["unexpectedErrors"] == 2
