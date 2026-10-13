@@ -108,7 +108,9 @@ class BillingModel:
         self.store = store_id
         self.currency = catalogue.get("currency", "INR")
         self.rng = np.random.default_rng(np.random.SeedSequence([seed, 0xB111]))
-        self.key = hashlib.sha256(f"pqt-sim-billing:{seed}:{store_id}".encode()).digest()
+        # Stands in for the edge box's store key (ADR-033) but is not a secret: it is derived from the public seed,
+        # so the same seed gives the same references.
+        self.ref_seed = hashlib.sha256(f"pqt-sim-billing:{seed}:{store_id}".encode()).digest()
         self.items = {i["sku"]: i for i in catalogue["items"]}
         self.skus = [i["sku"] for i in catalogue["items"]]
         overrides = cfg.get("stockOverrides") or {}
@@ -128,7 +130,7 @@ class BillingModel:
 
     # -- helpers ------------------------------------------------------------------------------------
     def _hex(self, kind: str, number: str) -> str:
-        return hmac.new(self.key, f"{SIM_SOURCE}|{kind}|{number}".encode(), hashlib.sha256).hexdigest()[:32]
+        return hmac.new(self.ref_seed, f"{SIM_SOURCE}|{kind}|{number}".encode(), hashlib.sha256).hexdigest()[:32]
 
     def _tender(self) -> str:
         return str(self.rng.choice(self.tender_names, p=self.tender_p))

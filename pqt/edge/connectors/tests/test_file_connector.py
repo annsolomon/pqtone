@@ -93,7 +93,7 @@ def test_the_store_key_is_created_once_and_must_be_private(tmp_path):
     assert stat.S_IMODE(os.stat(k).st_mode) == 0o600 and len(load_key(k)) == 32
     with pytest.raises(KeyError_, match="orphan"):
         new_key(k)
-    os.chmod(k, 0o644)
+    os.chmod(k, 0o640)  # group-readable is already too open for a store key
     with pytest.raises(KeyError_, match="chmod 600"):
         load_key(k)
 
