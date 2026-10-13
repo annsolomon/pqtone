@@ -52,6 +52,24 @@ class Uplinker:
         self.batch_size = min(self.max_batch, self.batch_size * 2)
         return "sent"
 
+    def drain(self, deadline_s: float, clock: Callable[[], float] = time.monotonic) -> dict:
+        """At a clean stop, after production has ended: send what is still pending while event-core answers,
+        for at most `deadline_s`. The first transient failure ends it (the link is down: the rest goes after the
+        next start, as always). Returns what it sent and what is left."""
+        end = clock() + deadline_s
+        sent0 = self.metrics["sent"]
+        outcome = "idle"
+        while clock() < end:
+            try:
+                outcome = self.step()
+            except Exception:  # noqa: BLE001 - same reasoning as run(): never let the stop path raise
+                log.exception("uplink step failed while draining at stop")
+                self.metrics["unexpectedErrors"] += 1
+                outcome = "retry"
+            if outcome in ("idle", "retry"):
+                break
+        return {"sent": self.metrics["sent"] - sent0, "outcome": outcome, "pending": self.outbox.stats()["pending"]}
+
     def run(self, stop: threading.Event) -> None:
         """Forever, until `stop`. Nothing may end this loop early: an error nobody planned for is logged,
         counted and retried with back-off, because a dead uplink thread means a silent backlog (A4)."""
