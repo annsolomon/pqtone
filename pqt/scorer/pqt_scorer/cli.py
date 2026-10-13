@@ -118,8 +118,14 @@ def cmd_e2e(a) -> int:
     incidents = [{"ruleId": r, "mode": mo, "storeId": s, "key": k, "detectedMs": int(d), "kind": "OPENED"}
                  for r, mo, s, k, d in rows]
     gt = read_jsonl(case / "ground_truth.jsonl")
+    rule_ids = [r for r in RULES if not getattr(a, "only", None) or r in a.only.split(",")]
+    if getattr(a, "only", None) and set(a.only.split(",")) - set(RULES):
+        print(f"unknown rule ids in --only: {sorted(set(a.only.split(',')) - set(RULES))}", file=sys.stderr)
+        return 2
+    gt = [g for g in gt if g["ruleId"] in rule_ids]
+    incidents = [i for i in incidents if i["ruleId"] in rule_ids]
     per = score(gt, incidents, tolerance_before_ms=dur_ms(m["toleranceBefore"]),
-                max_latency_ms=dur_ms(m["maxLatency"]), rule_ids=RULES)
+                max_latency_ms=dur_ms(m["maxLatency"]), rule_ids=rule_ids)
     scenario = manifest["scenario"]
     modes = _rule_modes(gt, incidents)
     results = []
@@ -138,7 +144,7 @@ def cmd_e2e(a) -> int:
         import psycopg
 
         data = score_rows(results, run_id=run_id, scenario=scenario, versions=rule_versions(a.rules),
-                          gates={r: (g.precision, g.recall) for r in RULES
+                          gates={r: (g.precision, g.recall) for r in rule_ids
                                  for g in [gate_for(thresholds, scenario, r)]}, conf=conf)
         with psycopg.connect(os.environ["PQT_DB_APP_DSN"], autocommit=True) as wconn:
             print(f"recorded {write_scores(wconn, data)} rule scores for {run_id} in pqt.rule_score")
@@ -221,6 +227,8 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("--out", required=True)
     e.add_argument("--record", action="store_true", help="record the score per rule in pqt.rule_score (R6)")
     e.add_argument("--rules", default="config/rules.yaml", help="rules file the run was simulated with")
+    e.add_argument("--only", help="comma-separated rule ids to score (default: all); see ADR-011 for why a replay "
+                                  "after other runs in the same stack cannot score R-FOOT-001")
     e.set_defaults(fn=cmd_e2e)
     st = sub.add_parser("stored", help="check a run's events are all stored exactly once (HTTP sink e2e)")
     st.add_argument("--case-dir", required=True)

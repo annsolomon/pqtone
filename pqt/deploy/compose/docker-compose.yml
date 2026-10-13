@@ -15,6 +15,8 @@ networks:
   frontend: {}                      # gateway <-> event-core, keycloak
   backend: {internal: true}         # data plane: no route to the internet
   observability: {}
+  edge: {internal: true}            # edge agent -> gateway only (Tier 2, make chaos-edge cuts this link)
+  cameras: {internal: true}         # simulated RTSP cameras -> edge agent
 
 volumes:
   certs: {}
@@ -250,8 +252,32 @@ services:
       keycloak: {condition: service_healthy}
     ports:
       - "${PQT_BIND_ADDR:-127.0.0.1}:8080:8080"
-    networks: [frontend]
+    networks: [frontend, edge]
     restart: unless-stopped
+
+  # ------------------------------------------------------------------ edge (Tier 2, Project 8; make chaos-edge)
+  cam-sim:
+    image: bluenviron/mediamtx:1.9.3-ffmpeg
+    profiles: [edge]
+    <<: *logging
+    volumes:
+      - ../../edge/chaos/mediamtx.yml:/mediamtx.yml:ro
+    networks: [cameras]
+
+  edge-agent:
+    build: {context: ../.., dockerfile: edge/agent/Dockerfile}
+    image: pqt/edge-agent:local
+    profiles: [edge]
+    <<: [*logging, *hardened]
+    user: "${PQT_UID:-1000}:${PQT_GID:-1000}"
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      HOME: /tmp
+    volumes:
+      - ../../.work/edge/config:/config:ro
+      - ../../.work/edge/state:/var/lib/pqt-edge
+    networks: [edge, cameras]
 
   # ------------------------------------------------------------------ observability
   jaeger:

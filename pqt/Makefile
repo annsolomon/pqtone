@@ -19,9 +19,9 @@ HOT_SEED ?= $(shell echo $$(( $$(date +%s) + 15485863 )))
 export DOCKER_BUILDKIT := 1
 export COMPOSE_DOCKER_CLI_BUILD := 1
 
-.PHONY: all help bootstrap build offline up e2e e2e-pipeline e2e-http e2e-http-sim e2e-vision e2e-db e2e-ui e2e-hot-reload rules-publish rules-reset summary sim down clean logs ps
+.PHONY: all help bootstrap build offline up chaos-edge e2e e2e-pipeline e2e-http e2e-http-sim e2e-vision e2e-db e2e-ui e2e-hot-reload rules-publish rules-reset summary sim down clean logs ps
 
-all: bootstrap build test-it offline up e2e summary ## Build + unit tests, integration tests, offline quality gate, start the stack, live end-to-end tests, summary
+all: bootstrap build test-it offline up e2e chaos-edge summary ## Build + unit tests, integration tests, offline quality gate, start the stack, live end-to-end tests, edge cable test, summary
 
 help: ## List targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[1m%-14s\033[0m %s\n", $$1, $$2}'
@@ -62,6 +62,11 @@ e2e-http-sim: ## The simulator's HTTP sink through the gateway with OAuth client
 	  PQT_INGEST_URL=http://localhost:8080/v1/events \
 	  store-sim run --seed $(HTTP_SEED) --scenario sim/scenarios/duplicates.yaml --out /work/http-sim --sink http'
 	$(RUN) tools pqt-scorer stored --case-dir /work/http-sim --timeout 180
+
+CUT_SECONDS ?= 120
+chaos-edge: ## Tier 2 A4: cut the edge agent's uplink for CUT_SECONDS (plan: 1800), kill -9 it, drop the camera; 0 missing, 0 duplicate
+	mkdir -p "$(WORK)/reports"
+	CUT_SECONDS=$(CUT_SECONDS) COMPOSE="$(COMPOSE)" ./scripts/chaos-edge.sh 2>&1 | tee "$(WORK)/reports/chaos-edge.log"
 
 e2e-vision: ## Tier 2 V8: synthetic camera events through the gateway (edge client) and the rules engine; R-QUEUE as expected
 	rm -rf "$(WORK)/vision-e2e" && mkdir -p "$(WORK)/vision-e2e" "$(WORK)/reports"
@@ -135,16 +140,16 @@ ps: ## Service status
 	$(COMPOSE) ps -a
 
 down: ## Stop the stack (keeps data)
-	$(COMPOSE) --profile tools down --remove-orphans
+	$(COMPOSE) --profile tools --profile edge down --remove-orphans
 
 clean: ## Stop and delete all data, generated secrets and reports
-	-$(COMPOSE) --profile tools down -v --remove-orphans
+	-$(COMPOSE) --profile tools --profile edge down -v --remove-orphans
 	rm -rf .work deploy/keycloak/generated .env
 
 .PHONY: openapi-check dev-setup test-fast schema-compat test-it baseline-accept scale scale-ladder scale-stress
 dev-setup: ## One-time, no Docker: Python venv with sim, scorer and vision-lab, and web dependencies
 	python3 -m venv .venv
-	.venv/bin/pip install -q -e './sim[test]' -e './scorer[test]' -e './vision/lab[test]'
+	.venv/bin/pip install -q -e './sim[test]' -e './scorer[test]' -e './vision/lab[test]' -e './edge/agent[test]'
 	cd web/ops-console && npm ci
 
 test-it: ## Integration tests (Testcontainers: PostgreSQL 16, Redpanda); needs Docker and JDK 21
@@ -160,7 +165,7 @@ test-fast: ## No Docker, under 3 min: Java unit tests, Python tests, web typeche
 	.venv/bin/python scripts/schema-compat.py
 	cd services/event-core && mvn -B -q -ntp -DskipITs verify
 	cd services/rules-engine && mvn -B -q -ntp verify
-	.venv/bin/pytest -q sim/tests scorer/tests scripts/tests vision/lab/tests
+	.venv/bin/pytest -q sim/tests scorer/tests scripts/tests vision/lab/tests edge/agent/tests
 	cd web/ops-console && npm run -s typecheck && npm test --silent
 
 # ---------------------------------------------------------------- milestone R5: scale test

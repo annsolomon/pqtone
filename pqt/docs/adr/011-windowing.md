@@ -49,6 +49,11 @@ browser demo run both start at the scenario's epoch): the second run's early win
 closed by the first run's stream time. CI scores only the first run, and R-FOOT-001 never
 fires in `register_delay`, so no gate is affected today.
 
+*Amended 2026-10-13:* the hot-reload test (R4) replays `register_delay` with a random seed after the
+other runs, and some seeds do produce a footfall spike, which the shared stream time then drops: the
+test failed intermittently on R-FOOT-001. It now scores only the per-key-watermark rules
+(`pqt-scorer e2e --only`); the reload it tests is R-QUEUE-001's.
+
 ## Decision
 
 1. **Keep both.** Use native windows for rules that are naturally fixed buckets of time
