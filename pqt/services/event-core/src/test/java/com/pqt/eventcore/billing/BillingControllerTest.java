@@ -62,8 +62,8 @@ class BillingControllerTest {
                 BillingController.span(FROM, "2026-05-29T00:00:00+05:30", BillingController.MAX_SPAN)[1], "an RFC 3339 offset is fine");
         assertEquals("bad-window", code(() -> BillingController.span(TO, FROM, BillingController.MAX_SPAN)));
         assertEquals("bad-window", code(() -> BillingController.span(FROM, FROM, BillingController.MAX_SPAN)));
-        BillingController.span("2026-04-23T00:00:00Z", TO, BillingController.MAX_SPAN);  // exactly 35 days
-        assertEquals("window-too-long", code(() -> BillingController.span("2026-04-22T23:59:59Z", TO, BillingController.MAX_SPAN)));
+        BillingController.span("2026-04-24T00:00:00Z", TO, BillingController.MAX_SPAN);  // exactly 35 days before 29 May
+        assertEquals("window-too-long", code(() -> BillingController.span("2026-04-23T23:59:59Z", TO, BillingController.MAX_SPAN)));
         assertEquals("window-too-long", code(() ->
                 BillingController.window("store-001", "2026-05-20T00:00:00Z", TO, "hour", "UTC", null, null)));
         BillingController.window("store-001", "2026-05-20T00:00:00Z", TO, "day", "UTC", null, null);  // 9 days of days is fine
