@@ -9,7 +9,12 @@ COPY vision/lab/pyproject.toml vision/lab/pyproject.toml
 COPY vision/lab/pqt_vision vision/lab/pqt_vision
 COPY edge/agent/pyproject.toml edge/agent/pyproject.toml
 COPY edge/agent/pqt_edge edge/agent/pqt_edge
-RUN pip install ./vision/lab ./edge/agent \
+# X1 B4/B8: the billing file connector runs on the same box and writes into the same outbox.
+COPY edge/connectors/pyproject.toml edge/connectors/pyproject.toml
+COPY edge/connectors/pqt_connectors edge/connectors/pqt_connectors
+COPY edge/connectors/profiles /app/profiles
+COPY schemas /app/schemas
+RUN pip install ./vision/lab ./edge/agent ./edge/connectors \
  && useradd --system --uid 10002 --no-create-home edge \
  && mkdir -p /var/lib/pqt-edge && chown 10002 /var/lib/pqt-edge
 USER 10002

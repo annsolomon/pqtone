@@ -153,7 +153,7 @@ def test_nothing_personal_or_any_real_number_leaves(tmp_path):
 def test_reimporting_the_same_files_adds_nothing(tmp_path):
     first, _ = run_import(tmp_path, bills=bill_rows(), payments=payment_rows())
     again, report = run_import(tmp_path, bills=bill_rows(), payments=payment_rows())
-    assert len(first) == 4 and again == []
+    assert len(first) == 6 and again == []  # 2 lines, 2 stock movements (one per SKU), 2 payments
     assert report.bills_unchanged == 1 and report.already_sent == 2
 
 
@@ -167,12 +167,36 @@ def test_a_changed_bill_becomes_the_next_revision_after_a_void(tmp_path):
     assert {ln["revision"] for ln in lines} == {1} and len(lines) == 3
 
 
+def test_a_bill_takes_its_items_off_the_shelf(tmp_path):
+    """X1 B8: billing exports list purchases and returns but not sales; a bill's lines are its stock movements."""
+    sent, _ = run_import(tmp_path, bills=bill_rows())
+    moves = sorted((e["data"] for e in sent if e["type"] == "com.pqt.stock.movement"), key=lambda d: d["sku"])
+    assert [(m["sku"], m["direction"], m["reason"], m["qtyMilli"], m["unit"]) for m in moves] == [
+        ("ATTA-5KG", "out", "sale", 2000, "pcs"), ("ONION-LOOSE", "out", "sale", 1250, "kg")]
+    assert {m["docRef"] for m in moves} == {Refs(KEY, "file").doc("INV-1001")}
+    line_time = next(e["time"] for e in sent if e["type"] == "com.pqt.pos.sale.line")
+    assert {e["time"] for e in sent if e["type"] == "com.pqt.stock.movement"} == {line_time}
+
+
+def test_a_revised_bill_moves_only_the_difference(tmp_path):
+    run_import(tmp_path, bills=bill_rows())
+    more, _ = run_import(tmp_path, bills=bill_rows(extra_line=True))
+    moves = [e["data"] for e in more if e["type"] == "com.pqt.stock.movement"]
+    assert [(m["sku"], m["direction"], m["reason"], m["qtyMilli"]) for m in moves] == [("MILK-1L", "out", "sale", 1000)]
+    fewer, _ = run_import(tmp_path, bills=bill_rows()[:1])  # the onion line taken off the bill
+    moves = [e["data"] for e in fewer if e["type"] == "com.pqt.stock.movement"]
+    assert sorted((m["sku"], m["direction"], m["reason"], m["qtyMilli"]) for m in moves) == [
+        ("MILK-1L", "in", "adjustment", 1000), ("ONION-LOOSE", "in", "adjustment", 1250)]
+
+
 def test_a_bad_row_holds_back_its_whole_bill_and_is_reported(tmp_path):
     rows = bill_rows() + bill_rows(no="INV-1002")
     rows[3]["Amount"] = "fifty"
     sent, report = run_import(tmp_path, bills=rows)
-    refs = {e["data"]["billRef"] for e in sent}
+    refs = {e["data"]["billRef"] for e in sent if e["type"] == "com.pqt.pos.sale.line"}
     assert refs == {Refs(KEY, "file").bill("INV-1001")}
+    docs = {e["data"]["docRef"] for e in sent if e["type"] == "com.pqt.stock.movement"}
+    assert docs == {Refs(KEY, "file").doc("INV-1001")}, "the held-back bill takes nothing off the shelf either"
     assert any(e["row"] == 5 and "amount" in e["error"] for e in report.errors)
     assert any("held back" in e["error"] for e in report.errors)
     assert "INV-1002" not in json.dumps(report.as_dict())  # reports name rows, not bill numbers
@@ -233,11 +257,11 @@ def test_cli_imports_into_the_edge_outbox_once(tmp_path):
             "--report", str(tmp_path / "report.json")]
     assert cli.main(args) == 0
     box = Outbox(tmp_path / "outbox.db")
-    assert box.stats()["pending"] == 4
+    assert box.stats()["pending"] == 6  # 2 lines, 2 stock movements, 2 payments
     box.close()
     assert cli.main(args) == 0  # the same files again
     box = Outbox(tmp_path / "outbox.db")
-    assert box.stats()["pending"] == 4
+    assert box.stats()["pending"] == 6
     box.close()
     assert json.loads((tmp_path / "report.json").read_text())["events"] == 0
 

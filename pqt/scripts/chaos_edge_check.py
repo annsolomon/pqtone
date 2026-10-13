@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """A4 verdict: every event in the edge outbox reached PostgreSQL exactly once, sequences are gap-free per
-camera, nothing is left pending or rejected, and the camera came back within 10 s. Read-only on both sides.
+source (each camera, and the billing connector, X1 B8), nothing is left pending or rejected, and the camera came
+back within 10 s. Read-only on both sides.
 
 Usage (tools container): python scripts/chaos_edge_check.py --outbox /work/edge/state/outbox.db
                           --run /work/edge/reports/run.json --out /work/edge/reports/chaos-edge.json
@@ -21,6 +22,8 @@ def main() -> int:
     p.add_argument("--outbox", required=True)
     p.add_argument("--run", required=True)
     p.add_argument("--out", required=True)
+    p.add_argument("--require-source", action="append", default=[],
+                   help="a source that must be in the outbox (X1 B8: the billing connector's)")
     a = p.parse_args()
     run = json.load(open(a.run))
     ob = sqlite3.connect(f"file:{a.outbox}?mode=ro", uri=True)
@@ -57,6 +60,9 @@ def main() -> int:
                 problems.append(f"{src}: {pending} pending and {rejected} rejected in the outbox")
     if not table:
         problems.append("the outbox is empty: the agent produced nothing")
+    for src in a.require_source:
+        if src not in by_source:
+            problems.append(f"{src}: nothing from this source in the outbox")
     rec = run.get("cameraRecoverySeconds")
     if rec is None or rec > CAMERA_RECOVERY_LIMIT_S:
         problems.append(f"camera recovery {rec} s is not within {CAMERA_RECOVERY_LIMIT_S} s")

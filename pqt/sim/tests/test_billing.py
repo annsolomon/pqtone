@@ -254,3 +254,35 @@ def test_export_writes_billing_system_style_csvs(day, tmp_path):
     for f in ("payments.csv", "movements.csv", "stock.csv"):
         assert (tmp_path / f).read_text().count("\n") > 1
     assert all(r["Bill No"].startswith("SIM-") for r in bills)  # invented numbers, not the HMAC references
+
+
+def test_export_can_move_the_trading_day_to_a_recent_date(day, tmp_path):
+    """X1 B8: the simulated day (1 January 2026) exported as any later day: dates move by whole days, times of
+    day and every amount stay the same, so the ground truth still applies."""
+    import csv as _csv
+
+    from store_sim.billing_export import export, first_local_date
+
+    assert str(first_local_date(day.clean)) == "2026-01-01"
+    export(day.clean, tmp_path / "plain")
+    counts = export(day.clean, tmp_path / "moved", shift_days=284)  # 2026-10-12
+    assert counts["shiftDays"] == 284
+    for f in ("bills.csv", "payments.csv", "movements.csv", "stock.csv"):
+        plain = list(_csv.DictReader(open(tmp_path / "plain" / f, encoding="utf-8")))
+        moved = list(_csv.DictReader(open(tmp_path / "moved" / f, encoding="utf-8")))
+        assert len(plain) == len(moved) and plain, f
+        for a, b in zip(plain, moved):
+            assert b["Date"] == "12-10-2026" and a["Date"] == "01-01-2026", f
+            assert {k: v for k, v in a.items() if k != "Date"} == {k: v for k, v in b.items() if k != "Date"}, f
+    day_row = next(_csv.DictReader(open(tmp_path / "moved" / "day.csv", encoding="utf-8")))
+    assert day_row["Date"] == "12-10-2026"
+
+
+def test_the_export_command_shifts_to_a_named_date(tmp_path):
+    import csv as _csv
+
+    from store_sim.cli import main
+
+    assert main(["run", "--seed", "42", "--scenario", "sim/scenarios/billing_day.yaml", "--out", str(tmp_path / "run")]) == 0
+    assert main(["export-billing", "--run", str(tmp_path / "run"), "--out", str(tmp_path / "x"), "--shift-to", "2026-10-12"]) == 0
+    assert {r["Date"] for r in _csv.DictReader(open(tmp_path / "x" / "bills.csv", encoding="utf-8"))} == {"12-10-2026"}

@@ -88,8 +88,19 @@ def cmd_export_billing(a) -> int:
     """X1: a run's billing as the CSV exports a billing system would write (edge/connectors generic profile)."""
     from .billing_export import export
 
+    from datetime import date
+
+    from .billing_export import first_local_date
+
     events = [json.loads(line) for line in (Path(a.run) / "events.jsonl").read_text().splitlines() if line.strip()]
-    print(json.dumps(export(events, a.out, store=a.store)))
+    shift = 0
+    if a.shift_to:
+        first = first_local_date(events)
+        if first is None:
+            print("the run has no billing events to export", file=sys.stderr)
+            return 1
+        shift = (date.fromisoformat(a.shift_to) - first).days
+    print(json.dumps(export(events, a.out, store=a.store, shift_days=shift)))
     return 0
 
 
@@ -126,6 +137,8 @@ def main(argv: list[str] | None = None) -> int:
     xb.add_argument("--run", required=True, help="a run directory (events.jsonl)")
     xb.add_argument("--out", required=True)
     xb.add_argument("--store", help="only this store (multi-store runs)")
+    xb.add_argument("--shift-to", help="export the run's first trading day as this date (YYYY-MM-DD, India time), "
+                                        "every time of day unchanged")
     xb.set_defaults(fn=cmd_export_billing)
 
     a = p.parse_args(argv)

@@ -10,13 +10,16 @@ COPY scorer/pyproject.toml scorer/pyproject.toml
 COPY scorer/pqt_scorer scorer/pqt_scorer
 COPY vision/lab/pyproject.toml vision/lab/pyproject.toml
 COPY vision/lab/pqt_vision vision/lab/pqt_vision
+COPY edge/connectors/pyproject.toml edge/connectors/pyproject.toml
+COPY edge/connectors/pqt_connectors edge/connectors/pqt_connectors
 COPY tests/requirements.txt tests/requirements.txt
-RUN pip install "./sim[test]" "./scorer[test]" "./vision/lab[test]" -r tests/requirements.txt
+RUN pip install "./sim[test]" "./scorer[test]" "./vision/lab[test]" "./edge/connectors[test]" -r tests/requirements.txt
 COPY config config
 COPY schemas schemas
 COPY sim sim
 COPY scorer scorer
 COPY vision vision
+COPY edge/connectors edge/connectors
 COPY tests tests
 # The OpenAPI contract test (milestone E5) needs the committed spec and the comparer.
 COPY services/event-core/openapi.yaml services/event-core/openapi.yaml
@@ -25,7 +28,9 @@ COPY scripts/openapi_surface.py scripts/openapi_surface.py
 COPY scripts/scale.py scripts/scale.py
 # The edge cable test verdict (make chaos-edge, milestone A4).
 COPY scripts/chaos_edge_check.py scripts/chaos_edge_check.py
-RUN python -m pytest -q -p no:cacheprovider sim/tests scorer/tests vision/lab/tests
+# The billing end-to-end verdict (make chaos-edge, X1 B8).
+COPY scripts/billing_e2e_check.py scripts/billing_e2e_check.py
+RUN python -m pytest -q -p no:cacheprovider sim/tests scorer/tests vision/lab/tests edge/connectors/tests
 RUN useradd --system --uid 10001 --no-create-home app
 USER 10001
 CMD ["store-sim", "--help"]
