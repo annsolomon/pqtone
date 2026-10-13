@@ -30,7 +30,7 @@ runs on its own RNG stream, before the transport faults (`outOfOrder`, `late`, `
 `malformed`), so turning it on never changes their draws.
 
 `store-sim matrix --noise-profile <file> --noise-scale 2` runs the whole matrix with every rate
-doubled (jitter spread too); `make offline-noise` scores clean, measured and 2x measured side by side.
+doubled (jitter spread too); `make offline-noise` scores clean, measured and 2x measured side by side (CI runs it as its own job, "offline score under vision noise").
 
 ## Privacy
 
