@@ -20,8 +20,10 @@ import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.TestInputTopic;
 import org.apache.kafka.streams.TestOutputTopic;
+import org.apache.kafka.streams.TopologyConfig;
 import org.apache.kafka.streams.TopologyTestDriver;
 import org.apache.kafka.streams.kstream.Consumed;
+import org.apache.kafka.streams.state.BuiltInDslStoreSuppliers;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -97,18 +99,25 @@ public final class OfflineRunner {
         return new Stats(n, invalid, dups, late, incidents.size() + windowed.size());
     }
 
-    /** The production footfall topology over the accepted events, in arrival order. */
+    /**
+     * The production footfall topology over the accepted events, in arrival order. The driver commits after
+     * every record, and a RocksDB window store flushes on every commit, which made the offline gate spend
+     * minutes per matrix in disk flushes (and the noisy matrices, five to seven times larger, most of an
+     * hour). The DSL stores are therefore in memory here: the same window, grace and suppress code, without
+     * the disk. Production keeps RocksDB.
+     */
     static List<String> footfall(List<String[]> accepted, FootfallConfig cfg) throws IOException {
         Topics topics = new Topics("store.events.v1", "incidents.v1", "incidents.shadow.v1", "rules.heartbeat.v1");
-        StreamsBuilder builder = new StreamsBuilder();
-        FootfallTopology.addTo(builder, builder.stream(topics.validated(), Consumed.with(Serdes.String(), Serdes.String())
-                .withTimestampExtractor(new CloudEventTimestampExtractor())), cfg, topics,
-                new RulesMetrics(new SimpleMeterRegistry()), Duration.ofDays(365));
         Path stateDir = Files.createTempDirectory("offline-footfall");
         Properties p = new Properties();
         p.put(StreamsConfig.APPLICATION_ID_CONFIG, "rules-engine-offline");
         p.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "offline:9092");
         p.put(StreamsConfig.STATE_DIR_CONFIG, stateDir.toString());
+        p.put(StreamsConfig.DSL_STORE_SUPPLIERS_CLASS_CONFIG, BuiltInDslStoreSuppliers.InMemoryDslStoreSuppliers.class);
+        StreamsBuilder builder = new StreamsBuilder(new TopologyConfig(new StreamsConfig(p)));
+        FootfallTopology.addTo(builder, builder.stream(topics.validated(), Consumed.with(Serdes.String(), Serdes.String())
+                .withTimestampExtractor(new CloudEventTimestampExtractor())), cfg, topics,
+                new RulesMetrics(new SimpleMeterRegistry()), Duration.ofDays(365));
         List<String> out = new ArrayList<>();
         try (TopologyTestDriver driver = new TopologyTestDriver(builder.build(), p, Instant.EPOCH)) {
             TestInputTopic<String, String> in =
