@@ -83,3 +83,58 @@ def test_secrets_are_refused_when_readable_by_others_and_never_shown(tmp_path):
     f.chmod(0o600)
     spec = config.CameraSpec("cam-01", tmp_path / "c.yaml", url_file=f)
     assert spec.url().endswith("/stream") and "hunter2" not in repr(spec)
+
+
+# -- X1 B5f: billing connector health in the heartbeat (edge.heartbeat 1.1.0) ---------------------------------------
+
+def _status(path, sources, updated_ms=NOW):
+    from datetime import datetime, timezone
+    doc = {"updatedAt": datetime.fromtimestamp(updated_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+           "store": "store-001", "sources": sources}
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    return path
+
+
+def _src(i, ok=True, failures=0, stale=False, last="2026-10-01T00:00:00Z"):
+    return {"id": i, "type": "sql", "ok": ok, "stale": stale, "failures": failures, "intervalSeconds": 60,
+            "lastAttemptAt": last, "lastSuccessAt": last if ok else None, "lastError": None if ok else "unreachable",
+            "events": 12, "rowErrors": 0}
+
+
+def test_connector_health_rides_in_the_heartbeat_as_1_1_0(tmp_path):
+    st = _status(tmp_path / "connectors.json", [_src("shop-db"), _src("push")])
+    hb = heartbeat.event(agent_id="edge-001", store="store-001", session="s1", seq=1, now_ms=NOW, started_ms=NOW - 1000,
+                         cameras=[CAM], outbox=OUTBOX, state_dir=tmp_path, clock_offset_ms=0, connector_status=st)
+    assert hb["dataschema"].endswith("/edge/heartbeat/1.1.0")
+    assert contract_validator(SCHEMAS)(hb) == []
+    conns = hb["data"]["connectors"]
+    assert [c["id"] for c in conns] == ["shop-db", "push"] and all(c["ok"] for c in conns)
+    assert "lastError" not in conns[0], "errors stay on the box: the heartbeat says ok or not, failures and age"
+    assert "connector_failing" not in hb["data"]["alarms"]
+
+
+def test_a_failing_or_stale_connector_raises_an_alarm(tmp_path):
+    for sources in ([_src("shop-db", ok=False, failures=3)], [_src("shop-db", stale=True)]):
+        st = _status(tmp_path / "connectors.json", sources)
+        hb = heartbeat.event(agent_id="edge-001", store="store-001", session="s1", seq=1, now_ms=NOW, started_ms=NOW,
+                             cameras=[CAM], outbox=OUTBOX, state_dir=tmp_path, clock_offset_ms=0, connector_status=st)
+        assert "connector_failing" in hb["data"]["alarms"]
+    one_blip = _status(tmp_path / "connectors.json", [_src("shop-db", ok=False, failures=1)])
+    hb = heartbeat.event(agent_id="edge-001", store="store-001", session="s1", seq=1, now_ms=NOW, started_ms=NOW,
+                         cameras=[CAM], outbox=OUTBOX, state_dir=tmp_path, clock_offset_ms=0, connector_status=one_blip)
+    assert "connector_failing" not in hb["data"]["alarms"], "one failed poll is not an alarm yet"
+
+
+def test_a_connector_service_that_stopped_writing_is_reported(tmp_path):
+    st = _status(tmp_path / "connectors.json", [_src("shop-db")], updated_ms=NOW - 11 * 60_000)
+    hb = heartbeat.event(agent_id="edge-001", store="store-001", session="s1", seq=1, now_ms=NOW, started_ms=NOW,
+                         cameras=[CAM], outbox=OUTBOX, state_dir=tmp_path, clock_offset_ms=0, connector_status=st)
+    assert "connector_failing" in hb["data"]["alarms"] and hb["data"]["connectors"][0]["stale"] is True
+
+
+def test_without_connectors_the_heartbeat_stays_1_0_0(tmp_path):
+    hb = heartbeat.event(agent_id="edge-001", store="store-001", session="s1", seq=1, now_ms=NOW, started_ms=NOW,
+                         cameras=[CAM], outbox=OUTBOX, state_dir=tmp_path, clock_offset_ms=0,
+                         connector_status=tmp_path / "missing.json")
+    assert hb["dataschema"].endswith("/1.0.0") and "connectors" not in hb["data"]
+    assert contract_validator(SCHEMAS)(hb) == []

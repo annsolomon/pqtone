@@ -1,0 +1,13 @@
+# Profile for the cable test's POS database (X1 B5f): its columns onto the canonical bill lines.
+apiVersion: connector.pqt/v1
+name: chaos-db
+system: chaos-db
+timezone: Asia/Kolkata
+timestampFormat: "%Y-%m-%d %H:%M:%S"
+currency: INR
+files:
+  bills:
+    columns: {billNo: bill_no, timestamp: billed_at, till: counter, lineNo: line_no, sku: item_code, qty: qty, unit: uom,
+              amount: net}
+maps:
+  unit: {pcs: [nos]}

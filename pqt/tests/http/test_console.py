@@ -208,3 +208,15 @@ def test_logout_returns_the_idp_end_session_url():
     assert r.status_code == 200
     assert "/protocol/openid-connect/logout" in r.json()["logoutUrl"]
     assert v.get("/api/me").status_code == 401
+
+
+def test_edge_health_lists_the_stores_edge_boxes():
+    """X1 B5f: the latest heartbeat per edge agent; any agent that has reported, connectors when 1.1.0."""
+    v = login("viewer")
+    r = v.get("/api/stores/store-001/edge")
+    assert r.status_code == 200
+    doc = r.json()
+    assert doc["storeId"] == "store-001" and doc["staleAfterSeconds"] == 120 and isinstance(doc["agents"], list)
+    for a in doc["agents"]:
+        assert a["source"].startswith("urn:pqt:edge:store-001:") and isinstance(a["connectors"], list)
+    assert v.get("/api/stores/Store_001!/edge").status_code == 400

@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { get } from "../api";
 import {
-  buildSalesChart, dayWindow, describeDay, joinBuckets, localDay, localTime, mainCurrency, money, quantity, SALES_CHART,
-  summarize, TENDER_LABELS,
+  buildSalesChart, connectorRows, dayWindow, describeDay, joinBuckets, localDay, localTime, mainCurrency, money, quantity,
+  SALES_CHART, summarize, TENDER_LABELS,
 } from "../billing";
-import type { Layout, Payments, Sales, Stock, StockRow, StoreState, Traffic } from "../types";
+import type { EdgeHealth, Layout, Payments, Sales, Stock, StockRow, StoreState, Traffic } from "../types";
 
 /** The stores' time zone until layouts carry their own (all demo stores are in India). */
 const TZ = "Asia/Kolkata";
@@ -39,6 +39,7 @@ export function SalesPage() {
   const [payments, setPayments] = useState<Payments | null>(null);
   const [traffic, setTraffic] = useState<Traffic | null>(null);
   const [stock, setStock] = useState<Stock | null>(null);
+  const [edge, setEdge] = useState<EdgeHealth | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,6 +70,9 @@ export function SalesPage() {
       get<StoreState>(`/api/stores/${storeId}/state`).then(setState),
       get<Layout>(`/api/stores/${storeId}/layout`).then(setLayout),
     ]).catch((e: Error) => setError(e.message));
+    setEdge(null);
+    // X1 B5f: how the billing sources on the store's edge box are doing (optional: the page works without it).
+    get<EdgeHealth>(`/api/stores/${storeId}/edge`).then(setEdge).catch(() => setEdge(null));
   }, [storeId]);
 
   useEffect(() => {
@@ -113,6 +117,7 @@ export function SalesPage() {
   const tenders = (payments?.totals ?? []).filter((t) => t.currency === currency);
   const otherCurrencies = [...new Set([...(sales?.totals ?? []), ...(payments?.totals ?? [])].map((t) => t.currency))].filter((c) => c !== currency);
   const size = SALES_CHART;
+  const sources = edge ? connectorRows(edge) : [];
 
   return (
     <main className="page sales-page">
@@ -279,6 +284,34 @@ export function SalesPage() {
               {stock.next && <p><button type="button" onClick={moreStock}>Show more SKUs</button></p>}
             </>
           )}
+        </section>
+      )}
+
+      {edge && (
+        <section aria-labelledby="sources-h">
+          <h2 id="sources-h">Billing sources</h2>
+          {edge.agents.length === 0 ? <p className="empty">No edge box has reported for this store in the last week.</p>
+            : sources.length === 0 ? <p className="empty">The edge box reports no billing sources (files are imported by hand).</p> : (
+              <div className="table-wrap">
+                <table aria-label="Billing sources on the edge box">
+                  <thead>
+                    <tr><th scope="col">Source</th><th scope="col">Kind</th><th scope="col">Edge box</th><th scope="col">State</th><th scope="col">Last worked</th><th scope="col">Events sent</th></tr>
+                  </thead>
+                  <tbody>
+                    {sources.map((r) => (
+                      <tr key={`${r.agentId}/${r.id}`}>
+                        <th scope="row"><code>{r.id}</code></th>
+                        <td>{r.kind}</td>
+                        <td><code>{r.agentId}</code></td>
+                        <td><span className={`source-state tone-${r.state.tone}`}>{r.state.label}</span></td>
+                        <td>{r.lastSuccess}</td>
+                        <td className="num">{r.events}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
         </section>
       )}
     </main>

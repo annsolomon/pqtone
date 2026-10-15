@@ -13,3 +13,5 @@ cameras:
   - {id: cam-01, urlFile: cam-01.url, config: cam-01.yaml, fps: 10}
 statusPath: /var/lib/pqt-edge/status.json
 statusEverySeconds: 1
+# X1 B5f: the connector service's health, reported in the heartbeat (edge.heartbeat 1.1.0).
+connectorStatusPath: /var/lib/pqt-edge/connectors-status.json

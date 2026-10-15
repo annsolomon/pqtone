@@ -5,7 +5,7 @@
  * arithmetic on money other than adding integers and dividing once for display. Time zones are IANA names
  * resolved with Intl, so the page shows the store's local day whatever the browser's own zone is.
  */
-import type { Payments, Sales, Tender, TillKind, Traffic } from "./types";
+import type { EdgeConnector, EdgeHealth, Payments, Sales, Tender, TillKind, Traffic } from "./types";
 
 export const TENDER_LABELS: Record<Tender, string> = {
   cash: "Cash", card: "Card", upi: "UPI", wallet: "Wallet", credit: "Credit", voucher: "Voucher", other: "Other",
@@ -251,4 +251,40 @@ export function describeDay(summary: DaySummary, rows: QuarterRow[], currency: s
   const peakQueue = Math.max(0, ...rows.map((r) => r.maxQueue ?? 0));
   const busy = busiest && busiest.salesMinor > 0 ? `, busiest at ${localTime(busiest.start, tz)} with ${money(busiest.salesMinor, currency)}` : "";
   return `${summary.bills} bill${summary.bills === 1 ? "" : "s"} for ${money(summary.salesMinor, currency)}${busy}; the longest queue was ${peakQueue}.`;
+}
+
+// -- X1 B5f: billing sources on the edge box ------------------------------------------------------------------------
+
+const SOURCE_KINDS: Record<EdgeConnector["type"], string> = {
+  watch: "Drop folder", sql: "Database", http: "Cloud API", tally: "TallyPrime", push: "Push API",
+};
+
+/** "40 s ago", "2 min ago", "3 h ago", "2 days ago". */
+export function ago(seconds: number): string {
+  if (seconds < 60) return `${Math.max(0, Math.round(seconds))} s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ago`;
+  return `${Math.floor(seconds / 86400)} days ago`;
+}
+
+export interface SourceState { label: string; tone: "ok" | "warn" | "bad" }
+
+export function connectorState(c: EdgeConnector, agentStale: boolean): SourceState {
+  if (agentStale) return { label: "Unknown (edge box silent)", tone: "bad" };
+  if (c.stale) return { label: "No recent success", tone: "bad" };
+  if (!c.ok) {
+    const n = `${c.failures} failed attempt${c.failures === 1 ? "" : "s"}`;
+    return c.failures >= 3 ? { label: `Failing (${n})`, tone: "bad" } : { label: `Retrying (${n})`, tone: "warn" };
+  }
+  if (c.rowErrors) return { label: `Working, ${c.rowErrors} record${c.rowErrors === 1 ? "" : "s"} need${c.rowErrors === 1 ? "s" : ""} fixing`, tone: "warn" };
+  return { label: "Working", tone: "ok" };
+}
+
+export interface SourceRow { agentId: string; id: string; kind: string; state: SourceState; lastSuccess: string; events: number }
+
+export function connectorRows(edge: EdgeHealth): SourceRow[] {
+  return edge.agents.flatMap((a) => a.connectors.map((c) => ({
+    agentId: a.agentId, id: c.id, kind: SOURCE_KINDS[c.type] ?? c.type, state: connectorState(c, a.stale),
+    lastSuccess: c.lastSuccessAgeSeconds == null ? "not yet" : ago(c.lastSuccessAgeSeconds), events: c.events ?? 0,
+  })));
 }
