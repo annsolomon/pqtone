@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Surface test counts (and every skipped test) as a notice annotation, so a green run can be
 checked for silently skipped tests through the checks API, without downloading the job log.
+Failed tests are listed too, with the end of their message, so a red run can be read the same way.
 
 Usage: test-summary.py <title> <junit.xml or directory>...   (directories are searched for *.xml)
 """
@@ -20,7 +21,7 @@ def main(argv: list[str]) -> int:
     files: list[Path] = []
     for p in map(Path, paths):
         files += sorted(p.glob("*.xml")) if p.is_dir() else ([p] if p.is_file() else [])
-    lines, skipped = [], []
+    lines, skipped, failed = [], [], []
     for f in files:
         try:
             root = ET.parse(f).getroot()
@@ -36,12 +37,17 @@ def main(argv: list[str]) -> int:
                 skipped.append(f"{c.get('classname', '')}.{c.get('name', '')}: {msg}")
             elif c.find("failure") is not None or c.find("error") is not None:
                 fl += 1
+                el = c.find("failure") if c.find("failure") is not None else c.find("error")
+                text = ((el.get("message") or "") + "\n" + (el.text or "")).strip()
+                tail = "\n".join(text.splitlines()[-12:])
+                failed.append(f"{c.get('classname', '')}.{c.get('name', '')}:\n{tail[-900:]}")
         if n:
             lines.append(f"{f.name}: {n - s - fl} passed, {s} skipped, {fl} failed")
     if not lines:
         print(f"test-summary: no junit files in {paths}")
         return 0
-    body = "\n".join(lines + (["", "Skipped:"] + skipped[:40] if skipped else []))
+    body = "\n".join(lines + (["", "Skipped:"] + skipped[:40] if skipped else [])
+                     + (["", "Failed:"] + failed[:5] if failed else []))
     print(f"::notice title={esc(title).replace(',', '%2C').replace(':', '%3A')}::{esc(body[-3500:])}")
     return 0
 
