@@ -136,3 +136,50 @@ def test_symbolic_links_are_never_followed(tmp_path):
     sent: list[dict] = []
     summary = run(drop, tmp_path, sent)
     assert summary["imported"] == [] and sent == [] and (drop / "bills.csv").is_symlink()
+
+
+def test_done_or_failed_as_a_symbolic_link_stops_the_poll(tmp_path):
+    drop = tmp_path / "drop"
+    drop.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (drop / "done").symlink_to(outside)
+    aged(write_csv(drop / "bills.csv", bill_rows()))
+    sent: list[dict] = []
+    summary = run(drop, tmp_path, sent)
+    assert summary["refused"] and sent == [] and (drop / "bills.csv").exists() and not list(outside.iterdir())
+
+
+def test_a_planted_report_link_is_not_followed(tmp_path):
+    drop = tmp_path / "drop"
+    (drop / "failed").mkdir(parents=True)
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep me", encoding="utf-8")
+    (drop / "failed" / "bills.csv.report.json").symlink_to(victim)
+    bad = bill_rows()
+    bad[0]["Qty"] = "lots"
+    aged(write_csv(drop / "bills.csv", bad))
+    run(drop, tmp_path, [])
+    assert victim.read_text(encoding="utf-8") == "keep me"
+    assert any(p.name.endswith(".report.json") and not p.is_symlink() for p in (drop / "failed").iterdir())
+
+
+def test_a_file_that_crashes_the_reader_goes_to_failed_instead_of_stopping_the_watch(tmp_path, monkeypatch):
+    from pqt_connectors import records
+
+    drop = tmp_path / "drop"
+    drop.mkdir()
+    aged(write_csv(drop / "bills.csv", bill_rows()))
+    aged(write_csv(drop / "payments.csv", payment_rows()))
+    real = records.read_file
+
+    def boom(profile, kind, path):
+        if kind == "bills":
+            raise MemoryError("simulated")
+        return real(profile, kind, path)
+    monkeypatch.setattr(records, "read_file", boom)
+    sent: list[dict] = []
+    summary = run(drop, tmp_path, sent)
+    assert summary["failed"] == ["bills.csv"] and summary["imported"] == ["payments.csv"]
+    report = json.loads((drop / "failed" / "bills.csv.report.json").read_text(encoding="utf-8"))
+    assert "MemoryError" in report["errors"][0]["error"]

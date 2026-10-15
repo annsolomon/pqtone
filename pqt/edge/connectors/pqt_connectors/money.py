@@ -29,6 +29,8 @@ def _decimal(text: str, *, decimal_sep: str = ".", thousands_sep: str = ",") -> 
         s = s.replace(decimal_sep, ".")
     if not re.fullmatch(r"[+-]?\d+(\.\d+)?", s):
         raise ParseError(f"not a number: {text!r}")
+    if len(s) > 32:
+        raise ParseError("too many digits for an amount or quantity")
     try:
         d = Decimal(s)
     except InvalidOperation as e:  # pragma: no cover - the regex above already guards this

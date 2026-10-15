@@ -281,3 +281,65 @@ def test_excel_xml_is_parsed_with_defusedxml():
     import openpyxl.xml
 
     assert openpyxl.xml.DEFUSEDXML, "defusedxml must be installed so workbook XML cannot expand entities"
+
+
+# -- hardening (security review of B5a/B5b) ------------------------------------------------------------------------
+
+def test_values_that_break_conversions_are_reported_not_raised(tmp_path):
+    inv = copy.deepcopy(INVOICE)
+    inv["items"][0]["line"] = "first"                    # int() would raise ValueError
+    huge = copy.deepcopy(INVOICE)
+    huge["invoice_number"] = "INV-1002"
+    src = tmp_path / "x.json"
+    # 1e1000000 as a JSON number, and a 50-digit monster: neither may crash or balloon memory.
+    second = json.dumps(huge).replace('"net": 50', '"net": 1e1000000', 1).replace('"gst": 0', '"gst": ' + "9" * 60, 1)
+    assert "1e1000000" in second and "9" * 60 in second
+    text = '{"invoices": [' + json.dumps(inv) + ", " + second + '], "payments": []}'
+    src.write_text(text, encoding="utf-8")
+    imp = importer(tmp_path, write_profile(tmp_path / "x.yaml", custom_json_profile()))
+    imp.bills(src)
+    out: list[dict] = []
+    rep = imp.commit(out.extend)
+    assert out == [] and len(rep.errors) >= 2
+    assert all(len(e["error"]) < 400 for e in rep.errors)
+
+
+def test_deeply_nested_json_is_refused_as_a_whole(tmp_path):
+    src = tmp_path / "x.json"
+    src.write_text("[" * 100_000 + "]" * 100_000, encoding="utf-8")
+    imp = importer(tmp_path, write_profile(tmp_path / "x.yaml", custom_json_profile()))
+    imp.bills(src)
+    out: list[dict] = []
+    rep = imp.commit(out.extend)
+    assert out == [] and rep.errors and "JSON" in rep.errors[0]["error"]
+
+
+def test_an_excel_file_that_expands_too_far_is_refused(tmp_path, monkeypatch):
+    from openpyxl import Workbook
+
+    from pqt_connectors import records
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Bill No", "Date", "Time", "Counter", "Line", "Item Code", "Qty", "Unit", "Amount", "Tax"])
+    for n in range(200):
+        ws.append([f"B{n}", "01-01-2026", "10:00:00", "C1", 1, "X" * 200, "1", "Nos", "1.00", "0"])
+    book = tmp_path / "big.xlsx"
+    wb.save(book)
+    monkeypatch.setattr(records, "MAX_XLSX_UNCOMPRESSED", 10_000)
+    imp = importer(tmp_path, PROFILE)
+    imp.bills(book)
+    out: list[dict] = []
+    rep = imp.commit(out.extend)
+    assert out == [] and "expands" in rep.errors[0]["error"]
+
+
+def test_a_symbolic_link_is_never_read_as_a_source(tmp_path):
+    real = write_csv(tmp_path / "real.csv", bill_rows())
+    link = tmp_path / "bills.csv"
+    link.symlink_to(real)
+    imp = importer(tmp_path, PROFILE)
+    imp.bills(link)
+    out: list[dict] = []
+    rep = imp.commit(out.extend)
+    assert out == [] and "symbolic link" in rep.errors[0]["error"]

@@ -334,6 +334,9 @@ class Importer:
             except RowError as e:
                 self.report.error(name, i, f"bill line: {e}")
                 bad = True
+            except (ValueError, ArithmeticError) as e:
+                self.report.error(name, i, f"bill line: unreadable value ({type(e).__name__})")
+                bad = True
         if bad:
             self.report.error(rows[0][0], rows[0][1], f"bill starting at row {rows[0][1]} held back: rows {[r[1] for r in rows]} include a bad one")
             return
@@ -413,6 +416,9 @@ class Importer:
             except RowError as e:
                 self.report.error(name, i, f"payment: {e}")
                 continue
+            except (ValueError, ArithmeticError) as e:
+                self.report.error(name, i, f"payment: unreadable value ({type(e).__name__})")
+                continue
             hexref = self.refs.hex(row["billNo"])
             ident = (hexref, t, tender, direction, amount, row.get("reference") or "")
             seen[ident] += 1
@@ -445,6 +451,9 @@ class Importer:
             except RowError as e:
                 self.report.error(name, i, f"movement: {e}")
                 continue
+            except (ValueError, ArithmeticError) as e:
+                self.report.error(name, i, f"movement: unreadable value ({type(e).__name__})")
+                continue
             self._event("stock.movement", t, f"sku:{data['sku']}", data,
                         f"mv|{data['docRef']}|{line_no}|{data['direction']}|{data['reason']}", (name, i))
 
@@ -458,6 +467,9 @@ class Importer:
                 t = self._time(row)
             except RowError as e:
                 self.report.error(name, i, f"stock {row.get('sku')!r}: {e}")
+                continue
+            except (ValueError, ArithmeticError) as e:
+                self.report.error(name, i, f"stock: unreadable value ({type(e).__name__})")
                 continue
             self._event("stock.level", t, f"sku:{sku}", data, f"lvl|{sku}|{t}", (name, i))
 
@@ -473,8 +485,11 @@ class Importer:
                 data = {"businessDate": d.isoformat(), "salesMinor": self._minor(row["sales"], "sales"),
                         "refundsMinor": self._minor(row["refunds"], "refunds"), "bills": int(row["bills"]),
                         "paymentsByTender": tenders, "currency": self.p.currency, "source": self.p.system}
-            except (RowError, ValueError) as e:
+            except RowError as e:
                 self.report.error(name, i, f"day total {row.get('date')!r}: {e}")
+                continue
+            except (ValueError, ArithmeticError) as e:
+                self.report.error(name, i, f"day total: unreadable value ({type(e).__name__})")
                 continue
             self._event("pos.day.total", t, f"store:{self.store}", data, f"day|{d.isoformat()}", (name, i))
 

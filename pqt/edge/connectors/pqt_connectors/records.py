@@ -12,7 +12,11 @@ are read as `Decimal`, so `23.33` stays exactly 23.33.
 from __future__ import annotations
 
 import csv
+import io
 import json
+import os
+import stat
+import zipfile
 from datetime import date, datetime, time
 from decimal import Decimal
 from pathlib import Path
@@ -22,6 +26,26 @@ from .profile import Profile
 
 MISSING = object()
 MAX_FILE_BYTES = 256 * 1024 * 1024  # a day's export is far smaller; anything bigger is refused, not half-read
+MAX_XLSX_UNCOMPRESSED = 64 * 1024 * 1024  # what a workbook may expand to (compressed size says little)
+MAX_DIGITS = 30                            # longer JSON numbers are not amounts or quantities: refused, never expanded
+OUT_OF_RANGE = "<number out of range>"
+
+
+def _safe_float(literal: str) -> Decimal:
+    return Decimal(literal) if len(literal) <= MAX_DIGITS + 2 and "e" not in literal.lower() else Decimal("NaN")
+
+
+def _safe_int(literal: str) -> int | Decimal:
+    return int(literal) if len(literal) <= MAX_DIGITS else Decimal("NaN")
+
+
+def json_loads(text_: str | bytes) -> Any:
+    """JSON with exact, bounded numbers: decimals as Decimal, absurd numbers as NaN (reported downstream), and
+    nesting too deep for the parser as a JSONDecodeError-like ValueError."""
+    try:
+        return json.loads(text_, parse_float=_safe_float, parse_int=_safe_int, parse_constant=lambda c: Decimal("NaN"))
+    except RecursionError:
+        raise ValueError("JSON nested too deeply") from None
 
 
 class SourceError(ValueError):
@@ -55,8 +79,12 @@ def text(value: Any) -> Any:
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, Decimal):
+        if not value.is_finite() or abs(value.adjusted()) > MAX_DIGITS:
+            return OUT_OF_RANGE
         return format(value, "f")
     if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")) or abs(value) >= 1e18:
+            return OUT_OF_RANGE
         return str(int(value)) if value.is_integer() else repr(value)
     if isinstance(value, (dict, list)):
         return json.dumps(value, sort_keys=True, default=str)  # never a valid amount or code: reported downstream
@@ -87,7 +115,21 @@ def rows(profile: Profile, kind: str, records: Iterator[tuple[int, Any]]) -> Ite
 
 
 def _json_load(text_: str) -> Any:
-    return json.loads(text_, parse_float=Decimal)
+    return json_loads(text_)
+
+
+def open_nofollow(p: Path) -> io.BufferedReader:
+    """Open a source file for reading, refusing symbolic links (O_NOFOLLOW) and anything but a regular file."""
+    try:
+        fd = os.open(p, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError as e:
+        if e.errno in (40, 62):  # ELOOP (Linux 40, macOS 62): the path is a symbolic link
+            raise SourceError("is a symbolic link; only regular files are read") from None
+        raise
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise SourceError("is not a regular file")
+    return os.fdopen(fd, "rb")
 
 
 def read_file(profile: Profile, kind: str, path: str | Path) -> Iterator[tuple[int, Any]]:
@@ -95,31 +137,36 @@ def read_file(profile: Profile, kind: str, path: str | Path) -> Iterator[tuple[i
     p = Path(path)
     ext = p.suffix.lower()
     opts = profile.file_opts.get(kind, {})
-    size = p.stat().st_size
-    if size > MAX_FILE_BYTES:
-        raise SourceError(f"file is {size} bytes, more than the {MAX_FILE_BYTES} a connector reads; split the export")
-    if ext in (".csv", ".txt", ""):
-        yield from _csv(profile, kind, p)
-    elif ext == ".xlsx":
-        yield from _xlsx(profile, kind, p, opts.get("sheet"))
-    elif ext == ".json":
-        try:
-            doc = _json_load(p.read_text(encoding="utf-8-sig"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as e:
-            raise SourceError(f"not JSON: {e}") from e
-        records = _records_at(doc, kind, opts.get("path"))
-        yield from enumerate(records, start=1)
-    elif ext in (".ndjson", ".jsonl"):
-        with open(p, encoding="utf-8-sig") as f:
-            for i, line in enumerate(f, start=1):
+    if ext not in (".csv", ".txt", "", ".xlsx", ".json", ".ndjson", ".jsonl"):
+        raise SourceError(f"unsupported file type {ext!r} (csv, txt, xlsx, json, ndjson, jsonl)")
+    with open_nofollow(p) as fh:
+        size = os.fstat(fh.fileno()).st_size
+        if size > MAX_FILE_BYTES:
+            raise SourceError(f"file is {size} bytes, more than the {MAX_FILE_BYTES} a connector reads; split the export")
+        if ext in (".csv", ".txt", ""):
+            yield from _csv(profile, kind, fh)
+        elif ext == ".xlsx":
+            yield from _xlsx(profile, kind, fh, opts.get("sheet"))
+        elif ext == ".json":
+            try:
+                doc = _json_load(fh.read().decode("utf-8-sig"))
+            except (UnicodeDecodeError, ValueError) as e:
+                raise SourceError(f"not JSON: {str(e)[:120]}") from None
+            records = _records_at(doc, kind, opts.get("path"))
+            yield from enumerate(records, start=1)
+        else:
+            for i, raw_line in enumerate(fh, start=1):
+                try:
+                    line = raw_line.decode("utf-8-sig")
+                except UnicodeDecodeError:
+                    yield i, {"_error": "not UTF-8 text"}
+                    continue
                 if not line.strip():
                     continue
                 try:
                     yield i, _json_load(line)
-                except json.JSONDecodeError as e:
-                    yield i, {"_error": f"not JSON: {e.msg}"}
-    else:
-        raise SourceError(f"unsupported file type {ext!r} (csv, txt, xlsx, json, ndjson, jsonl)")
+                except ValueError as e:
+                    yield i, {"_error": f"not JSON: {str(e)[:120]}"}
 
 
 def _records_at(doc: Any, kind: str, path: str | None) -> list:
@@ -136,21 +183,43 @@ def _records_at(doc: Any, kind: str, path: str | None) -> list:
     return found
 
 
-def _csv(profile: Profile, kind: str, p: Path) -> Iterator[tuple[int, Any]]:
-    with open(p, newline="", encoding=profile.csv_encoding) as f:
+def _csv(profile: Profile, kind: str, fh) -> Iterator[tuple[int, Any]]:
+    f = io.TextIOWrapper(fh, encoding=profile.csv_encoding, newline="")
+    try:
         reader = csv.DictReader(f, delimiter=profile.csv_delimiter)
-        _check_header(profile, kind, reader.fieldnames or [])
-        for i, raw in enumerate(reader, start=2):
+        try:
+            _check_header(profile, kind, reader.fieldnames or [])
+        except UnicodeDecodeError:
+            raise SourceError(f"not {profile.csv_encoding} text") from None
+        rows_ = enumerate(reader, start=2)
+        while True:
+            try:
+                i, raw = next(rows_)
+            except StopIteration:
+                return
+            except (UnicodeDecodeError, csv.Error) as e:
+                raise SourceError(f"unreadable CSV ({type(e).__name__})") from None
             yield i, raw
+    finally:
+        f.detach()
 
 
-def _xlsx(profile: Profile, kind: str, p: Path, sheet: str | None) -> Iterator[tuple[int, Any]]:
+def _xlsx(profile: Profile, kind: str, fh, sheet: str | None) -> Iterator[tuple[int, Any]]:
     from openpyxl import load_workbook  # MIT; only needed for Excel sources
 
+    data = io.BytesIO(fh.read())
     try:
-        wb = load_workbook(p, read_only=True, data_only=True)
-    except Exception as e:  # zipfile.BadZipFile, KeyError, InvalidFileException
-        raise SourceError(f"not an Excel workbook: {e}") from e
+        with zipfile.ZipFile(data) as z:
+            expanded = sum(i.file_size for i in z.infolist())
+    except zipfile.BadZipFile:
+        raise SourceError("not an Excel workbook (.xlsx is a zip file)") from None
+    if expanded > MAX_XLSX_UNCOMPRESSED:
+        raise SourceError(f"workbook expands to {expanded} bytes, more than {MAX_XLSX_UNCOMPRESSED}; save it smaller or as CSV")
+    data.seek(0)
+    try:
+        wb = load_workbook(data, read_only=True, data_only=True)
+    except Exception as e:  # KeyError, InvalidFileException, defusedxml refusals
+        raise SourceError(f"not an Excel workbook ({type(e).__name__})") from None
     try:
         if sheet is not None and sheet not in wb.sheetnames:
             raise SourceError(f"no sheet {sheet!r} (sheets: {wb.sheetnames})")
