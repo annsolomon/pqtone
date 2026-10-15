@@ -178,3 +178,22 @@ def test_an_unexpected_error_never_stops_the_uplink_thread(box: Outbox):
     up = Uplinker(box, Flaky(), batch_size=4, sleep=sleep)
     up.run(stop)
     assert box.stats()["sent"] == 3 and up.metrics["unexpectedErrors"] == 2
+
+
+def test_draining_at_stop_sends_what_is_pending_while_the_core_answers(box: Outbox):
+    """A4 cable test finding: events made in the last moments before a stop stayed pending. A clean stop now
+    sends them, bounded in time, and gives up at once when the link is down."""
+    box.append([ev(i) for i in range(1, 10)])
+    up = Uplinker(box, FakeUplink([]), batch_size=4, sleep=lambda s: None)
+    d = up.drain(5.0)
+    assert d == {"sent": 9, "outcome": "idle", "pending": 0}
+
+    box.append([ev(i) for i in range(10, 13)])
+    down = Uplinker(box, FakeUplink(["down"] * 10), batch_size=4, sleep=lambda s: None)
+    d = down.drain(5.0)
+    assert d["outcome"] == "retry" and d["pending"] == 3 and down.metrics["transientFailures"] == 1, "one try, then stop"
+
+    t = iter([0.0, 0.0, 99.0])
+    slow = Uplinker(box, FakeUplink([]), batch_size=1, sleep=lambda s: None)
+    d = slow.drain(5.0, clock=lambda: next(t))
+    assert d["sent"] == 1 and d["pending"] == 2, "the deadline ends it"

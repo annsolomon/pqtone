@@ -5,6 +5,7 @@ import com.networknt.schema.JsonSchema;
 import com.pqt.eventcore.config.PqtProperties;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -63,11 +64,18 @@ public final class EventValidator {
             Instant now = clock.instant();
             if (time.isAfter(now.plus(cfg.maxFutureSkew()))) errors.add("time: more than " + cfg.maxFutureSkew() + " in the future");
             // Simulated runs replay a fixed historical epoch for determinism; the age bound applies to real producers.
-            if (!simSource && time.isBefore(now.minus(cfg.maxAge()))) errors.add("time: older than " + cfg.maxAge());
+            // Billing types arrive from day-end exports and get their own, longer bound (ADR-036).
+            Duration maxAge = cfg.maxAgeFor(type);
+            if (!simSource && time.isBefore(now.minus(maxAge))) errors.add("time: older than " + maxAge);
         }
         String storeId = n.path("storeid").asText(null);
         if (storeId != null && !storeId.equals(n.path("partitionkey").asText(null))) {
             errors.add("partitionkey: must equal storeid");
+        }
+        // Billing payloads name their store too (X1); it must be the envelope's, which SourcePolicy binds to the source.
+        JsonNode dataStore = n.path("data").path("storeId");
+        if (!dataStore.isMissingNode() && !dataStore.asText("").equals(storeId)) {
+            errors.add("data.storeId: must equal storeid");
         }
         if (!errors.isEmpty()) throw new InvalidEventException(errors);
 

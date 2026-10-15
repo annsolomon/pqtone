@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(value = 5, unit = TimeUnit.MINUTES)
 class MigrationsIT {
     /** The newest migration in db/migration. A new migration changes this on purpose (and adds its shape check). */
-    static final String LATEST = "6";
+    static final String LATEST = "7";
 
     static String latest(Db db) {
         return Flyway.configure().dataSource(db.container.getJdbcUrl(), "pqt_migrator", db.migratorPassword)
@@ -60,6 +60,35 @@ class MigrationsIT {
                    AND tgname IN ('rule_score_append_only', 'rule_score_no_truncate')""", Integer.class));
     }
 
+    static final List<String> BILLING_TABLES = List.of("pos_sale_line", "pos_payment", "pos_till_event", "stock_movement",
+            "stock_level", "pos_day_total");
+
+    /** X1 milestone B3: the billing tables are append-only, store-scoped by forced RLS, and pqt_app may only insert and read. */
+    static void assertV7Shape(JdbcTemplate su) {
+        for (String t : BILLING_TABLES) {
+            String q = "pqt." + t;
+            assertEquals(Boolean.TRUE, su.queryForObject("SELECT has_table_privilege('pqt_app', ?, 'INSERT')", Boolean.class, q), t);
+            assertEquals(Boolean.TRUE, su.queryForObject("SELECT has_table_privilege('pqt_app', ?, 'SELECT')", Boolean.class, q), t);
+            assertEquals(Boolean.FALSE, su.queryForObject("SELECT has_table_privilege('pqt_app', ?, 'UPDATE')", Boolean.class, q), t);
+            assertEquals(Boolean.FALSE, su.queryForObject("SELECT has_table_privilege('pqt_app', ?, 'DELETE')", Boolean.class, q), t);
+            assertEquals(Boolean.FALSE, su.queryForObject("SELECT has_table_privilege('pqt_read', ?, 'INSERT')", Boolean.class, q), t);
+            assertEquals(Boolean.TRUE, su.queryForObject("SELECT has_table_privilege('pqt_read', ?, 'SELECT')", Boolean.class, q), t);
+            assertEquals(List.of(Boolean.TRUE, Boolean.TRUE), su.query(
+                    "SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE oid = ?::regclass",
+                    (rs, i) -> List.of(rs.getBoolean(1), rs.getBoolean(2)), q).get(0), t + ": RLS enabled and forced");
+            assertEquals(2, su.queryForObject("SELECT count(*)::int FROM pg_policy WHERE polrelid = ?::regclass", Integer.class, q), t);
+            assertEquals(1, su.queryForObject(
+                    "SELECT count(*)::int FROM pg_trigger WHERE tgrelid = ?::regclass AND tgname = ? AND NOT tgisinternal",
+                    Integer.class, q, t + "_append_only"), t);
+            assertEquals("p", su.queryForObject("SELECT relkind::text FROM pg_class WHERE oid = ?::regclass", String.class, q),
+                    t + " is partitioned");
+        }
+        assertEquals(Boolean.TRUE, su.queryForObject(
+                "SELECT has_function_privilege('pqt_app', 'pqt.ensure_billing_partitions(int)', 'EXECUTE')", Boolean.class));
+        assertEquals(Boolean.FALSE, su.queryForObject(
+                "SELECT has_function_privilege('pqt_read', 'pqt.drop_billing_partitions_older_than(int)', 'EXECUTE')", Boolean.class));
+    }
+
     @Test
     void anEmptyDatabaseMigratesToTheLatestVersion() throws Exception {
         try (Db db = new Db().start()) {
@@ -69,6 +98,7 @@ class MigrationsIT {
                     db.container.getJdbcUrl(), db.container.getUsername(), db.container.getPassword(), true));
             assertV5Shape(su);
             assertV6Shape(su);
+            assertV7Shape(su);
             db.migrate();   // running again is a no-op
             assertEquals(LATEST, latest(db));
         }
@@ -99,6 +129,7 @@ class MigrationsIT {
                     db.container.getJdbcUrl(), db.container.getUsername(), db.container.getPassword(), true));
             assertV5Shape(su);
             assertV6Shape(su);
+            assertV7Shape(su);
             assertEquals(before, app.queryForList("SELECT count(*)::int FROM pqt.event", Integer.class), "events untouched");
             assertNull(app.queryForObject("SELECT assignee FROM pqt.incident WHERE incident_id = ?", String.class, incident),
                     "existing incidents are unassigned");

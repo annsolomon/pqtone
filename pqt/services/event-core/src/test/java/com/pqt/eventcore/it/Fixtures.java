@@ -3,6 +3,7 @@ package com.pqt.eventcore.it;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.pqt.eventcore.audit.AuditService;
+import com.pqt.eventcore.billing.BillingProjector;
 import com.pqt.eventcore.config.PqtProperties;
 import com.pqt.eventcore.ingest.Canonical;
 import com.pqt.eventcore.ingest.IngestService;
@@ -43,7 +44,7 @@ final class Fixtures {
     static IngestService ingest(DataSource ds) {
         JdbcTemplate jdbc = new JdbcTemplate(ds);
         return new IngestService(jdbc, tx(ds), new AuditService(jdbc, MAPPER, Clock.systemUTC()), props(), MAPPER,
-                new SimpleMeterRegistry());
+                new SimpleMeterRegistry(), new BillingProjector(jdbc));
     }
 
     /** A queue.length event as the validator would hand it over. Synthetic ids only. */

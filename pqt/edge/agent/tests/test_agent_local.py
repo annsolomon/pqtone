@@ -85,10 +85,8 @@ def test_agent_delivers_every_sequence_once_through_an_outage(tmp_path: Path):
     time.sleep(8.0)
     agent.stop.set()
     t.join(timeout=20)
-    # drain whatever was produced after the last send, as a restarted agent would
-    while agent.uplinker.step() == "sent":
-        pass
     server.shutdown()
+    assert agent.outbox.stats()["pending"] == 0, "a clean stop sends what the last moments produced (A4)"
     st = agent.outbox.stats()
     assert st["pending"] == 0 and st["rejected"] == 0 and st["sent"] > 10
     assert FakeCore.refused >= 1  # the agent did hit the outage (retries inside the uplink may hide it from the metrics)

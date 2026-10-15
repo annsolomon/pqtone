@@ -3,7 +3,8 @@
 OpenCV's wheels bundle an LGPL FFmpeg build (ADR-012), so no extra dependency is needed for RTSP.
 - Open and read timeouts (5 s) turn a dead camera or network into an error instead of a hang.
 - Any open failure, read failure or decoder error drops the session and reconnects with exponential
-  back-off plus jitter (capped), so a rebooting camera is picked up again within seconds.
+  back-off plus jitter, capped at 2 s: probing a camera on the shop's own LAN every 1-2 s costs nothing,
+  and the A2 bar is "back within 10 s" of the camera returning (a 10 s cap missed it after a 15 s outage).
 - The limiter keeps at most `fps` frames per second; the rest are read and discarded so the stream
   does not lag behind real time.
 - Camera URLs often carry credentials; they are never logged (`redact`).
@@ -55,7 +56,7 @@ class IngestMetrics:
 
 class CameraReader:
     def __init__(self, url: str, *, fps: float = 5.0, open_timeout_ms: int = 5000, read_timeout_ms: int = 5000,
-                 backoff_max_s: float = 10.0, opener: Callable = _open_cv, clock: Callable[[], float] = time.time,
+                 backoff_max_s: float = 2.0, opener: Callable = _open_cv, clock: Callable[[], float] = time.time,
                  sleep: Callable[[float], None] = time.sleep) -> None:
         self.url, self.fps = url, fps
         self.open_timeout_ms, self.read_timeout_ms = open_timeout_ms, read_timeout_ms

@@ -1,0 +1,150 @@
+name: vision-tune
+# Tier 2 V7 part 2 (ADR-032). Chooses the tracker and zone-timing setting on MOT20's training sequences
+# (the development set), never on MOT17 (the test set; vision-bench.yml). MOT20 is CC BY-NC-SA 3.0: it is
+# downloaded here, used for development only and never committed. Only aggregates and zone geometry leave
+# the runner: as check annotations on pull requests, and (manual runs) as a commit on `vision-results`.
+on:
+  pull_request:
+    paths:
+      - "pqt/vision/lab/pqt_vision/tune.py"
+      - ".github/workflows/vision-tune.yml"
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Detector (the selected V7 candidate is yolox_s)
+        default: yolox_s
+      max_frames:
+        description: First N frames of each MOT20 clip
+        default: "1000"
+      publish:
+        description: Commit the result to the vision-results branch
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: vision-tune-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MOT20_URL: https://motchallenge.net/data/MOT20.zip
+  MOT20_DIR: ${{ github.workspace }}/../mot20
+  PQT_MODEL_DIR: ${{ github.workspace }}/../models
+  MODEL: ${{ inputs.model || 'yolox_s' }}
+  MAX_FRAMES: ${{ inputs.max_frames || '1000' }}
+
+jobs:
+  tune:
+    name: V7 tune on MOT20 (${{ inputs.model || 'yolox_s' }}, roi)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: write   # only to push the vision-results branch on manual runs; never main
+    defaults:
+      run:
+        shell: bash
+        working-directory: pqt
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install vision-lab and the scorer
+        run: pip install -q './scorer' './vision/lab[test]'
+      - name: Restore the MOT20 development clips
+        id: mot20
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ env.MOT20_DIR }}
+          key: mot20-train-first${{ env.MAX_FRAMES }}-v1
+      - name: Download MOT20 (development use only, ADR-032)
+        if: steps.mot20.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$MOT20_DIR"
+          df -h "$RUNNER_TEMP" | tail -1
+          curl -fsSL --retry 4 --retry-delay 10 -o "$RUNNER_TEMP/MOT20.zip" "$MOT20_URL"
+          ls -l "$RUNNER_TEMP/MOT20.zip"
+          sha256sum "$RUNNER_TEMP/MOT20.zip" | tee "$MOT20_DIR/MOT20.zip.sha256"
+          unzip -q "$RUNNER_TEMP/MOT20.zip" '*train/MOT20-01/*' '*train/MOT20-02/*' '*train/MOT20-03/*' \
+            '*train/MOT20-05/*' -d "$MOT20_DIR"
+          rm -f "$RUNNER_TEMP/MOT20.zip"
+          # Keep only the frames the tuning reads (the cache key carries MAX_FRAMES; 0 keeps everything).
+          # File names come from a downloaded archive: handled in Python, never in shell arithmetic.
+          python3 -I - "$MOT20_DIR" "$MAX_FRAMES" <<'PY'
+          import pathlib, sys
+          root, keep = pathlib.Path(sys.argv[1]), int(sys.argv[2])
+          gone = 0
+          if keep > 0:
+              for p in root.glob("**/img1/*.jpg"):
+                  if p.stem.isdigit() and int(p.stem) > keep:
+                      p.unlink()
+                      gone += 1
+          print(f"pruned {gone} frames beyond frame {keep}")
+          PY
+          du -sh "$MOT20_DIR"
+      - name: Locate the training sequences
+        run: |
+          seq1=$(find "$MOT20_DIR" -maxdepth 4 -type f -path '*MOT20-01/seqinfo.ini' | head -1)
+          if [ -z "$seq1" ]; then echo "MOT20-01 not found under $MOT20_DIR"; find "$MOT20_DIR" -maxdepth 3; exit 1; fi
+          echo "MOT20_TRAIN=$(dirname "$(dirname "$seq1")")" >> "$GITHUB_ENV"
+      - name: Restore models
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ env.PQT_MODEL_DIR }}
+          key: models-${{ env.MODEL }}-${{ hashFiles('pqt/vision/lab/pqt_vision/models.py') }}
+      - name: Fetch and verify the model
+        run: pqt-vision fetch-model "$MODEL"
+      - name: Unit tests
+        run: python -m pytest -q vision/lab/tests/test_tune.py 2>&1 | tee "$RUNNER_TEMP/tests.log"
+      - name: Tune
+        run: |
+          nproc
+          pqt-vision tune --root "$MOT20_TRAIN" --model "$MODEL" --max-frames "$MAX_FRAMES" \
+            --out "../.work/vision-tune/$MODEL-roi" 2>&1 | tee "$RUNNER_TEMP/tune.log"
+          cat "../.work/vision-tune/$MODEL-roi/tuned.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Result as check annotations
+        if: always()
+        run: |
+          d="../.work/vision-tune/$MODEL-roi"
+          if [ -s "$d/tuned.md" ]; then ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "vision tune $MODEL" "$d/tuned.md" 60; fi
+          if [ -s "$d/setting.json" ]; then ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "tuned setting $MODEL" "$d/setting.json" 60; fi
+      - name: Failure details
+        if: failure()
+        run: |
+          ../.github/scripts/annotate.sh "vision tune log" "$RUNNER_TEMP/tune.log" 60
+          ../.github/scripts/annotate.sh "vision tune tests log" "$RUNNER_TEMP/tests.log" 60
+      - name: Publish the result to the vision-results branch
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        env:
+          RUN_ID: ${{ github.run_id }}
+        working-directory: .
+        run: |
+          stage="$RUNNER_TEMP/publish"
+          mkdir -p "$stage"
+          cp ".work/vision-tune/$MODEL-roi/tuned.json" ".work/vision-tune/$MODEL-roi/tuned.md" \
+            ".work/vision-tune/$MODEL-roi/setting.json" "$stage/"
+          if [ -f "$MOT20_DIR/MOT20.zip.sha256" ]; then cp "$MOT20_DIR/MOT20.zip.sha256" "$stage/"; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch -q --depth 1 origin vision-results 2>/dev/null; then
+            git switch -q -c vision-results FETCH_HEAD
+          else
+            git switch -q --orphan vision-results
+            printf '# Vision bench results\n\nAggregate reports from the vision workflows (ADR-013, ADR-032). No images, boxes or tracks.\n' > README.md
+          fi
+          dest="runs/$(date -u +%Y%m%dT%H%M%SZ)-${RUN_ID}-tune-${MODEL}"
+          mkdir -p "$dest"
+          cp "$stage"/* "$dest/"
+          git add README.md "$dest"
+          git commit -q -m "vision-tune: ${MODEL} run ${RUN_ID} on ${GITHUB_SHA::12}"
+          for i in 1 2 3 4 5; do
+            git push -q origin HEAD:vision-results && break
+            sleep $((i * 5)); git pull -q --rebase origin vision-results
+          done
+          echo "Result pushed to \`vision-results/$dest\`" >> "$GITHUB_STEP_SUMMARY"

@@ -1,9 +1,9 @@
-# Measured by pqt-vision bench-mot17 (milestone N1). Rates and distributions only.
-# Source: CI run on PR #46 (commit 31dc2fcb), MOT17-02/04/09, yolox_s roi, ByteTrack defaults.
+# Measured by pqt-vision bench-mot17 (milestones N1, N5). Rates and distributions only.
+# Source: CI run on PR #50 (commit e1dc1ef), MOT17-02/04/09, yolox_s roi, ByteTrack defaults.
 apiVersion: noise.pqt/v1
 name: mot17-yolox-s-roi
-description: Measured on MOT17 fixed-camera sequences with yolox_s (roi mode), ByteTrack defaults and the V4 zone
-  engine (open-dataset track).
+description: Measured on MOT17 fixed-camera sequences with yolox_s (roi mode), ByteTrack defaults and the V4 zone engine (open-dataset
+  track).
 measuredFrom:
   clips: 3
   trackMinutes: 4.35
@@ -17,6 +17,9 @@ measuredFrom:
 detection:
   missRate:
     base: 0.0805
+  visitMissRate:
+    probability: 0.0
+    n: 56
   falsePositivesPerMinute: 2.483
   phantomTrackDurationMs:
     kind: lognormal
@@ -38,6 +41,11 @@ tracking:
       - 0.2
       - 0.0667
       n: 15
+    gapMs:
+      kind: lognormal
+      mu: 6.602
+      sigma: 1.198
+      n: 21
 timing:
   entryJitterMs:
     kind: normal

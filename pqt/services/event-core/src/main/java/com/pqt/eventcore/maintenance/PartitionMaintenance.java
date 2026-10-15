@@ -9,7 +9,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** Keeps daily event partitions ahead of time and applies the retention policy. */
+/** Keeps daily event and billing partitions (V1, V7) ahead of time and applies the retention policy to both. */
 @Component
 public class PartitionMaintenance implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(PartitionMaintenance.class);
@@ -30,6 +30,8 @@ public class PartitionMaintenance implements ApplicationRunner {
     public void ensure() {
         Integer created = jdbc.queryForObject("SELECT pqt.ensure_event_partitions(7)", Integer.class);
         if (created != null && created > 0) log.info("created {} event partitions", created);
+        Integer billing = jdbc.queryForObject("SELECT pqt.ensure_billing_partitions(7)", Integer.class);
+        if (billing != null && billing > 0) log.info("created {} billing partitions", billing);
     }
 
     @Scheduled(cron = "0 20 3 * * *", zone = "UTC")
@@ -37,5 +39,8 @@ public class PartitionMaintenance implements ApplicationRunner {
         Integer dropped = jdbc.queryForObject("SELECT pqt.drop_event_partitions_older_than(?)", Integer.class,
                 props.retention().eventDays());
         log.info("retention: dropped {} event partitions older than {} days", dropped, props.retention().eventDays());
+        Integer billing = jdbc.queryForObject("SELECT pqt.drop_billing_partitions_older_than(?)", Integer.class,
+                props.retention().eventDays());
+        log.info("retention: dropped {} billing partitions older than {} days", billing, props.retention().eventDays());
     }
 }

@@ -110,7 +110,7 @@ while :; do
   sleep 2
 done
 log "stopping the agent"
-$EDGE stop -t 20 edge-agent >/dev/null
+$EDGE stop -t 35 edge-agent >/dev/null  # cameras stop, then up to 10 s of draining (drainOnStopSeconds)
 status > "$W/reports/status-final.json"
 python3 - "$W/reports/run.json" "$CUT" "${recovery:-null}" <<'PY'
 import json, sys

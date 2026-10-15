@@ -23,10 +23,12 @@ from .detect.yolox import YoloxOnnxDetector
 from .evaluate import evaluate
 from .metrics import evaluate_tracking
 from .models import MODELS, resolve
+from .counts import COUNT_START
 from .mot import FrameGT, GroundTruth, load_gt
 from .runner import run_detection
 from .sources import open_source
 from .track import ByteTrackConfig, frame_times, run_tracking, write_tracks
+from .tune import Setting
 
 STATIC_SEQUENCES = ("MOT17-02", "MOT17-04", "MOT17-09")
 ATTRIBUTION = ("MOT17: Milan, Leal-Taixé, Reid, Roth, Schindler, \"MOT16: A Benchmark for Multi-Object "
@@ -58,17 +60,26 @@ def sequence_dir(root: Path, seq: str, variant: str = "FRCNN") -> Path:
 def bench_mot17(root: str | Path, *, model: str, out: str | Path, sequences: tuple[str, ...] = STATIC_SEQUENCES,
                 threads: int | None = None, max_frames: int | None = None,
                 tracker: ByteTrackConfig | None = None, configs: str | Path | None = None,
-                schemas: str | Path | None = None, mode: str = "full", noise_out: str | Path | None = None) -> dict:
+                schemas: str | Path | None = None, mode: str = "full", noise_out: str | Path | None = None,
+                setting: Setting | None = None) -> dict:
     """mode: full (whole frame at the model's input size), roi (the zones' region plus a margin; needs a
-    zone config) or tiled (2 × 2 overlapping tiles plus the full frame)."""
+    zone config) or tiled (2 × 2 overlapping tiles plus the full frame).
+
+    setting: a tracker and zone-timing setting chosen on the development set (V7 part 2, `tune.py`). It
+    replaces the tracker and the zone configs' enter/exit delays and lost-track timeout; zones never change."""
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
+    if setting is not None:
+        if tracker is not None:
+            raise ValueError("pass a tracker or a setting, not both")
+        tracker = setting.tracker()
     root, out = Path(root), Path(out)
     out.mkdir(parents=True, exist_ok=True)
     model_path = resolve(model)
     base = YoloxOnnxDetector(model_path, name=model, conf=DETECT_CONF, threads=threads)
     per_seq = {}
-    noise_samples = []
+    noise_samples: list = []
+    noise_clips: list = []  # N5: (clean events from ground truth, truth samples, real errors) per sequence
     for seq in sequences:
         sdir = sequence_dir(root, seq)
         src = open_source(sdir)
@@ -104,8 +115,12 @@ def bench_mot17(root: str | Path, *, model: str, out: str | Path, sequences: tup
                         "tracking": tr, **({"roi": region.as_list()} if region else {})}
         if cam_path is not None and cam_path.is_file():
             per_seq[seq]["counts"] = _counts(seq, cam_path, tracks, frame_times(replay), gt_full, src.info.fps, out,
-                                             schemas, noise_samples if noise_out else None)
-    noise = _write_noise_profile(noise_samples, Path(noise_out), model=model, mode=mode) if noise_out else None
+                                             schemas, noise_samples if noise_out else None,
+                                             noise_clips if noise_out else None, setting)
+    noise, validation = None, None
+    if noise_out:
+        noise, doc = _write_noise_profile(noise_samples, Path(noise_out), model=model, mode=mode)
+        validation = _validate_noise(doc, noise_clips, out)
     report = {
         "kind": "pqt.vision-bench/v1", "stage": "V7 detection + tracking + counts", "mode": mode,
         "createdAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -115,17 +130,17 @@ def bench_mot17(root: str | Path, *, model: str, out: str | Path, sequences: tup
         "detectConf": DETECT_CONF, "tracker": (tracker or ByteTrackConfig()).as_dict(),
         "runner": {"cpus": os.cpu_count(), "threads": threads, "python": platform.python_version(),
                    "machine": platform.machine()},
+        "setting": setting.as_dict() if setting else None,
         "sequences": per_seq, "attribution": ATTRIBUTION, **({"noiseProfile": noise} if noise else {}),
+        **({"noiseValidation": validation} if validation else {}),
     }
     (out / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     (out / "report.md").write_text(render_md(report), encoding="utf-8")
     return report
 
 
-COUNT_START = "2026-01-01T09:00:00Z"  # arbitrary wall-clock origin for offline clips
 
-
-def _write_noise_profile(samples: list, path: Path, *, model: str, mode: str) -> dict:
+def _write_noise_profile(samples: list, path: Path, *, model: str, mode: str) -> tuple[dict, dict]:
     """N1: pool the per-sequence measurements into one noise profile, validate it, flag thin evidence."""
     import yaml
 
@@ -152,22 +167,70 @@ def _write_noise_profile(samples: list, path: Path, *, model: str, mode: str) ->
                         "falsePositivesPerMinute": doc["detection"]["falsePositivesPerMinute"],
                         "idSwitchesPerTrackMinute": doc["tracking"]["idSwitchesPerTrackMinute"],
                         "fragmentation": doc["tracking"]["fragmentation"].get("probability"),
-                        "entryJitterMs": doc["timing"]["entryJitterMs"], "exitJitterMs": doc["timing"]["exitJitterMs"]}}
+                        "visitMissRate": doc["detection"].get("visitMissRate"),
+                        "entryJitterMs": doc["timing"]["entryJitterMs"], "exitJitterMs": doc["timing"]["exitJitterMs"]}}, doc
+
+
+VALIDATION_SEEDS = tuple(range(30))
+
+
+def _validate_noise(doc: dict, clips: list, out: Path) -> dict | None:
+    """N5, the same-clip test: apply the measured profile to each clip's ground-truth zone events with
+    store-sim (30 seeds) and compare the resulting count errors with the pipeline's real errors on the
+    same clips (two-sample KS). Writes noise-validation.md next to the report."""
+    try:
+        from store_sim import noise_validate as nv
+    except ImportError:
+        return {"skipped": "store-sim not installed"}
+    if not clips:
+        return None
+    sim: list[int] = []
+    real: list[int] = []
+    for clean, truth, errs in clips:
+        sim += nv.clip_errors(clean, truth, doc, seeds=VALIDATION_SEEDS)
+        real += errs
+    if not sim or not real:
+        return {"skipped": "no count samples"}
+    result = {**nv.compare(sim, real), "seeds": len(VALIDATION_SEEDS), "clips": len(clips), "profile": doc["name"]}
+    (out / "noise-validation.md").write_text(render_validation(result), encoding="utf-8")
+    return result
+
+
+def render_validation(v: dict) -> str:
+    m, s = v["measured"], v["simulated"]
+    keys = sorted({int(k) for k in m["shares"]} | {int(k) for k in s["shares"]})
+    return "\n".join([
+        f"# N5 same-clip validation: profile `{v['profile']}`", "",
+        f"store-sim applied the profile to the ground-truth zone events of the same {v['clips']} clips ({v['seeds']} seeds); "
+        "errors = count after noise minus true count, one sample per second.", "",
+        "| Errors | n | Mean | SD | Exact | Within ±1 | Min | Max |", "|---|---|---|---|---|---|---|---|",
+        f"| Real pipeline | {m['n']} | {m['mean']:+.3f} | {m['sd']:.3f} | {m['exact']:.1%} | {m['within1']:.1%} | {m['min']} | {m['max']} |",
+        f"| store-sim + profile | {s['n']} | {s['mean']:+.3f} | {s['sd']:.3f} | {s['exact']:.1%} | {s['within1']:.1%} | {s['min']} | {s['max']} |",
+        "", "| Error | " + " | ".join(f"{k:+d}" for k in keys) + " |", "|---|" + "---|" * len(keys),
+        "| Real | " + " | ".join(f"{m['shares'].get(str(k), 0):.1%}" for k in keys) + " |",
+        "| Simulated | " + " | ".join(f"{s['shares'].get(str(k), 0):.1%}" for k in keys) + " |", "",
+        f"Two-sample KS: D = {v['ksD']:.3f}, p = {v['pValue']:.3f} (α = {v['alpha']}): "
+        + ("**rejected**, the injection mechanisms do not reproduce the real errors." if v["rejected"]
+           else "not rejected."), ""])
 
 
 def _counts(seq: str, cam_path: Path, tracks: dict, times: dict[int, int], gt, fps: float, out: Path,
-            schemas: str | Path | None, noise_samples: list | None = None) -> dict:
+            schemas: str | Path | None, noise_samples: list | None = None, noise_clips: list | None = None,
+            setting: Setting | None = None) -> dict:
     """Zone events from the tracks, ground-truth counts from the annotations, scored by pqt-scorer (V6)."""
+    from . import camera as cam
     import secrets
 
-    from . import camera as cam
-    from .counts import gt_counts, write_counts
+    from .counts import count_events, gt_counts, write_counts
     from .emitter import contract_validator, parse_iso, schemas_dir_default, write_jsonl
     from .pipeline import cloud_events
 
     camera = cam.load(cam_path)
-    events = cloud_events(camera, {f: [(t.track_id, t.box) for t in ts] for f, ts in tracks.items()}, times,
-                          start_ms=parse_iso(COUNT_START), run_key=f"mot17:{seq}", secret=secrets.token_bytes(32))
+    lost_after_s = 2.0
+    if setting is not None:
+        camera, lost_after_s = setting.apply(camera), setting.lost_after_s
+    events = count_events(camera, {f: [(t.track_id, t.box) for t in ts] for f, ts in tracks.items()}, times,
+                          run_key=f"mot17:{seq}", lost_after_s=lost_after_s)
     check = contract_validator(schemas or schemas_dir_default())
     schema_errors = sum(len(check(e)) for e in events)
     write_jsonl(out / "events" / f"{seq}.jsonl", events)
@@ -189,9 +252,16 @@ def _counts(seq: str, cam_path: Path, tracks: dict, times: dict[int, int], gt, f
         tl = video.timelines(events, "occupancy")
         start = parse_iso(COUNT_START)
         errs = [video.count_at(tl.get(g.zone), start + g.offset_ms) - g.count for g in gt_samples]
-        zev, _ = zone_events(camera, {f: [(t.track_id, t.box) for t in ts] for f, ts in tracks.items()}, times)
+        zev, _ = zone_events(camera, {f: [(t.track_id, t.box) for t in ts] for f, ts in tracks.items()}, times,
+                             lost_after_s=lost_after_s)
         noise_samples.append(measure_sequence(gt, {f: [(t.track_id, t.box) for t in ts] for f, ts in tracks.items()},
                                               times, camera, zev, errs))
+        if noise_clips is not None:
+            # N5: the zone events a perfect tracker would give (ground-truth people as tracks), on the same clip.
+            gt_tracks = {f: list(gt.people(f)) for f in sorted(tracks)}
+            clean = cloud_events(camera, gt_tracks, times, start_ms=start, run_key=f"mot17-gt:{seq}",
+                                 secret=secrets.token_bytes(32))  # perfect-tracker reference: zone timing as configured
+            noise_clips.append((clean, [(start + g.offset_ms, g.zone, g.count) for g in gt_samples], errs))
     return result
 
 
@@ -199,6 +269,8 @@ def render_md(r: dict) -> str:
     lines = [f"# Vision bench: {r['model']['name']}, {r.get('mode', 'full')} mode, on MOT17 (stage: {r['stage']})", "",
              f"Commit `{r['commit'][:12]}`, {r['createdAt']}, {r['runner']['cpus']} CPUs, "
              f"ONNX Runtime {r['model'].get('onnxruntime', '?')}, input {r['model'].get('input')}.", "",
+             *([f"Setting chosen on the development set (V7 part 2, never on MOT17): `{json.dumps(r['setting'], sort_keys=True)}`", ""]
+               if r.get("setting") else []),
              "| Sequence | Frames | GT people | AP50 | P@0.3 | R@0.3 | P@0.5 | R@0.5 | ms/frame |",
              "|---|---|---|---|---|---|---|---|---|"]
     for seq, s in r["sequences"].items():
@@ -234,6 +306,12 @@ def render_md(r: dict) -> str:
                   f"{sm['falsePositivesPerMinute']}/min, ID switches {sm['idSwitchesPerTrackMinute']}/track-min, "
                   f"fragmentation {sm['fragmentation']}, entry jitter {sm['entryJitterMs']}, exit jitter {sm['exitJitterMs']}. "
                   f"Schema errors: {nz['schemaErrors'] or 'none'}. Thin evidence (n < 30): {nz['thinEvidence'] or 'none'}."]
+    nv = r.get("noiseValidation")
+    if nv and "ksD" in nv:
+        lines += ["", f"N5 same-clip validation: store-sim with this profile vs the real errors on the same clips: KS D = "
+                  f"{nv['ksD']:.3f}, p = {nv['pValue']:.3f}, {'rejected' if nv['rejected'] else 'not rejected'} "
+                  f"(real SD {nv['measured']['sd']:.2f}, bias {nv['measured']['mean']:+.2f}; simulated SD "
+                  f"{nv['simulated']['sd']:.2f}, bias {nv['simulated']['mean']:+.2f})."]
     lines += ["", "People = MOT17 classes 1 and 7 with visibility ≥ 0.25; classes 2, 8, 12 and less visible "
               "people are ignore regions. Matching at IoU 0.5.", "", f"_{r['attribution']}_", ""]
     return "\n".join(lines)

@@ -114,6 +114,10 @@ pqt:
   ingest:
     max-future-skew: PT5M
     max-age: PT24H
+    # Billing exports arrive after the day closes, and a shop may send a month at once (X1, ADR-036).
+    max-age-by-type:
+      "[com.pqt.pos.]": P35D
+      "[com.pqt.stock.]": P35D
     max-batch-size: 500
     max-event-bytes: 65536
     max-batch-bytes: 1048576
