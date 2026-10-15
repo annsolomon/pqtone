@@ -13,7 +13,6 @@ COPY edge/agent/pqt_edge edge/agent/pqt_edge
 COPY edge/connectors/pyproject.toml edge/connectors/pyproject.toml
 COPY edge/connectors/pqt_connectors edge/connectors/pqt_connectors
 COPY edge/connectors/profiles /app/profiles
-COPY edge/connectors/schemas /app/connector-schemas
 COPY schemas /app/schemas
 RUN pip install ./vision/lab ./edge/agent ./edge/connectors \
  && useradd --system --uid 10002 --no-create-home edge \

@@ -258,13 +258,11 @@ def _schema_messages(validator, doc: Any) -> list[str]:
 def _records_schema(path: str | Path | None):
     from jsonschema import Draft202012Validator
 
-    candidates = [Path(path)] if path else [Path(__file__).resolve().parent.parent / "schemas" / "records.schema.json",
-                                            Path("/app/connector-schemas/records.schema.json")]
-    for p in candidates:
-        if p.is_file():
-            doc = json.loads(p.read_text(encoding="utf-8"))
-            return doc, Draft202012Validator(doc)
-    raise FileNotFoundError("records.schema.json not found (pass --records-schema)")
+    from .records import RECORDS_SCHEMA
+
+    p = Path(path) if path else RECORDS_SCHEMA  # shipped inside the package
+    doc = json.loads(p.read_text(encoding="utf-8"))
+    return doc, Draft202012Validator(doc)
 
 
 def _loopback(bind: str) -> bool:

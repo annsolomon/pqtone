@@ -19,7 +19,7 @@ components:
       description: One token per client (`pqt-connectors push-client add`); the box stores only its SHA-256.
   schemas:
     Records:
-      $ref: schemas/records.schema.json
+      $ref: pqt_connectors/schemas/records.schema.json
     Result:
       type: object
       required: [events, alreadySent, records, bills, errors]

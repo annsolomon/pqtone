@@ -303,7 +303,7 @@ def main(argv: list[str] | None = None) -> int:
     sv.add_argument("--outbox")
     sv.add_argument("--out")
     sv.add_argument("--schemas")
-    sv.add_argument("--records-schema", help="records.schema.json (default: next to the package or /app/connector-schemas)")
+    sv.add_argument("--records-schema", help="records.schema.json (default: the one shipped with the package)")
     sv.add_argument("--bind", default="127.0.0.1")
     sv.add_argument("--port", type=int, default=8787)
     sv.add_argument("--tls-cert")
