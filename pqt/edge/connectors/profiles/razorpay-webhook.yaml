@@ -1,0 +1,28 @@
+# Razorpay webhooks (X1 B5e, ADR-037): captured payments as pos.payment, through the push API's webhook route.
+# Verified against Razorpay's documentation (2026-10-15): X-Razorpay-Signature = HMAC-SHA256 hex of the raw
+# body with the webhook secret; payment.captured carries payload.payment.entity with id, amount in currency
+# subunits (paise), currency, method, order_id, notes and created_at (UNIX time). Set it up with:
+#   pqt-connectors push-client add --clients push-clients.yaml --id razorpay --webhook --kind payments \
+#     --profile profiles/razorpay-webhook.yaml --sig-header X-Razorpay-Signature \
+#     --sig-secret env:RAZORPAY_WEBHOOK_SECRET --only event=payment.captured
+# and point the Razorpay Dashboard webhook at https://<edge box>/v1/webhooks/razorpay (TLS required off the box).
+apiVersion: connector.pqt/v1
+name: razorpay-webhook
+system: razorpay
+description: Razorpay payment.captured webhooks; amounts in paise, created_at in seconds.
+timezone: Asia/Kolkata
+timestampFormat: epoch_s
+currency: INR
+moneyUnit: minor
+files:
+  payments:
+    path: payload.payment.entity
+    # The bill the payment belongs to: order_id unless the POS puts its bill number in notes (then use
+    # notes.bill_no, the key it uses). Payments reconcile by day and tender either way.
+    columns: {billNo: order_id, timestamp: created_at, tender: method, amount: amount, reference: id}
+maps:
+  tender:
+    upi: [upi]
+    card: [card, emi, cardless_emi]
+    wallet: [wallet, paylater]
+    other: [netbanking, bank_transfer, nach, emandate]
