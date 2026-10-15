@@ -38,8 +38,13 @@ What it guarantees:
 - **Nothing is skipped silently.** Bad rows are reported by file and row (never by bill number); a bill
   with a bad row is held back whole. Exit code 2 when anything was reported.
 - **Event time is billing time**, in the profile's time zone.
+- **Bills move stock.** Exports list purchases and returns but not sales, so each bill also becomes
+  `stock.movement` out/sale per SKU; a revised bill moves only the difference (more sold: out/sale; less:
+  in/adjustment). Stock movements then add up to the level snapshots, which the daily reconcile checks.
 
 Try it with simulated data: `store-sim run --scenario sim/scenarios/billing_day.yaml --seed 42 --out run`,
-then `store-sim export-billing --run run --out exports` and import `exports/*.csv`.
+then `store-sim export-billing --run run --out exports --shift-to <yesterday>` and import `exports/*.csv`
+(event-core takes real billing events up to 35 days old, ADR-036). `make chaos-edge` does exactly this on the
+edge box during the cable test and checks the result end to end (X1 B8).
 
 Live connectors for a specific billing system (B5) wait for the shop's choice of system.

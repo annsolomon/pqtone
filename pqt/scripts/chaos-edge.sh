@@ -8,6 +8,12 @@
 #   5. Check in PostgreSQL that every event the agent stored (every per-camera sequence, first to last)
 #      is present exactly once, and that the camera came back within 10 s.
 #
+# X1 B8 rides along: a simulated trading day is exported as yesterday's billing-system CSVs, and the file
+# connector imports them on the edge box into the same outbox while the link is down. After the drain the
+# billing source must be complete too (0 missing, 0 duplicate), a second import of the same files must add
+# nothing, the daily reconcile over what event-core stored must pass and match the simulator's truth, and the
+# console's sales and payments for that day must show the same figures.
+#
 # CUT_SECONDS defaults to 120 for CI; the plan's full test is `make chaos-edge CUT_SECONDS=1800`.
 # A full disk is covered by the outbox unit tests (OutboxFull); a clock jump needs libfaketime and is not
 # simulated here (A5 reports clock offset instead).
@@ -33,8 +39,24 @@ cp edge/chaos/agent.yaml edge/chaos/cam-01.yaml "$W/config/"
   printf 'rtsp://cam-sim:8554/cam1' > "$W/config/cam-01.url"
 )
 
+# X1 B8: yesterday's trading day (India time) as billing-system exports, and the box's store key.
+BILL_DAY=$(TZ=Asia/Kolkata date -d yesterday +%F)
+log "billing: simulating a trading day and exporting it as the billing system's CSVs for $BILL_DAY"
+$COMPOSE run --rm --no-deps tools store-sim run --seed "${BILLING_SEED:-42}" --scenario sim/scenarios/billing_day.yaml \
+  --out /work/edge/billing-run >/dev/null
+$COMPOSE run --rm --no-deps tools store-sim export-billing --run /work/edge/billing-run --out /work/edge/config/billing \
+  --shift-to "$BILL_DAY"
+connector() { $EDGE run --rm --no-deps -T --entrypoint pqt-connectors edge-agent "$@"; }
+billing_import() {
+  connector import --profile /app/profiles/generic-csv.yaml --store store-001 --key /var/lib/pqt-edge/billing.key \
+    --state /var/lib/pqt-edge/connector-state.db --outbox /var/lib/pqt-edge/outbox.db --schemas /app/schemas \
+    --bills /config/billing/bills.csv --payments /config/billing/payments.csv --movements /config/billing/movements.csv \
+    --stock /config/billing/stock.csv --day-totals /config/billing/day.csv --report "/var/lib/pqt-edge/$1"
+}
+
 log "building and starting the simulated camera and the edge agent"
 $EDGE build edge-agent
+connector init-key --key /var/lib/pqt-edge/billing.key
 $EDGE up -d cam-sim edge-agent
 agent=$($EDGE ps -q edge-agent)
 net="$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$agent" | tr ' ' '\n' | grep '_edge$')"
@@ -77,6 +99,10 @@ docker kill -s KILL "$agent" >/dev/null
 $EDGE start edge-agent >/dev/null
 sleep 5
 
+log "billing: the file connector imports yesterday's exports into the outbox while the link is down"
+billing_import billing-import.json
+log "billing: $(jq_py 'str(d["events"]) + " events, " + str(d["bills"]["new"]) + " bills, " + str(len(d["errors"])) + " rows reported"' < "$W/state/billing-import.json")"
+
 sleep $((CUT / 3))
 log "camera outage: stopping the simulated camera for 15 s"
 $EDGE stop cam-sim >/dev/null
@@ -109,6 +135,9 @@ while :; do
   fi
   sleep 2
 done
+log "billing: importing the same files again (must add nothing)"
+billing_import billing-reimport.json
+log "billing: second import $(jq_py 'str(d["events"]) + " events, " + str(d["bills"]["unchanged"]) + " bills unchanged"' < "$W/state/billing-reimport.json")"
 log "stopping the agent"
 $EDGE stop -t 35 edge-agent >/dev/null  # cameras stop, then up to 10 s of draining (drainOnStopSeconds)
 status > "$W/reports/status-final.json"
@@ -118,4 +147,12 @@ json.dump({"cutSeconds": int(sys.argv[2]), "killedMidStream": True, "cameraRecov
           open(sys.argv[1], "w"))
 PY
 $COMPOSE run --rm --no-deps tools python scripts/chaos_edge_check.py --outbox /work/edge/state/outbox.db \
-  --run /work/edge/reports/run.json --out /work/edge/reports/chaos-edge.json
+  --run /work/edge/reports/run.json --out /work/edge/reports/chaos-edge.json --require-source urn:pqt:edge:store-001:pos-file
+
+log "billing: reconcile and ground truth over what event-core stored"
+$COMPOSE run --rm --no-deps tools python scripts/billing_e2e_check.py --run /work/edge/billing-run --day "$BILL_DAY" \
+  --source urn:pqt:edge:store-001:pos-file --import-report /work/edge/state/billing-import.json \
+  --reimport-report /work/edge/state/billing-reimport.json --out /work/edge/reports/billing-e2e.json
+log "billing: the console's sales and payments for $BILL_DAY"
+$COMPOSE run --rm -e PQT_BILLING_E2E=/work/edge/reports/billing-e2e.json e2e-http \
+  python -m pytest -q -p no:cacheprovider tests/http/test_billing_pipeline.py

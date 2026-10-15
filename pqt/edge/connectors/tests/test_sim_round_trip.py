@@ -59,3 +59,20 @@ def test_simulated_exports_arrive_with_the_simulators_totals(tmp_path, monkeypat
         assert day["salesMinor"] != truth["salesMinor"]
     again, report2 = import_dir(tmp_path / "x", tmp_path / "state.db")
     assert again == [] and report2["bills"]["unchanged"] == truth["bills"]
+
+
+def test_the_imported_day_reconciles_including_stock(tmp_path, monkeypatch):
+    """X1 B8: what the connector makes of a normal simulated day passes the daily reconcile, stock included
+    (sales leave the shelf through the bills, which the exports do not list as movements)."""
+    from pqt_connectors.reconcile import reconcile
+
+    monkeypatch.chdir(ROOT)
+    out = store_sim.simulate(seed=7, layout_path="config/layouts/store-001.json",
+                             scenario_path="sim/scenarios/billing_day.yaml", rules_path="config/rules.yaml")
+    export(out.clean, tmp_path / "x", shift_days=30)
+    sent, report = import_dir(tmp_path / "x", tmp_path / "state.db")
+    assert report["errors"] == []
+    days = reconcile(sent)
+    assert [d["businessDate"] for d in days] == ["2026-01-31"]
+    assert days[0]["ok"], days[0]["alerts"]
+    assert days[0]["ours"]["salesMinor"] == out.billing_truth[0]["dayTotals"]["salesMinor"]

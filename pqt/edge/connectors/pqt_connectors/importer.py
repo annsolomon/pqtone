@@ -8,7 +8,11 @@ Rules (ADR-033):
   state remembers every id already handed to the outbox; a bill whose lines changed is emitted again as
   the next revision, after a `pos.till.event` of kind `void` for the previous one;
 - a bad row is reported with its file and row number, never skipped silently; a bill with any bad row is
-  held back whole, so no partial bill is ever sent. Reports name rows, never bill or document numbers.
+  held back whole, so no partial bill is ever sent. Reports name rows, never bill or document numbers;
+- what a bill takes off the shelf is a `stock.movement` too (billing exports list purchases and returns,
+  while sales leave stock through the bills): out/sale for each SKU of a new bill, and for a revised bill
+  only the difference (more sold: out/sale; less: in/adjustment), so stock movements always add up to the
+  bills' current versions (found by the end-to-end reconcile, X1 B8).
 """
 from __future__ import annotations
 
@@ -67,12 +71,16 @@ class State:
                                                  PRIMARY KEY (bill, content));
             CREATE TABLE IF NOT EXISTS sent (id TEXT PRIMARY KEY);
         """)
+        # What each bill's current version takes off the shelf, per SKU and unit (added in B8; older state
+        # files gain the column and treat their bills as having taken nothing recorded).
+        if "stock" not in {r[1] for r in self.db.execute("PRAGMA table_info(bills)")}:
+            self.db.execute("ALTER TABLE bills ADD COLUMN stock TEXT NOT NULL DEFAULT '{}'")
 
     def was_sent(self, event_id: str) -> bool:
         return self.db.execute("SELECT 1 FROM sent WHERE id = ?", (event_id,)).fetchone() is not None
 
-    def bill(self, ref: str) -> tuple[int, str, int, str] | None:
-        return self.db.execute("SELECT revision, hash, total, till FROM bills WHERE bill = ?", (ref,)).fetchone()
+    def bill(self, ref: str) -> tuple[int, str, int, str, str] | None:
+        return self.db.execute("SELECT revision, hash, total, till, stock FROM bills WHERE bill = ?", (ref,)).fetchone()
 
     def payment_no(self, bill: str, content: str, pending: dict) -> tuple[int, bool]:
         row = self.db.execute("SELECT no FROM payments WHERE bill = ? AND content = ?", (bill, content)).fetchone()
@@ -85,15 +93,16 @@ class State:
         pending[(bill, content)] = used + 1
         return used + 1, True
 
-    def commit(self, bills: dict[str, tuple[int, str, int, str]], payments: dict[tuple[str, str], int],
+    def commit(self, bills: dict[str, tuple[int, str, int, str, str]], payments: dict[tuple[str, str], int],
                sent: list[str] = ()) -> None:
         self.db.execute("BEGIN IMMEDIATE")
         try:
             self.db.executemany("INSERT OR IGNORE INTO sent (id) VALUES (?)", [(i,) for i in sent])
-            for ref, (rev, h, total, till) in bills.items():
-                self.db.execute("INSERT INTO bills (bill, revision, hash, total, till) VALUES (?, ?, ?, ?, ?) "
+            for ref, (rev, h, total, till, stock) in bills.items():
+                self.db.execute("INSERT INTO bills (bill, revision, hash, total, till, stock) VALUES (?, ?, ?, ?, ?, ?) "
                                 "ON CONFLICT (bill) DO UPDATE SET revision = excluded.revision, hash = excluded.hash, "
-                                "total = excluded.total, till = excluded.till", (ref, rev, h, total, till))
+                                "total = excluded.total, till = excluded.till, stock = excluded.stock",
+                                (ref, rev, h, total, till, stock))
             for (bill, content), no in payments.items():
                 self.db.execute("INSERT OR IGNORE INTO payments (bill, content, no) VALUES (?, ?, ?)", (bill, content, no))
             self.db.execute("COMMIT")
@@ -130,7 +139,7 @@ class Importer:
         self.p, self.store, self.refs, self.state = profile, store, refs, state
         self.report = Report()
         self.events: list[dict] = []
-        self._bills: dict[str, tuple[int, str, int, str]] = {}
+        self._bills: dict[str, tuple[int, str, int, str, str]] = {}
         self._payments: dict[tuple[str, str], int] = {}
         self._validate = _validator(Path(schemas)) if schemas else None
         self._ids: set[str] = set()
@@ -277,7 +286,24 @@ class Importer:
                 data["taxMinor"] = ln["taxMinor"]
             self._event("pos.sale.line", ln["t"], f"till:{ln['till']}", data, f"line|{hexref}|{revision}|{ln['lineNo']}",
                         ln["_where"])
-        self._bills[ref] = (revision, h, total, till)
+        taken: dict[str, int] = defaultdict(int)  # "sku|unit" -> thousandths taken off the shelf by this version
+        for ln in lines:
+            taken[f"{ln['sku']}|{ln['unit']}"] += ln["qtyMilli"]
+        before = json.loads(prev[4]) if prev is not None and len(prev) > 4 and prev[4] else {}
+        doc = self.refs.doc(no)
+        for n, key in enumerate(sorted(set(taken) | set(before)), 1):
+            delta = taken.get(key, 0) - before.get(key, 0)
+            if delta == 0:
+                continue
+            sku, unit = key.split("|", 1)
+            if delta > 0:
+                direction, reason = "out", "sale"
+            else:
+                direction, reason = "in", ("customer_return" if revision == 0 else "adjustment")
+            self._event("stock.movement", t, f"sku:{sku}",
+                        {"sku": sku, "direction": direction, "reason": reason, "qtyMilli": abs(delta), "unit": unit,
+                         "docRef": doc, "lineNo": n}, f"mv-bill|{hexref}|{revision}|{key}", where)
+        self._bills[ref] = (revision, h, total, till, json.dumps({k: v for k, v in sorted(taken.items()) if v}))
 
     # -- payments -----------------------------------------------------------------------------------
     def payments(self, path: str | Path) -> None:
