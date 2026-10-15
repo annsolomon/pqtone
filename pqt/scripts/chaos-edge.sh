@@ -23,7 +23,7 @@
 # CUT_SECONDS defaults to 120 for CI; the plan's full test is `make chaos-edge CUT_SECONDS=1800`.
 # A full disk is covered by the outbox unit tests (OutboxFull); a clock jump needs libfaketime and is not
 # simulated here (A5 reports clock offset instead).
-set -euo pipefail
+set -Eeuo pipefail
 cd "$(dirname "$0")/.."
 
 CUT=${CUT_SECONDS:-120}
@@ -33,6 +33,8 @@ COMPOSE=${COMPOSE:-docker compose --env-file .env -f deploy/compose/docker-compo
 EDGE="$COMPOSE --profile edge"
 W=.work/edge
 log() { printf '[chaos-edge %s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
+# Any failing command names itself, so a red run says where it stopped.
+trap 'rc=$?; log "FAILED (exit $rc) at line $LINENO: $BASH_COMMAND"' ERR
 status() { cat "$W/state/status.json" 2>/dev/null || echo '{}'; }
 jq_py() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
 
@@ -63,6 +65,7 @@ billing_import() {
 log "building and starting the simulated camera, the edge agent and the connector service"
 $EDGE build edge-agent
 connector init-key --key /var/lib/pqt-edge/billing.key
+log "connectors: a push client for the shop's POS, and the POS database"
 # X1 B5f: a push client for the shop's POS (its token stays in the state folder, mode 600) and the POS database.
 SRC_DAY=$(TZ=Asia/Kolkata date -d '2 days ago' +%F)
 cp edge/chaos/sources.yaml edge/chaos/chaos-db.yaml "$W/config/"
@@ -70,7 +73,7 @@ token=$(connector push-client add --clients /var/lib/pqt-edge/push-clients.yaml 
   --profile /app/profiles/canonical.yaml | tail -n 1)
 ( umask 077; printf '%s' "$token" > "$W/state/push-token" )
 unset token
-$COMPOSE run --rm --no-deps tools python scripts/chaos_pos.py db --path /work/edge/state/pos.db --day "$SRC_DAY" --count 10 >/dev/null
+$COMPOSE run --rm --no-deps tools python scripts/chaos_pos.py db --path /work/edge/state/pos.db --day "$SRC_DAY" --count 10
 pos_push() { $EDGE exec -T connectors python - push --url http://127.0.0.1:8787 --token-file /var/lib/pqt-edge/push-token \
   --day "$SRC_DAY" --count 30 < scripts/chaos_pos.py; }
 $EDGE up -d cam-sim edge-agent connectors
