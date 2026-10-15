@@ -8,7 +8,7 @@
 - `trackId` is pseudonymous and rotates daily: trk- + 16 hex chars of HMAC-SHA256 over the camera and
   local tracker id, keyed by a per-day key derived from a secret that never leaves the edge. The same
   person gets unrelated ids on different days and at different cameras (docs/privacy/vision-data.md).
-- queue.length is emitted at the start and on every change; clock.tick every 10 s of event time, as
+- queue.length is emitted at the start and on every change (one per queue and instant, N4); clock.tick every 10 s of event time, as
   store-sim does, so rule windows advance even when nobody moves.
 """
 from __future__ import annotations
@@ -80,11 +80,12 @@ class Emitter:
         self.source = f"urn:pqt:edge:{self.camera.store}:{self.camera.camera}"
         self._order = 0
         self._lengths: dict[str, int] = {}
+        self._sent_lengths: dict[str, int] = {}
         self._next_tick = 0
         self._tick_seq = 0
         self._queues = {z.queue: z for z in self.camera.zones if z.kind == "queue"}
 
-    def _event(self, short: str, t_ms: int, subject: str, data: dict) -> dict:
+    def _event(self, short: str, t_ms: int, subject: str, data: dict, version: str = "1.0.0") -> dict:
         self._order += 1
         return {
             "specversion": "1.0",
@@ -93,7 +94,7 @@ class Emitter:
             "type": TYPE_PREFIX + short,
             "time": iso_ms(self.start_ms + t_ms),
             "subject": subject,
-            "dataschema": f"{SCHEMA_BASE}{short}/1.0.0",
+            "dataschema": f"{SCHEMA_BASE}{short}/{version}",
             "datacontenttype": "application/json",
             "storeid": self.camera.store,
             "partitionkey": self.camera.store,
@@ -111,8 +112,16 @@ class Emitter:
 
     def _length(self, t_ms: int, queue: str) -> dict:
         z = self._queues[queue]
+        self._sent_lengths[queue] = self._lengths[queue]
         return self._event("queue.length", t_ms, f"queue:{queue}",
                            {"queueId": queue, "length": self._lengths[queue], "openRegisters": z.open_registers})
+
+    def _flush_lengths(self, t_ms: int, touched: set[str]) -> list[dict]:
+        """One queue.length per queue and instant, only if it moved: a hand-over (one member out, one in at
+        the same moment) changes nothing (N4)."""
+        out = [self._length(t_ms, q) for q in sorted(touched) if self._lengths[q] != self._sent_lengths.get(q)]
+        touched.clear()
+        return out
 
     def begin(self) -> list[dict]:
         out = self._ticks_until(0)
@@ -124,22 +133,32 @@ class Emitter:
     def emit(self, events: Iterable[ZoneEvent]) -> list[dict]:
         """CloudEvents for zone events, which must arrive in event-time order (ZoneEngine guarantees it)."""
         out: list[dict] = []
+        touched: set[str] = set()
+        t_cur: int | None = None
         for e in events:
+            if t_cur is not None and e.t_ms != t_cur:
+                out += self._flush_lengths(t_cur, touched)
+            t_cur = e.t_ms
             out += self._ticks_until(e.t_ms)
             trk = self.pseudonymiser.track_id(e.track_id, self.start_ms + e.t_ms)
             if e.kind in ("zone.entered", "zone.exited"):
-                out.append(self._event(e.kind, e.t_ms, f"track:{trk}", {"zoneId": e.zone_id, "trackId": trk}))
+                data = {"zoneId": e.zone_id, "trackId": trk}
+                if e.how:
+                    data["how"] = e.how
+                out.append(self._event(e.kind, e.t_ms, f"track:{trk}", data, "1.1.0" if e.how else "1.0.0"))
             elif e.kind == "queue.joined":
                 out.append(self._event(e.kind, e.t_ms, f"queue:{e.queue_id}", {"queueId": e.queue_id, "trackId": trk}))
                 self._lengths[e.queue_id] += 1
-                out.append(self._length(e.t_ms, e.queue_id))
+                touched.add(e.queue_id)
             elif e.kind == "queue.left":
                 out.append(self._event(e.kind, e.t_ms, f"queue:{e.queue_id}",
                                        {"queueId": e.queue_id, "trackId": trk, "served": bool(e.served)}))
                 self._lengths[e.queue_id] = max(0, self._lengths[e.queue_id] - 1)
-                out.append(self._length(e.t_ms, e.queue_id))
+                touched.add(e.queue_id)
             else:
                 raise ValueError(f"unknown zone event {e.kind}")
+        if t_cur is not None:
+            out += self._flush_lengths(t_cur, touched)
         return out
 
     def advance(self, t_ms: int) -> list[dict]:

@@ -88,7 +88,9 @@ def test_served_depends_on_leaving_near_the_queue_head():
 
 
 def test_a_lost_track_is_closed_at_its_last_observation():
-    path = [(2.0, 1.0)] * 30 + [None] * 40
+    # 9 s of absence: past lost_after_s plus the queue hand-over window (N4), so the events are released
+    # without finish().
+    path = [(2.0, 1.0)] * 30 + [None] * 90
     events = feed(ZoneEngine([QUEUE], M, lost_after_s=2.0), {1: path}, finish=False)
     assert kinds(events) == [("zone.entered", 0, 1), ("zone.exited", 2900, 1)]
 
@@ -117,3 +119,46 @@ def test_released_events_are_in_event_time_order():
     events = feed(eng, paths)
     times = [e.t_ms for e in events]
     assert times == sorted(times) and len(events) > 4
+
+
+# -- N4: how an entry or exit happened, and the queue hand-over -------------------------------------
+
+def hows(events):
+    return [(e.kind, e.t_ms, e.track_id, e.how) for e in events if e.kind.startswith("zone.")]
+
+
+def test_entries_and_exits_say_whether_they_crossed_or_appeared_or_were_lost():
+    crossing = [(5.0, 1.0)] * 10 + [(3.0, 1.0)] * 20 + [(6.0, 1.0)] * 20
+    appearing_then_lost = [(2.0, 1.0)] * 20
+    events = feed(ZoneEngine([QUEUE], M, handover_s=0), {1: crossing, 2: appearing_then_lost})
+    assert hows(events) == [("zone.entered", 0, 2, "appeared"), ("zone.entered", 1000, 1, "crossed"),
+                            ("zone.exited", 1900, 2, "lost"), ("zone.exited", 3000, 1, "crossed")]
+
+
+def test_a_track_appearing_where_a_member_was_lost_takes_its_place_at_once():
+    """An ID switch in the queue: track 1 (a member) is lost at 8.0 s, track 2 appears at the same spot at
+    8.5 s. Without the hand-over the queue would drop by one for over 5 s (minimum dwell)."""
+    t1 = [(2.0, 1.0)] * 81                         # 0.0-8.0 s, joins at 5 s
+    t2 = [None] * 85 + [(2.0, 1.0)] * 100           # 8.5-18.4 s
+    events = feed(ZoneEngine([QUEUE], M, lost_after_s=1.0, handover_s=5.0), {1: t1, 2: t2})
+    q = [(e.kind, e.t_ms, e.track_id, e.served) for e in events if e.kind.startswith("queue.")]
+    assert q[:3] == [("queue.joined", 5000, 1, None), ("queue.left", 8500, 1, False), ("queue.joined", 8500, 2, None)]
+    assert ("zone.exited", 8000, 1, "lost") in hows(events) and ("zone.entered", 8500, 2, "appeared") in hows(events)
+
+
+def test_without_anyone_to_take_over_the_member_leaves_at_its_last_sighting():
+    t1 = [(2.0, 1.0)] * 81
+    t2 = [None] * 150 + [(2.0, 1.0)] * 80           # appears 7 s after the loss: too late for a hand-over
+    events = feed(ZoneEngine([QUEUE], M, lost_after_s=1.0, handover_s=5.0), {1: t1, 2: t2})
+    q = [(e.kind, e.t_ms, e.track_id) for e in events if e.kind.startswith("queue.")]
+    assert q[:2] == [("queue.joined", 5000, 1), ("queue.left", 8000, 1)]
+    assert ("queue.joined", 20000, 2) in q          # the newcomer waits the minimum dwell like anyone else
+    assert [e.t_ms for e in events] == sorted(e.t_ms for e in events)
+
+
+def test_a_person_walking_in_never_takes_over_a_lost_place():
+    t1 = [(2.0, 1.0)] * 81
+    walker = [None] * 83 + [(5.0, 1.0)] * 3 + [(2.0, 1.0)] * 80   # crosses in from outside at 8.6 s
+    events = feed(ZoneEngine([QUEUE], M, lost_after_s=1.0, handover_s=5.0), {1: t1, 2: walker})
+    q = [(e.kind, e.t_ms, e.track_id) for e in events if e.kind.startswith("queue.")]
+    assert ("queue.left", 8000, 1) in q and ("queue.joined", 13600, 2) in q

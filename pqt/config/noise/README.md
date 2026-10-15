@@ -24,10 +24,17 @@ The simulator validates the profile, records its name and SHA-256 in `manifest.j
 the hash into the run id. Since Tier 2 (N2) it applies the profile to the visits before events are
 made: missed visits, timing jitter, fragments and ID switches (new track ids), phantom tracks, and
 queue membership rebuilt from the noisy tracks. Ground truth always comes from the clean visits.
-The manifest counts what was applied (`visionDropped`, `visionFragments`, `visionIdSwitches`,
+Whole visits are missed at `detection.visitMissRate` when the profile has it (measured since N5); older
+profiles fall back to `missRate`, a per-frame rate, applied per visit (an upper bound: see
+`vision/noise/validation.md`). The manifest counts what was applied (`visionDropped`, `visionFragments`, `visionIdSwitches`,
 `visionJittered`, `visionPhantoms`). `none.yaml` changes nothing and draws nothing. Perception noise
 runs on its own RNG stream, before the transport faults (`outOfOrder`, `late`, `duplicates`,
 `malformed`), so turning it on never changes their draws.
+
+Like the zone engine (N4, ADR-035), the simulator marks split pieces: the piece before a split ends with
+`zone.exited` `how: lost`, the one after starts with `zone.entered` `how: appeared`; a new piece takes over
+a queue place at once when it appears within 5 s of the loss (otherwise it waits the 5 s minimum dwell),
+and `queue.length` is reported once per instant.
 
 `store-sim matrix --noise-profile <file> --noise-scale 2` runs the whole matrix with every rate
 doubled (jitter spread too); `make offline-noise` scores clean, measured and 2x measured side by side (CI runs it as its own job, "offline score under vision noise").

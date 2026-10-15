@@ -18,6 +18,8 @@ public final class EventParser {
             "com.pqt.store.queue.joined", "com.pqt.store.queue.left", "com.pqt.store.queue.length",
             "com.pqt.store.register.opened", "com.pqt.store.register.closed", "com.pqt.store.clock.tick");
 
+    static final Set<String> HOWS = Set.of("crossed", "appeared", "lost");
+
     private EventParser() {
     }
 
@@ -65,6 +67,8 @@ public final class EventParser {
             case "com.pqt.store.zone.entered", "com.pqt.store.zone.exited" -> {
                 e.zoneId = text(data, "zoneId", true);
                 e.trackId = text(data, "trackId", true);
+                e.how = text(data, "how", false);  // 1.1.0, optional (N4)
+                if (e.how != null && !HOWS.contains(e.how)) throw new InvalidEventException("bad how");
             }
             case "com.pqt.store.queue.joined", "com.pqt.store.queue.left" -> {
                 e.queueId = text(data, "queueId", true);

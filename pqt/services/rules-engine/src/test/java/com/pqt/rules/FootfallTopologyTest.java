@@ -60,9 +60,13 @@ class FootfallTopologyTest {
     }
 
     void open(String mode) {
+        open(mode, true);
+    }
+
+    void open(String mode, boolean countAppeared) {
         if (driver != null) driver.close();
-        FootfallConfig cfg = new FootfallConfig(new RuleConfig.RuleMeta("R-FOOT-001", "1.0.0", mode, "low"),
-                List.of("entrance"), W, 12, 2.0, 10, G);
+        FootfallConfig cfg = new FootfallConfig(new RuleConfig.RuleMeta("R-FOOT-001", "1.1.0", mode, "low"),
+                List.of("entrance"), W, 12, 2.0, 10, G, countAppeared);
         StreamsBuilder b = new StreamsBuilder();
         FootfallTopology.addTo(b, b.stream(T.validated(), Consumed.with(Serdes.String(), Serdes.String())
                 .withTimestampExtractor(new CloudEventTimestampExtractor())), cfg, T,
@@ -70,7 +74,7 @@ class FootfallTopologyTest {
         Properties p = new Properties();
         p.put(StreamsConfig.APPLICATION_ID_CONFIG, "footfall-test-" + mode);
         p.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "dummy:9092");
-        p.put(StreamsConfig.STATE_DIR_CONFIG, stateDir.resolve(mode).toString());
+        p.put(StreamsConfig.STATE_DIR_CONFIG, stateDir.resolve(mode + "-" + countAppeared).toString());
         driver = new TopologyTestDriver(b.build(), p, Instant.EPOCH);
         in = driver.createInputTopic(T.validated(), new StringSerializer(), new StringSerializer());
         enforce = driver.createOutputTopic(T.incidents(), new StringDeserializer(), new StringDeserializer());
@@ -99,6 +103,12 @@ class FootfallTopologyTest {
         String trk = "trk-" + seq;
         in.pipeInput("store-001", event(offsetMs, "com.pqt.store.zone.entered", "track:" + trk,
                 "{\"zoneId\":\"" + zone + "\",\"trackId\":\"" + trk + "\"}"));
+    }
+
+    void appeared(long offsetMs, String zone) {
+        String trk = "trk-" + seq;
+        in.pipeInput("store-001", event(offsetMs, "com.pqt.store.zone.entered", "track:" + trk,
+                "{\"zoneId\":\"" + zone + "\",\"trackId\":\"" + trk + "\",\"how\":\"appeared\"}"));
     }
 
     /** 12 windows of 4 entrance entries each, ticks every 10 s. Ends with stream time at 12 W - 10 s. */
@@ -205,5 +215,27 @@ class FootfallTopologyTest {
         assertEquals(1, out.size());
         assertEquals("shadow", out.get(0).path("mode").asText());
         assertTrue(enforce.readValuesToList().isEmpty());
+    }
+
+    // N4: tracks that appear inside the entrance (tracking breaks, phantoms) are not people coming in.
+
+    @Test
+    void appearedTracksAreNotCountedWhenCountAppearedIsOff() throws Exception {
+        open("enforce", false);
+        history();
+        window12(4);
+        for (int k = 0; k < 20; k++) appeared(12 * W + 2_000 + k, "entrance");
+        tick(13 * W + G);
+        assertTrue(opened(enforce).isEmpty(), "20 identity changes inside the entrance are not a footfall spike");
+    }
+
+    @Test
+    void version100CountsEveryEntryAsBefore() throws Exception {
+        open("enforce", true);
+        history();
+        window12(4);
+        for (int k = 0; k < 20; k++) appeared(12 * W + 2_000 + k, "entrance");
+        tick(13 * W + G);
+        assertEquals(1, opened(enforce).size());
     }
 }

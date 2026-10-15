@@ -7,11 +7,13 @@ on:
   pull_request:
     paths:
       - "pqt/vision/**"
+      - "pqt/sim/store_sim/vision_noise.py"
+      - "pqt/sim/store_sim/noise_validate.py"
       - ".github/workflows/vision-bench.yml"
   workflow_dispatch:
     inputs:
       experiments:
-        description: 'JSON list of {"model": ..., "mode": full|roi|tiled}'
+        description: 'JSON list of {"model": ..., "mode": full|roi|tiled, "setting": optional setting.json from vision-tune}'
         default: '[{"model":"yolox_s","mode":"full"},{"model":"yolox_s","mode":"roi"},{"model":"yolox_s","mode":"tiled"},{"model":"yolox_m","mode":"roi"}]'
       publish:
         description: Commit the report to the vision-results branch
@@ -36,17 +38,19 @@ env:
 
 jobs:
   bench:
-    name: MOT17 bench (${{ matrix.model }}, ${{ matrix.mode }})
+    name: MOT17 bench (${{ matrix.model }}, ${{ matrix.mode }}${{ matrix.setting && ', tuned' || '' }})
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        # Pull requests run the selected candidate (V7: yolox_s, zone crop); a manual run defaults to all four.
-        include: ${{ fromJSON(inputs.experiments || '[{"model":"yolox_s","mode":"roi"}]') }}
+        # Pull requests run the selected candidate (V7: yolox_s, zone crop) with the setting chosen on MOT20 by
+        # vision-tune.yml (V7 part 2, ADR-032) once it is committed; a manual run defaults to all four candidates.
+        include: ${{ fromJSON(inputs.experiments || '[{"model":"yolox_s","mode":"roi","setting":"vision/lab/config/tuned/yolox_s-roi.json"}]') }}
     env:
       MODEL: ${{ matrix.model }}
       MODE: ${{ matrix.mode }}
+      SETTING: ${{ matrix.setting || '' }}
     permissions:
       contents: write   # only to push the vision-results branch on manual runs; never main
     defaults:
@@ -96,7 +100,15 @@ jobs:
       - name: Bench
         run: |
           nproc
-          pqt-vision bench-mot17 --root "$MOT17_DIR/MOT17/train" --model "$MODEL" --mode "$MODE" \
+          extra=()
+          if [ -n "$SETTING" ]; then
+            if [ -f "$SETTING" ]; then
+              extra=(--setting "$SETTING")
+            else
+              echo "::notice title=no tuned setting yet::$SETTING is not committed: running the V7 part-1 configuration"
+            fi
+          fi
+          pqt-vision bench-mot17 --root "$MOT17_DIR/MOT17/train" --model "$MODEL" --mode "$MODE" "${extra[@]}" \
             --out "../.work/vision-bench/$MODEL-$MODE" --configs vision/lab/config/mot17 --schemas schemas \
             --noise-profile "../.work/vision-bench/$MODEL-$MODE/noise-profile.yaml" 2>&1 | tee "$RUNNER_TEMP/bench.log"
           cat "../.work/vision-bench/$MODEL-$MODE/report.md" >> "$GITHUB_STEP_SUMMARY"
@@ -106,7 +118,9 @@ jobs:
           f="../.work/vision-bench/$MODEL-$MODE/report.md"
           if [ -s "$f" ]; then ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "vision bench $MODEL $MODE" "$f" 40; fi
           n="../.work/vision-bench/$MODEL-$MODE/noise-profile.yaml"
-          if [ -s "$n" ]; then ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "noise profile $MODEL $MODE" "$n" 60; fi
+          if [ -s "$n" ]; then ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "noise profile $MODEL $MODE" "$n" 120; fi
+          v="../.work/vision-bench/$MODEL-$MODE/noise-validation.md"
+          if [ -s "$v" ]; then ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "noise validation $MODEL $MODE" "$v" 40; fi
       - name: Failure details
         if: failure()
         run: |
@@ -123,6 +137,7 @@ jobs:
           mkdir -p "$stage"
           cp ".work/vision-bench/$MODEL-$MODE/report.json" ".work/vision-bench/$MODEL-$MODE/report.md" "$stage/"
           cp ".work/vision-bench/$MODEL-$MODE/noise-profile.yaml" "$stage/" 2>/dev/null || true
+          cp ".work/vision-bench/$MODEL-$MODE/noise-validation.md" "$stage/" 2>/dev/null || true
           if [ -f "$MOT17_DIR/MOT17.zip.sha256" ]; then cp "$MOT17_DIR/MOT17.zip.sha256" "$stage/"; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

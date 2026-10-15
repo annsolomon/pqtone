@@ -56,6 +56,7 @@ public final class RulesConfigLoader {
                 meta(q), positiveInt(qp, "threshold"), dur(qp.path("sustain")), positiveInt(qp, "hysteresis"),
                 dur(qp.path("clearSustain")),
                 meta(d), zones, dur(dp.path("limit")), dur(dp.path("sessionTtl")),
+                dp.has("stitch") ? dur(dp.path("stitch")) : 0L,
                 meta(a), dur(ap.path("within")), ap.path("expect").asText());
     }
 
@@ -82,8 +83,11 @@ public final class RulesConfigLoader {
             }
             JsonNode factor = p.get("factor");
             if (factor == null || !factor.isNumber()) throw new IllegalArgumentException("bad factor");
+            JsonNode countAppeared = p.get("countAppeared");
+            if (countAppeared != null && !countAppeared.isBoolean()) throw new IllegalArgumentException("bad countAppeared");
             return Optional.of(new FootfallConfig(meta(r), zones, window, (int) (history / window),
-                    factor.asDouble(), positiveInt(p, "minCount"), dur(root.path("grace"))));
+                    factor.asDouble(), positiveInt(p, "minCount"), dur(root.path("grace")),
+                    countAppeared == null || countAppeared.asBoolean()));
         }
         return Optional.empty();
     }

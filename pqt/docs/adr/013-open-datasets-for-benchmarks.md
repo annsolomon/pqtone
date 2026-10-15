@@ -12,7 +12,7 @@ with ground truth. CLAUDE.md requires an ADR for any non-commercial licence.
 | Dataset | Licence | Fit |
 |---|---|---|
 | MOT17 | CC BY-NC-SA 3.0 | Three fixed-camera training sequences with full person ground truth (02, 04, 09). Chosen. |
-| MOT20 | CC BY-NC-SA 3.0 | Fixed cameras, but extremely crowded (over 100 people in frame): not queue-like. Not used now. |
+| MOT20 | CC BY-NC-SA 3.0 | Fixed cameras, but extremely crowded (over 100 people in frame): not queue-like. Not a benchmark; since ADR-032, the development set for V7 tuning under these same terms. |
 | CrowdHuman | Non-commercial | Still images; no tracking. Not used. |
 | MEVA | CC BY 4.0 | Commercial use allowed and recorded with consenting actors, but annotations cover activities, not every person in every frame. Candidate for a commercially clean benchmark later. |
 | Oxford Town Centre | Withdrawn by its authors | Never used. |

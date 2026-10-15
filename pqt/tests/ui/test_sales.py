@@ -75,7 +75,7 @@ def trading_morning(run: str) -> list[dict]:
                {"storeId": STORE, "sku": "E2E-RICE", "qtyMilli": 50000, "unit": "kg", "source": "sim"}),
         queue("checkout-1", 1, "2026-01-01T04:25:00.000Z"),
         queue("checkout-2", 0, "2026-01-01T04:25:00.000Z"),
-        *[visitor(i, f"2026-01-01T04:{30 + i * 6:02d}:00.000Z") for i in range(6)],
+        *[visitor(i, f"2026-01-01T{4 + (30 + i * 6) // 60:02d}:{(30 + i * 6) % 60:02d}:00.000Z") for i in range(6)],  # 04:30 .. 05:00
         line("reg-1", 1, 0, 1, "E2E-ATTA", 12000, "2026-01-01T04:35:00.000Z"),
         line("reg-1", 1, 0, 2, "E2E-DAL", 3000, "2026-01-01T04:35:00.001Z"),
         pay("reg-1", 1, 1, "upi", "in", 15000, "2026-01-01T04:35:30.000Z"),
@@ -107,8 +107,8 @@ def test_the_sales_page_opens_a_simulated_day_and_shows_billing_next_to_the_came
             r = api.post(f"{BASE}/v1/events/batch", data=json.dumps(trading_morning(run)),
                          headers={"Content-Type": "application/cloudevents-batch+json", "Authorization": f"Bearer {tok.json()['access_token']}"})
             assert r.ok, r.text()
-            statuses = {x["status"] for x in r.json()["results"]}
-            assert statuses == {"accepted"}, r.text()
+            refused = [x for x in r.json()["results"] if x["status"] != "accepted"]
+            assert not refused, "events refused:\n" + "\n".join(json.dumps(x) for x in refused)
         finally:
             api.dispose()
 

@@ -7,6 +7,20 @@
       "max": 3,
       "reason": "CSRF is disabled only on the three stateless chains: actuator (management port, never routed by the gateway), /v1 ingest (OAuth2 bearer JWT in the Authorization header, no cookies, SessionCreationPolicy.STATELESS) and the deny-all fallback. CSRF needs ambient credentials (cookies) to exploit; none of these chains accept them. The cookie-based console chain keeps CSRF on (CookieCsrfTokenRepository + SPA handler), and tests/http/test_console.py asserts state-changing requests without the token are rejected.",
       "reviewed": "2026-10-09"
+    },
+    {
+      "rule": "py/overly-permissive-file",
+      "path": "pqt/edge/connectors/tests/test_file_connector.py",
+      "max": 1,
+      "reason": "A test that sets a temporary store-key file (pytest tmp_path) to 0640 on purpose, to assert that load_key refuses any key file not chmod 600. The production code (pqt_connectors refs.new_key) creates keys 0600 and refuses anything looser; the same test asserts that too.",
+      "reviewed": "2026-10-15"
+    },
+    {
+      "rule": "py/clear-text-storage-sensitive-data",
+      "path": "pqt/sim/store_sim/generate.py",
+      "max": 1,
+      "reason": "The 'sensitive data (private)' source CodeQL reports is the attribute name billing_truth (its heuristic matches 'billing', as in a billing address). The value is the simulator's ground truth for a seeded synthetic run: per-store day totals in minor units, event counts, injected anomalies and closing stock per synthetic SKU (BillingSim.truth()). No personal data, no payment-card data, no secret; bill and payment references are HMACs derived from the public seed (ADR-033). It is written next to events.jsonl so the reconcile tests can check against it.",
+      "reviewed": "2026-10-15"
     }
   ]
 }

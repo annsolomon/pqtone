@@ -138,3 +138,20 @@ def test_cli_events_requires_a_secret(tmp_path: Path, monkeypatch):
     cam_path.write_text(yaml.safe_dump(CAM.doc), encoding="utf-8")
     assert cli.main(["events", "--tracks", str(_tracks_file(tmp_path)), "--camera", str(cam_path),
                      "--out", str(tmp_path / "e.jsonl"), "--run-key", "x"]) == 2
+
+
+def test_a_hand_over_at_one_instant_does_not_move_the_queue_and_how_is_carried():
+    em = Emitter(CAM, START, "clip-h", TrackPseudonymiser(SECRET, CAM.camera))
+    out = em.begin()
+    out += em.emit([ZoneEvent("zone.entered", 1000, "checkout-1", 1, how="crossed"),
+                    ZoneEvent("queue.joined", 4000, "checkout-1", 1, queue_id="q-main")])
+    out += em.emit([ZoneEvent("queue.left", 9000, "checkout-1", 1, queue_id="q-main", served=False),
+                    ZoneEvent("queue.joined", 9000, "checkout-1", 2, queue_id="q-main"),
+                    ZoneEvent("zone.entered", 9000, "checkout-1", 2, how="appeared")])
+    lengths = [(e["time"], e["data"]["length"]) for e in out if e["type"].endswith("queue.length")]
+    assert lengths == [("2026-10-12T09:00:00.000Z", 0), ("2026-10-12T09:00:04.000Z", 1)]  # nothing at 9 s
+    entered = [e for e in out if e["type"].endswith("zone.entered")]
+    assert [e["data"]["how"] for e in entered] == ["crossed", "appeared"]
+    assert {e["dataschema"] for e in entered} == {"https://schemas.pqt.local/store/zone.entered/1.1.0"}
+    check = contract_validator(SCHEMAS)
+    assert [err for e in out for err in check(e)] == []
