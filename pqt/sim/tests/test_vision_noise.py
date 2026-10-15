@@ -245,3 +245,58 @@ def test_matrix_applies_a_scaled_profile_to_every_scenario(tmp_path):
     assert manifest["visionNoise"]["profile"] == "example-x2"
     assert manifest["counts"]["visionNoiseApplied"] > 0
     assert json.loads((out / "cases.json").read_text())[0]["scenario"] == "baseline"
+
+
+# -- N4: tracking breaks are marked, and the zone engine's queue hand-over is mirrored --------------
+
+def test_split_pieces_say_they_appeared_or_were_lost_and_whole_visits_stay_plain():
+    out, _ = _apply(_profile(tracking__fragmentation={"probability": 1.0, "extraTracks": {"kind": "constant", "value": 1}}))
+    zone = [e for e in out if e["type"].endswith(("zone.entered", "zone.exited"))]
+    new_in = [e for e in zone if e["type"].endswith("entered") and e["data"]["trackId"].startswith("trk-n")]
+    assert new_in and all(e["data"]["how"] == "appeared" for e in new_in)
+    assert all(e["dataschema"].endswith("/1.1.0") for e in zone if "how" in e["data"])
+    assert all(e["dataschema"].endswith("/1.0.0") for e in zone if "how" not in e["data"])
+    lost = [e for e in zone if e["data"].get("how") == "lost"]
+    assert len(lost) == len(new_in)  # every split: one track lost, one appearing
+    clean_tracks = {e["data"]["trackId"] for e in _clean() if e["type"].endswith("zone.entered")}
+    assert all(e["data"]["trackId"] in clean_tracks for e in lost)  # with one split, the first piece is lost
+
+
+def test_identity_switches_alone_never_move_the_queue_length():
+    """The zone engine hands a lost member's place to the track appearing there (N4): with switches only
+    (no gap, no misses, no jitter), queue.length is exactly the clean one."""
+    out, counts = _apply(_profile(tracking__idSwitchesPerTrackMinute=6.0))
+    assert counts["visionIdSwitches"] > 50
+    assert _settled(out) == _settled(_clean())
+
+
+def _settled(evs):
+    """The queue length each queue settles on at each instant (a join and a leave at the same moment, like
+    a shopper served at once, is one instant; the noise model reports one length per instant)."""
+    last = {}
+    for e in evs:
+        if e["type"].endswith("queue.length"):
+            last[(e["time"], e["data"]["queueId"])] = e["data"]["length"]
+    out, prev = [], {}
+    for (t, q), n in sorted(last.items()):
+        if prev.get(q) != n:
+            out.append((t, q, n))
+            prev[q] = n
+    return out
+
+
+def _time_weighted_mean(evs, end_iso="2026-01-01T11:30:00.000Z"):
+    from store_sim.events import parse_iso_ms
+
+    pts = [(parse_iso_ms(t), n) for t, _, n in _settled(evs)]
+    pts.append((parse_iso_ms(end_iso), pts[-1][1]))
+    area = sum(n * (t2 - t1) for (t1, n), (t2, _) in zip(pts, pts[1:]))
+    return area / (pts[-1][0] - pts[0][0])
+
+
+def test_a_long_gap_leaves_the_queue_until_the_new_track_has_stood_its_minimum_dwell():
+    gap = vision_noise.QUEUE_HANDOVER_MS + 5000
+    out, _ = _apply(_profile(tracking__fragmentation={"probability": 1.0, "extraTracks": {"kind": "constant", "value": 1},
+                                                      "gapMs": {"kind": "constant", "value": gap}}))
+    # Each split costs the person their place for the gap plus the minimum dwell: the queue looks shorter.
+    assert _time_weighted_mean(out) < 0.97 * _time_weighted_mean(_clean())

@@ -88,6 +88,7 @@ def load(scenario_path: str | Path, vision: dict | None) -> NoiseProfile | None:
 
 NOISE_NS = uuid.UUID("b6a4f0d2-3c1e-4e8a-9f60-2d7c5e1a9b44")
 QUEUE_MIN_DWELL_MS = 5000          # the zone engine's default minimum dwell before a queue join (V4)
+QUEUE_HANDOVER_MS = 5000           # the zone engine hands a lost member's place to a track appearing within this (N4)
 DEFAULT_PHANTOM = {"kind": "lognormal", "mu": 7.6, "sigma": 0.6}
 
 
@@ -211,7 +212,9 @@ class _Builder:
         tpl = self.events[template_i]
         ev = dict(tpl)
         ev["type"] = "com.pqt.store." + type_
-        ev["dataschema"] = f"https://schemas.pqt.local/store/{type_}/1.0.0"
+        # zone.entered/exited 1.1.0 add `how` (N4): a track that appeared inside or was lost inside the zone.
+        version = "1.1.0" if type_ in ("zone.entered", "zone.exited") and "how" in data else "1.0.0"
+        ev["dataschema"] = f"https://schemas.pqt.local/store/{type_}/{version}"
         ev["time"] = iso_ms(t)
         ev["subject"] = subject
         ev["data"] = data
@@ -333,11 +336,15 @@ def _apply_store(evs: list[dict], doc: dict, rng: np.random.Generator, counts: C
             if k and gaps.get(start):  # a fragment: the new track starts after the untracked gap
                 start = min(start + gaps[start], t_max) if end is None else max(start, min(start + gaps[start], end - 1))
             tpl_in = v.i_in
-            b.put(tpl_in, start, type_="zone.entered", subject=f"track:{trk}", data={"zoneId": v.zone, "trackId": trk},
+            # A piece after a split starts inside the zone ("appeared"); one before a split ends inside it
+            # ("lost"), as the zone engine reports a track it lost (N4). Whole visits keep the plain shape.
+            data_in = {"zoneId": v.zone, "trackId": trk, **({"how": "appeared"} if k else {})}
+            b.put(tpl_in, start, type_="zone.entered", subject=f"track:{trk}", data=data_in,
                   rank=base_rank + k * 1e-3, key=f"{evs[v.i_in]['id']}:in:{k}")
             if end is not None:
                 tpl_out = v.i_out if v.i_out is not None else v.i_in
-                b.put(tpl_out, end, type_="zone.exited", subject=f"track:{trk}", data={"zoneId": v.zone, "trackId": trk},
+                data_out = {"zoneId": v.zone, "trackId": trk, **({"how": "lost"} if k + 1 < len(ids) else {})}
+                b.put(tpl_out, end, type_="zone.exited", subject=f"track:{trk}", data=data_out,
                       rank=float(v.i_out if v.i_out is not None else v.i_in) - (len(ids) - k) * 1e-3,
                       key=f"{evs[v.i_in]['id']}:out:{k}")
         for qv in v.queue:
@@ -353,21 +360,35 @@ def _apply_store(evs: list[dict], doc: dict, rng: np.random.Generator, counts: C
             for k in range(len(qb) - (0 if j1 is None else 1)):
                 piece = ids[sum(1 for s in sorted(splits) if s <= qb[k])]
                 t_join = qb[k]
-                if k and gaps.get(qb[k]):  # rejoins only once the new track exists
+                if k:
+                    # A new track joins the queue as the zone engine lets it (N4): at once if it appears within
+                    # the hand-over window of the lost member (it takes that member's place), otherwise after
+                    # the minimum dwell. A piece too short to join never joins, so it never leaves either.
                     nxt = qb[k + 1] if k + 1 < len(qb) else None
-                    t_join = qb[k] + gaps[qb[k]] if nxt is None else max(qb[k], min(qb[k] + gaps[qb[k]], nxt - 1))
+                    gap = gaps.get(qb[k], 0)
+                    t_join = qb[k] + gap + (0 if gap <= QUEUE_HANDOVER_MS else QUEUE_MIN_DWELL_MS)
+                    if nxt is not None and t_join >= nxt:
+                        continue
+                    t_join = min(t_join, t_max)
                 b.put(qv.i_join, t_join, type_="queue.joined", subject=f"queue:{qv.queue}",
                       data={"queueId": qv.queue, "trackId": piece}, rank=float(qv.i_join) + k * 1e-3,
                       key=f"{evs[qv.i_join]['id']}:join:{k}")
                 noisy_q.append((t_join, +1, float(qv.i_join) + k * 1e-3, qv.queue))
                 if k + 1 < len(qb):
                     last = k + 1 == len(qb) - 1 and j1 is not None
-                    b.put(qv.i_left if qv.i_left is not None else qv.i_join, qb[k + 1], type_="queue.left",
+                    t_left = qb[k + 1]
+                    if not last and gaps.get(qb[k + 1], 0) <= QUEUE_HANDOVER_MS:
+                        # The next piece takes this member's place when it appears: the zone engine's hand-over
+                        # (N4) dates the old member's leave at that moment, so the queue length does not dip.
+                        nxt2 = qb[k + 2] if k + 2 < len(qb) else None
+                        t_left = qb[k + 1] + gaps.get(qb[k + 1], 0)
+                        t_left = min(t_left, t_max) if nxt2 is None else max(qb[k + 1], min(t_left, nxt2 - 1))
+                    b.put(qv.i_left if qv.i_left is not None else qv.i_join, t_left, type_="queue.left",
                           subject=f"queue:{qv.queue}",
                           data={"queueId": qv.queue, "trackId": piece, "served": qv.served if last else False},
                           rank=float(qv.i_left if qv.i_left is not None else qv.i_join) - 1e-3 * (len(qb) - k),
                           key=f"{evs[qv.i_join]['id']}:left:{k}")
-                    noisy_q.append((qb[k + 1], -1, float(qv.i_left or qv.i_join), qv.queue))
+                    noisy_q.append((t_left, -1, float(qv.i_left or qv.i_join), qv.queue))
 
     # queue visits whose track had no matching zone visit: keep as they are
     for qv in qvisits:
@@ -389,9 +410,9 @@ def _apply_store(evs: list[dict], doc: dict, rng: np.random.Generator, counts: C
             dur = max(1, int(sample(doc["detection"].get("phantomTrackDurationMs") or DEFAULT_PHANTOM, rng)))
             end = min(start + dur, t_max)
             trk = new_id()
-            b.put(tpl_any, start, type_="zone.entered", subject=f"track:{trk}", data={"zoneId": z, "trackId": trk},
-                  rank=len(evs) + n, key=f"phantom:{n}:in")
-            b.put(tpl_any, end, type_="zone.exited", subject=f"track:{trk}", data={"zoneId": z, "trackId": trk},
+            b.put(tpl_any, start, type_="zone.entered", subject=f"track:{trk}",
+                  data={"zoneId": z, "trackId": trk, "how": "appeared"}, rank=len(evs) + n, key=f"phantom:{n}:in")
+            b.put(tpl_any, end, type_="zone.exited", subject=f"track:{trk}", data={"zoneId": z, "trackId": trk, "how": "lost"},
                   rank=len(evs) + n + 0.5, key=f"phantom:{n}:out")
             q = zone_queue.get(z)
             if q is not None and end - start >= QUEUE_MIN_DWELL_MS:
@@ -414,6 +435,8 @@ def _apply_store(evs: list[dict], doc: dict, rng: np.random.Generator, counts: C
                 length = max(0, length + val)
             else:
                 open_regs = val
+            if n + 1 < len(changes) and changes[n + 1][0] == t:
+                continue  # one length per instant: a hand-over (one out, one in) does not move the queue (N4)
             if (length, open_regs) != last:
                 b.put(idx[0], t, type_="queue.length", subject=f"queue:{q}",
                       data={"queueId": q, "length": length, "openRegisters": open_regs}, rank=r + 5e-4,

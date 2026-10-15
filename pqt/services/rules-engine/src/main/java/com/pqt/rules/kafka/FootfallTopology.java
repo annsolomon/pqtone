@@ -140,7 +140,10 @@ public final class FootfallTopology {
         if (e == null) return null;  // not rule input
         FootfallEvent ev = new FootfallEvent();
         ev.run = e.simRunId == null ? LIVE : e.simRunId;
-        if (Event.ZONE_ENTERED.equals(e.type) && cfg.zones().contains(e.zoneId)) ev.countedZone = e.zoneId;
+        if (Event.ZONE_ENTERED.equals(e.type) && cfg.zones().contains(e.zoneId)
+                && (cfg.countAppeared() || !Event.HOW_APPEARED.equals(e.how))) {
+            ev.countedZone = e.zoneId;
+        }
         return ev;
     }
 

@@ -9,6 +9,9 @@ public final class Event {
     public static final String ZONE_ENTERED = "com.pqt.store.zone.entered";
     public static final String ZONE_EXITED = "com.pqt.store.zone.exited";
     public static final String REGISTER_OPENED = "com.pqt.store.register.opened";
+    /** zone.entered/exited 1.1.0 `how` (Tier 2 N4): a tracking break rather than a real entry or exit. */
+    public static final String HOW_APPEARED = "appeared";
+    public static final String HOW_LOST = "lost";
 
     public String id;
     public String source;
@@ -23,6 +26,7 @@ public final class Event {
     public String zoneId;
     public String trackId;
     public String registerId;
+    public String how;
 
     public Event() {
     }

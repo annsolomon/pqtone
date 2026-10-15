@@ -13,9 +13,16 @@ import java.util.List;
  * @param factor         a spike needs count x historyWindows > factor x sum(history)...
  * @param minCount       ...and count >= minCount
  * @param graceMs        how long after its end a window still accepts out-of-order records
+ * @param countAppeared  1.1.0 (N4): false counts only entries that crossed into the zone, not tracks that
+ *                       appeared inside it (tracking breaks, phantoms)
  */
 public record FootfallConfig(RuleConfig.RuleMeta meta, List<String> zones, long windowMs, int historyWindows,
-                             double factor, int minCount, long graceMs) {
+                             double factor, int minCount, long graceMs, boolean countAppeared) {
+    public FootfallConfig(RuleConfig.RuleMeta meta, List<String> zones, long windowMs, int historyWindows,
+                          double factor, int minCount, long graceMs) {
+        this(meta, zones, windowMs, historyWindows, factor, minCount, graceMs, true);
+    }
+
     public FootfallConfig {
         zones = List.copyOf(zones);
         if (zones.isEmpty()) throw new IllegalArgumentException("R-FOOT-001 needs at least one zone");

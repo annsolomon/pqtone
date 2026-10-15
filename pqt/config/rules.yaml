@@ -12,13 +12,14 @@ rules:
       hysteresis: 2        # clears only when length <= threshold - hysteresis
       clearSustain: PT30S  # ...for this long
   - id: R-DWELL-001
-    version: 1.0.0
+    version: 1.1.0         # 1.1.0 (Tier 2 N4, ADR-035): visits continue across tracking breaks (stitch)
     mode: enforce
     severity: low
     params:
       zones: [fitting-rooms]
       limit: PT600S
       sessionTtl: PT4H
+      stitch: PT30S        # a track lost inside the zone keeps its visit this long for one that appears there
   - id: R-ABS-001
     version: 1.0.0
     mode: shadow
@@ -28,7 +29,7 @@ rules:
       expect: com.pqt.store.register.opened
       within: PT300S
   - id: R-FOOT-001
-    version: 1.0.0
+    version: 1.1.0         # 1.1.0 (Tier 2 N4, ADR-035): only entries that cross into the zone count
     mode: enforce          # promoted from shadow after the offline and e2e scores passed (CI run 37853464719, milestone R2)
     severity: low
     params:
@@ -37,3 +38,4 @@ rules:
       history: PT1H        # baseline = mean of the previous 12 windows of the same run
       factor: 2.0          # spike when count > factor x baseline...
       minCount: 10         # ...and count >= minCount; alerting starts once a full hour of history exists
+      countAppeared: false # tracks that appear inside the zone (tracking breaks, phantoms) are not people coming in
