@@ -57,6 +57,7 @@ public class LiveHub {
     /** Called for every validated store event; keeps only what the console needs. */
     public void storeEvent(JsonNode ce) {
         if (emitters.isEmpty()) return;
+        if (!ce.path("type").asText().startsWith("com.pqt.store.")) return;  // e.g. edge heartbeats: not for the floor view
         if (pendingSize.incrementAndGet() > MAX_PENDING) {
             pendingSize.decrementAndGet();
             dropped.incrementAndGet();

@@ -84,6 +84,16 @@
         }
       ],
       "subjectPattern": "^store$"
+    },
+    {
+      "type": "com.pqt.edge.heartbeat",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pqt.local/edge/heartbeat/1.0.0",
+          "file": "data/edge.heartbeat-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^edge:[a-z0-9-]{1,64}$"
     }
   ]
 }

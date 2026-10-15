@@ -73,11 +73,13 @@ def test_agent_delivers_every_sequence_once_through_an_outage(tmp_path: Path):
         "outbox": {"path": str(tmp_path / "outbox.db"), "quotaMb": 16},
         "detector": {"kind": "synthetic-queue", "speed": 20},
         "cameras": [{"id": "cam-01", "url": str(video), "config": "cam.yaml", "fps": 10}],
-        "statusPath": str(tmp_path / "status.json"), "statusEverySeconds": 0.5}))
+        "statusPath": str(tmp_path / "status.json"), "statusEverySeconds": 0.5, "heartbeatEverySeconds": 1}))
     FakeCore.received, FakeCore.refused = [], 0
     FakeCore.down_until = time.time() + 3.0  # the cable is cut for the first 3 seconds
     agent = Agent(config.load(tmp_path / "agent.yaml"))
     agent.uplinker.idle_s = 0.05
+    agent.uplinker.uplink.max_attempts = 1   # fail fast into the uplinker's own back-off...
+    agent.uplinker.backoff_max_s = 0.5       # ...kept short, so the test sees the recovery well before it stops
     t = threading.Thread(target=agent.run)
     t.start()
     time.sleep(8.0)
@@ -90,5 +92,10 @@ def test_agent_delivers_every_sequence_once_through_an_outage(tmp_path: Path):
     assert FakeCore.refused >= 1  # the agent did hit the outage (retries inside the uplink may hide it from the metrics)
     seqs = sorted(int(e["sequence"]) for e in FakeCore.received if e["source"].endswith("cam-01"))
     assert seqs == list(range(1, len(seqs) + 1))  # gap-free, each exactly once
+    beats = [e for e in FakeCore.received if e["type"] == "com.pqt.edge.heartbeat"]
+    assert len(beats) >= 3 and beats[-1]["data"]["agentId"] == "edge-test"
+    assert any("clockOffsetMs" in b["data"] for b in beats)  # learned from the fake server's Date header
+    hb_seqs = sorted(int(b["sequence"]) for b in beats)
+    assert hb_seqs == list(range(1, len(hb_seqs) + 1))  # heartbeats are their own gap-free source
     status = json.loads((tmp_path / "status.json").read_text())
     assert status["cameras"][0]["frames"] > 30 and "s" * 32 not in json.dumps(status)

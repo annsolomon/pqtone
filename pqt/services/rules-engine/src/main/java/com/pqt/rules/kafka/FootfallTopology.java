@@ -137,6 +137,7 @@ public final class FootfallTopology {
         } catch (InvalidEventException ex) {
             return null;
         }
+        if (e == null) return null;  // not rule input
         FootfallEvent ev = new FootfallEvent();
         ev.run = e.simRunId == null ? LIVE : e.simRunId;
         if (Event.ZONE_ENTERED.equals(e.type) && cfg.zones().contains(e.zoneId)) ev.countedZone = e.zoneId;
