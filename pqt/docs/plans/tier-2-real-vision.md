@@ -25,8 +25,8 @@ needed until P3–P5 and the real exit gate.
 |---|---|
 | Prep (P1–P5) | P1 and P2 done (P2 awaits a legal review); P3–P5 wait for the camera and consent |
 | vision-lab (V1–V8) | V1–V6 and V8 done (open-dataset track); V7 open: part 1 best candidate 94.8% within ±1 (picked with MOT17 in the loop); part 2 tuned on MOT20 and evaluated once: 89.2%, bar missed (`vision/lab/reports/mot17-bench.md`, `vision/lab/experiments.md`) |
-| noise-model (N1–N5) | N1–N3 and N5 built (N5: same-clip KS not rejected, p = 0.236, after two model fixes; `vision/noise/validation.md`); N4: entry/exit `how`, queue hand-over, R-DWELL stitching, R-FOOT real entries (ADR-035), gate on in `make all` |
-| edge-agent (A1–A6) | A1–A4 in review (simulated camera, ingest resilience, outbox + uplink, cable test in CI); A5, A6 next |
+| noise-model (N1–N5) | Done: profile measured on MOT17 (N1), injected in store-sim (N2), matrix re-scored clean/measured/2x in its own CI job (N3), rules hardened with the gate on under the measured profile (N4, ADR-035 and amendment), noise model validated, KS p = 0.236 (N5) |
+| edge-agent (A1–A6) | Done: simulated cameras, ingest resilience, SQLite outbox + uplink, the cable test in `make all` with zero loss (A1–A4); heartbeat with clock offset and alarms, security baseline (A5, A6) |
 | mtmc-fusion (F1–F5) | Optional, after the gate |
 
 **Exit gate (T2 → T3).**
@@ -150,11 +150,11 @@ video/RTSP → decode (OpenCV for files and image sequences; PyAV at the edge) �
 
 | # | Milestone | Done when |
 |---|---|---|
-| N1 | **Measure.** From labelled clips, compute per zone and per camera: miss rate vs crowd density, false-positive rate, ID switches per track-minute, fragmentation (one person → k tracks), entry/exit timing jitter, queue-count error distribution. | `noise-profile.yaml` with fitted distributions and their sample sizes. |
-| N2 | **Inject.** store-sim's `faults.vision` applies the profile to clean tracks: drops, phantom short tracks, split tracks with new ids, timing jitter. Deterministic from the seed. 🧠 | Same seed + profile → identical output (test). |
-| N3 | **Re-score the matrix** with noise: every scenario × seed × {clean, measured, 2× measured}. | The report shows which rules degrade, and by how much. |
-| N4 | **Harden rules**, for example: minimum track age before a dwell starts, debounce on queue length, dwell based on a zone occupancy session rather than a single track. Each change goes through the scorer. Thresholds change only by ADR. | Rules meet thresholds under the measured profile, or an ADR documents the revised thresholds. |
-| N5 | **Validate the noise model.** Does sim + profile reproduce the *distribution* of errors seen on real clips? Use a KS test on queue-count error. | Report in `vision/noise/validation.md`. |
+| ✅ N1 | **Measure.** From labelled clips, compute per zone and per camera: miss rate vs crowd density, false-positive rate, ID switches per track-minute, fragmentation (one person → k tracks), entry/exit timing jitter, queue-count error distribution. | `noise-profile.yaml` with fitted distributions and their sample sizes. Note: PR #46: profile measured on MOT17 (config/noise/mot17-yolox-s-roi.yaml). |
+| ✅ N2 | **Inject.** store-sim's `faults.vision` applies the profile to clean tracks: drops, phantom short tracks, split tracks with new ids, timing jitter. Deterministic from the seed. 🧠 | Same seed + profile → identical output (test). Note: PR #47: store-sim faults.vision. |
+| ✅ N3 | **Re-score the matrix** with noise: every scenario × seed × {clean, measured, 2× measured}. | The report shows which rules degrade, and by how much. Note: PR #47: make offline-noise, its own CI job (clean, measured, 2x). |
+| ✅ N4 | **Harden rules**, for example: minimum track age before a dwell starts, debounce on queue length, dwell based on a zone occupancy session rather than a single track. Each change goes through the scorer. Thresholds change only by ADR. | Rules meet thresholds under the measured profile, or an ADR documents the revised thresholds. Note: PR #52 (ADR-035 and its amendment): every enforce rule meets thresholds under the measured profile; gate on in CI. |
+| ✅ N5 | **Validate the noise model.** Does sim + profile reproduce the *distribution* of errors seen on real clips? Use a KS test on queue-count error. | Report in `vision/noise/validation.md`. Note: PR #50: same-clip KS not rejected, p = 0.236 (vision/noise/validation.md). |
 
 ---
 
@@ -175,12 +175,12 @@ video/RTSP → decode (OpenCV for files and image sequences; PyAV at the edge) �
 
 | # | Milestone | Done when | 🧠 |
 |---|---|---|---|
-| A1 | **Simulated cameras.** **MediaMTX** (MIT) serves recorded clips as RTSP streams in compose (`--profile edge`). No hardware needed in Codespaces. | `ffprobe rtsp://mediamtx:8554/cam1` works. | |
-| A2 | **Ingest resilience.** Reconnect on stream drop, decoder errors and camera reboot. Metrics for each. | A chaos test that kills MediaMTX mid-stream recovers in under 10 s. | |
-| A3 | **SQLite outbox + uplink.** Write-ahead, batching, retries with back-off, 429 and `Retry-After` handling, disk quota with oldest-first eviction *of already-sent rows only*. When disk is full, stop perception rather than drop events, and raise an alarm. | Unit tests for every state transition. | 🧠 The outbox state machine |
-| A4 | **The cable test.** A `toxiproxy` or `docker network disconnect` scenario: cut the uplink for 30 minutes during a sim/clip replay, reconnect, wait. Verify every per-camera `sequence` from first to last is present in Postgres exactly once. Also cover: power loss (`kill -9` the agent mid-batch), clock jump, a full disk. | `make chaos-edge` green: 0 missing, 0 duplicate rows. Tag `t2-edge-agent-v1`. | |
-| A5 | **Time.** chrony/NTP status in the heartbeat; events carry camera time *and* agent receive time. Alarm if the offset exceeds 2 s; never silently rewrite event time. | Clock-skew test. | |
-| A6 | **Security baseline.** Non-root containers. Credentials in an encrypted file sealed to the device (a TPM if available; otherwise file permissions plus an install-time secret). Outbound-only connections — no inbound ports. Camera passwords never logged. | security-reviewer pass; `docs/edge/threat-model.md`. | |
+| ✅ A1 | **Simulated cameras.** **MediaMTX** (MIT) serves recorded clips as RTSP streams in compose (`--profile edge`). No hardware needed in Codespaces. | `ffprobe rtsp://mediamtx:8554/cam1` works. Note: PR #45. |  |
+| ✅ A2 | **Ingest resilience.** Reconnect on stream drop, decoder errors and camera reboot. Metrics for each. | A chaos test that kills MediaMTX mid-stream recovers in under 10 s. Note: PR #45 (back-off cap 2 s, PR #47). |  |
+| ✅ A3 | **SQLite outbox + uplink.** Write-ahead, batching, retries with back-off, 429 and `Retry-After` handling, disk quota with oldest-first eviction *of already-sent rows only*. When disk is full, stop perception rather than drop events, and raise an alarm. | Unit tests for every state transition. Note: PR #45 (drain on stop, PR #47). | 🧠 The outbox state machine |
+| ✅ A4 | **The cable test.** A `toxiproxy` or `docker network disconnect` scenario: cut the uplink for 30 minutes during a sim/clip replay, reconnect, wait. Verify every per-camera `sequence` from first to last is present in Postgres exactly once. Also cover: power loss (`kill -9` the agent mid-batch), clock jump, a full disk. | `make chaos-edge` green: 0 missing, 0 duplicate rows. Tag `t2-edge-agent-v1`. Note: PR #45: scripts/chaos-edge.sh in make all. |  |
+| ✅ A5 | **Time.** chrony/NTP status in the heartbeat; events carry camera time *and* agent receive time. Alarm if the offset exceeds 2 s; never silently rewrite event time. | Clock-skew test. Note: PR #48. |  |
+| ✅ A6 | **Security baseline.** Non-root containers. Credentials in an encrypted file sealed to the device (a TPM if available; otherwise file permissions plus an install-time secret). Outbound-only connections — no inbound ports. Camera passwords never logged. | security-reviewer pass; `docs/edge/threat-model.md`. Note: PR #48. |  |
 
 ---
 
