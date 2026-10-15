@@ -73,7 +73,7 @@ token=$(connector push-client add --clients /var/lib/pqt-edge/push-clients.yaml 
   --profile /app/profiles/canonical.yaml | tail -n 1)
 ( umask 077; printf '%s' "$token" > "$W/state/push-token" )
 unset token
-$COMPOSE run --rm --no-deps tools python scripts/chaos_pos.py db --path /work/edge/state/pos.db --day "$SRC_DAY" --count 10
+$COMPOSE run --rm --no-deps -T tools python - db --path /work/edge/state/pos.db --day "$SRC_DAY" --count 10 < scripts/chaos_pos.py
 pos_push() { $EDGE exec -T connectors python - push --url http://127.0.0.1:8787 --token-file /var/lib/pqt-edge/push-token \
   --day "$SRC_DAY" --count 30 < scripts/chaos_pos.py; }
 $EDGE up -d cam-sim edge-agent connectors
@@ -126,7 +126,7 @@ pushed=$(pos_push)
 log "billing: push API answered $pushed"
 [ "$(echo "$pushed" | jq_py 'd["events"] > 0 and d["failed"] == 0 and d["errors"] == 0')" = "True" ] || {
   log "the push API did not take the POS's bills"; $EDGE logs --no-color --tail 40 connectors; exit 1; }
-$COMPOSE run --rm --no-deps tools python scripts/chaos_pos.py db --path /work/edge/state/pos.db --day "$SRC_DAY" --count 20 >/dev/null
+$COMPOSE run --rm --no-deps -T tools python - db --path /work/edge/state/pos.db --day "$SRC_DAY" --count 20 < scripts/chaos_pos.py >/dev/null
 
 sleep $((CUT / 3))
 log "camera outage: stopping the simulated camera for 15 s"
