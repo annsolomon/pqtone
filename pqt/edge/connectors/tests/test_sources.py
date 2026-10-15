@@ -24,7 +24,7 @@ from test_file_connector import KEY, PII, PROFILE, SCHEMAS, bill_rows, payment_r
 
 HERE = Path(__file__).resolve().parent
 PROFILES = HERE.parent / "profiles"
-RECORDS_SCHEMA = HERE.parent / "schemas" / "records.schema.json"
+RECORDS_SCHEMA = HERE.parent / "pqt_connectors" / "schemas" / "records.schema.json"
 PII_VALUES = list(PII.values())
 
 INVOICE = {

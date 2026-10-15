@@ -3,7 +3,7 @@
 X1 (`docs/plans/x1-billing-sync.md`): the shop's billing data, as the same kind of CloudEvents the
 cameras send, through the same edge outbox. Data rules: ADR-033. Any billing system, including a shop's own
 software, connects through the canonical records (ADR-037): the guide for the shop's developer is
-`docs/integrations/billing.md`, the schema `schemas/records.schema.json`.
+`docs/integrations/billing.md`, the schema `pqt_connectors/schemas/records.schema.json`.
 
 ## Sources (B5a)
 

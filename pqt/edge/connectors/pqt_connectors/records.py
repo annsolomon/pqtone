@@ -25,6 +25,7 @@ from typing import Any, Iterator
 from .profile import Profile
 
 MISSING = object()
+RECORDS_SCHEMA = Path(__file__).resolve().parent / "schemas" / "records.schema.json"  # shipped with the package
 MAX_FILE_BYTES = 256 * 1024 * 1024  # a day's export is far smaller; anything bigger is refused, not half-read
 MAX_XLSX_UNCOMPRESSED = 64 * 1024 * 1024  # what a workbook may expand to (compressed size says little)
 MAX_DIGITS = 30                            # longer JSON numbers are not amounts or quantities: refused, never expanded

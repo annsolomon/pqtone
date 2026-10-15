@@ -21,3 +21,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["pqt_connectors*"]
+
+[tool.setuptools.package-data]
+pqt_connectors = ["schemas/*.json"]

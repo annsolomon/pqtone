@@ -1,5 +1,5 @@
 # Canonical records (X1 B5a, ADR-037): the format any custom software can send without a mapping.
-# Field names, units and words are exactly those of edge/connectors/schemas/records.schema.json; see
+# Field names, units and words are exactly those of edge/connectors/pqt_connectors/schemas/records.schema.json; see
 # docs/integrations/billing.md. Copy this file and set `system` to a short name for the software.
 apiVersion: connector.pqt/v1
 name: canonical

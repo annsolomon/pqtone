@@ -24,7 +24,7 @@ A ready profile may exist (B5e); otherwise a profile maps its export in a few mi
 
 ## Canonical records
 
-The schema is `edge/connectors/schemas/records.schema.json` (JSON Schema 2020-12). A JSON document holds
+The schema is `edge/connectors/pqt_connectors/schemas/records.schema.json` (JSON Schema 2020-12). A JSON document holds
 one list per kind; a file may carry one kind or several.
 
 ```json
