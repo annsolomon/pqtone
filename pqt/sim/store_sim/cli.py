@@ -84,6 +84,21 @@ def cmd_determinism(a) -> int:
     return 0 if same else 1
 
 
+def cmd_noise_validate(a) -> int:
+    from .noise_validate import render_md, validate_profile
+
+    v = validate_profile(a.profile, scenarios_dir=a.scenarios_dir, layout=a.layout, rules=a.rules,
+                         **({"scenarios": tuple(a.scenarios.split(","))} if a.scenarios else {}),
+                         **({"seeds": tuple(int(x) for x in a.seeds.split(","))} if a.seeds else {}))
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "validation.json").write_text(json.dumps(v.as_dict(), indent=2, sort_keys=True) + "\n")
+    md = render_md(v, profile_path=a.profile)
+    (out / "validation.md").write_text(md)
+    print(md)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format='{"level":"%(levelname)s","logger":"%(name)s","msg":"%(message)s"}')
     p = argparse.ArgumentParser(prog="store-sim")
@@ -112,6 +127,15 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--seed", type=int, default=42)
     d.add_argument("--scenario", default="sim/scenarios/baseline.yaml")
     d.set_defaults(fn=cmd_determinism)
+
+    nv = sub.add_parser("noise-validate", help="Tier 2 N5: KS test of simulated vs measured count errors")
+    _common(nv)
+    nv.add_argument("--profile", required=True, help="a measured noise profile with queueCountError")
+    nv.add_argument("--scenarios-dir", default="sim/scenarios")
+    nv.add_argument("--scenarios", help="comma-separated (default: the queue scenarios)")
+    nv.add_argument("--seeds", help="comma-separated (default: 11,42,1337)")
+    nv.add_argument("--out", required=True, help="writes validation.json and validation.md here")
+    nv.set_defaults(fn=cmd_noise_validate)
 
     a = p.parse_args(argv)
     return a.fn(a)
