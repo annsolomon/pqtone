@@ -1,0 +1,37 @@
+# Canonical records (X1 B5a, ADR-037): the format any custom software can send without a mapping.
+# Field names, units and words are exactly those of edge/connectors/pqt_connectors/schemas/records.schema.json; see
+# docs/integrations/billing.md. Copy this file and set `system` to a short name for the software.
+apiVersion: connector.pqt/v1
+name: canonical
+system: custom
+description: Canonical records, ISO 8601 timestamps, money in rupees as numbers or decimal text.
+timezone: Asia/Kolkata
+dateFormat: "%Y-%m-%d"
+timestampFormat: iso8601
+currency: INR
+moneyUnit: major
+decimalSeparator: "."
+thousandsSeparator: ""
+tillDefault: till-1
+files:
+  bills:
+    columns: {billNo: billNo, timestamp: timestamp, till: till, lineNo: lineNo, sku: sku, qty: qty, unit: unit,
+              amount: amount, tax: tax}
+  payments:
+    columns: {billNo: billNo, timestamp: timestamp, till: till, tender: tender, amount: amount, direction: direction,
+              reference: reference}
+  movements:
+    columns: {docNo: docNo, timestamp: timestamp, sku: sku, qty: qty, unit: unit, direction: direction, reason: reason,
+              lineNo: lineNo}
+  stock:
+    columns: {sku: sku, qty: qty, unit: unit, timestamp: timestamp}
+  dayTotals:
+    columns: {date: date, sales: sales, refunds: refunds, bills: bills,
+              tenders: {cash: tenders.cash, card: tenders.card, upi: tenders.upi, wallet: tenders.wallet,
+                        credit: tenders.credit, voucher: tenders.voucher, other: tenders.other}}
+maps:
+  tender: {cash: [], card: [], upi: [], wallet: [], credit: [], voucher: [], other: []}
+  unit: {pcs: [], kg: [], g: [], l: [], ml: [], m: [], box: [], pack: [], other: []}
+  direction: {in: [], out: []}
+  reason: {purchase_receipt: [], sale: [], customer_return: [], supplier_return: [], transfer_in: [], transfer_out: [],
+           adjustment: [], damage: []}

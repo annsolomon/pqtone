@@ -1,4 +1,8 @@
-"""The file connector (X1, milestone B4): billing-system CSV exports -> X1 CloudEvents -> the edge outbox.
+"""The billing importer (X1, B4 and B5a): canonical records from any source -> X1 CloudEvents -> the edge outbox.
+
+Sources (ADR-037) hand records in two ways: files (`bills(path)`, ... read CSV, XLSX, JSON or NDJSON through
+the profile) and record streams (`feed(kind, name, records)`, used by the push, database and REST sources).
+Everything below holds whichever way records arrive.
 
 Rules (ADR-033):
 - only the profile's mapped columns are read; anything else in the file never enters an event;
@@ -16,7 +20,6 @@ Rules (ADR-033):
 """
 from __future__ import annotations
 
-import csv
 import hashlib
 import json
 import re
@@ -24,9 +27,12 @@ import sqlite3
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, time as dtime, timezone
+from datetime import date as ddate, datetime, time as dtime, timezone
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import Any, Iterable, Iterator
 
+from . import records as rec
 from .money import ParseError, to_milli, to_minor
 from .profile import Profile
 from .refs import Refs
@@ -144,42 +150,118 @@ class Importer:
         self._validate = _validator(Path(schemas)) if schemas else None
         self._ids: set[str] = set()
 
-    # -- shared -------------------------------------------------------------------------------------
-    def _rows(self, kind: str, path: str | Path):
-        cols = self.p.columns.get(kind)
-        if cols is None:
+    # -- sources ------------------------------------------------------------------------------------
+    def _file_rows(self, kind: str, path: str | Path) -> Iterator[tuple[str, int | None, dict]]:
+        if kind not in self.p.columns:
             raise ValueError(f"profile {self.p.name} has no {kind} file")
         name = Path(path).name
-        with open(path, newline="", encoding="utf-8-sig") as f:
-            reader = csv.DictReader(f)
-            header = set(reader.fieldnames or [])
-            missing = [c for c in cols.values() if c not in header]
-            if kind == "dayTotals":
-                missing += [c for c in self.p.tenders_columns.values() if c not in header]
-            if missing:
-                self.report.error(name, 1, f"missing column(s) {missing}")
-                self.report.files[name] = 0
-                return
-            n = 0
-            for i, raw in enumerate(reader, start=2):
-                n += 1
-                # Only the mapped columns are kept: nothing else from the row is ever touched again.
-                row = {field_: (raw.get(col) or "").strip() for field_, col in cols.items()}
-                if kind == "dayTotals":
-                    row["_tenders"] = {t: (raw.get(col) or "").strip() for t, col in self.p.tenders_columns.items()}
+        seen: set[int] = set()
+        try:
+            for i, row in rec.rows(self.p, kind, rec.read_file(self.p, kind, path)):
+                seen.add(i)
                 yield name, i, row
-            self.report.files[name] = n
+        except rec.SourceError as e:
+            self.report.error(name, 1 if Path(path).suffix.lower() in (".csv", ".txt", ".xlsx", "") else None, str(e))
+        finally:
+            self.report.files[name] = self.report.files.get(name, 0) + len(seen)
+
+    def _fed_rows(self, kind: str, name: str, records: Iterable[Any]) -> Iterator[tuple[str, int | None, dict]]:
+        if kind not in self.p.columns:
+            raise ValueError(f"profile {self.p.name} has no {kind} records")
+        seen: set[int] = set()
+        try:
+            for i, row in rec.rows(self.p, kind, enumerate(records, start=1)):
+                seen.add(i)
+                yield name, i, row
+        finally:
+            self.report.files[name] = self.report.files.get(name, 0) + len(seen)
+
+    def feed(self, kind: str, name: str, records: Iterable[Any]) -> None:
+        """Records from a push, database or REST source (B5b-B5d): the same pipeline as files."""
+        self._handlers()[kind](self._fed_rows(kind, name, records))
+
+    def ingest(self, kind: str, path: str | Path) -> None:
+        self._handlers()[kind](self._file_rows(kind, path))
+
+    def _handlers(self) -> dict:
+        return {"bills": self._bills_from, "payments": self._payments_from, "movements": self._movements_from,
+                "stock": self._stock_from, "dayTotals": self._day_totals_from}
+
+    def bills(self, path: str | Path) -> None:
+        self.ingest("bills", path)
+
+    def payments(self, path: str | Path) -> None:
+        self.ingest("payments", path)
+
+    def movements(self, path: str | Path) -> None:
+        self.ingest("movements", path)
+
+    def stock(self, path: str | Path) -> None:
+        self.ingest("stock", path)
+
+    def day_totals(self, path: str | Path) -> None:
+        self.ingest("dayTotals", path)
+
+    @staticmethod
+    def _bad(row: dict) -> None:
+        if "_error" in row:
+            raise RowError(row["_error"])
+
+    # -- values ---------------------------------------------------------------------------------------
+    def _aware(self, dt: datetime) -> datetime:
+        return dt.replace(tzinfo=self.p.tz) if dt.tzinfo is None else dt
+
+    def _timestamp(self, value: Any) -> int:
+        fmt = self.p.timestamp_format
+        try:
+            if isinstance(value, datetime):
+                dt = self._aware(value)
+            elif fmt in ("epoch_ms", "epoch_s"):
+                d = Decimal(str(value).strip())
+                if d != d.to_integral_value():
+                    raise ValueError("not a whole number")
+                return int(d) if fmt == "epoch_ms" else int(d) * 1000
+            elif fmt == "iso8601":
+                dt = self._aware(datetime.fromisoformat(str(value).strip()))
+            else:
+                dt = self._aware(datetime.strptime(str(value).strip(), fmt))
+        except (ValueError, InvalidOperation) as e:
+            raise RowError(f"timestamp {value!r} ({fmt}): {e}") from e
+        return int(dt.timestamp() * 1000)
+
+    def _date(self, value: Any) -> ddate:
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, ddate):
+            return value
+        return datetime.strptime(str(value), self.p.date_format).date()
+
+    def _clock(self, value: Any) -> dtime:
+        if isinstance(value, datetime):
+            return value.time()
+        if isinstance(value, dtime):
+            return value
+        return datetime.strptime(str(value), self.p.time_format).time()
 
     def _time(self, row: dict) -> int:
+        if row.get("timestamp") not in (None, ""):
+            return self._timestamp(row["timestamp"])
+        if row.get("date") in (None, ""):
+            raise RowError("no date or timestamp")
         try:
-            d = datetime.strptime(row["date"], self.p.date_format).date()
-            t = datetime.strptime(row["time"], self.p.time_format).time() if row.get("time") else dtime(23, 59, 59)
+            d = self._date(row["date"])
+            t = self._clock(row["time"]) if row.get("time") not in (None, "") else dtime(23, 59, 59)
         except ValueError as e:
             raise RowError(f"date/time {row.get('date')!r} {row.get('time')!r}: {e}") from e
         return int(datetime.combine(d, t, tzinfo=self.p.tz).timestamp() * 1000)
 
     def _minor(self, text: str, what: str) -> int:
         try:
+            if self.p.money_unit == "minor":
+                value = to_milli(text, decimal_sep=self.p.decimal_sep, thousands_sep=self.p.thousands_sep)
+                if value % 1000:
+                    raise ParseError(f"{text!r} is not a whole number of minor units")
+                return value // 1000
             return to_minor(text, decimal_sep=self.p.decimal_sep, thousands_sep=self.p.thousands_sep)
         except ParseError as e:
             raise RowError(f"{what}: {e}") from e
@@ -219,10 +301,13 @@ class Importer:
         return True
 
     # -- bills --------------------------------------------------------------------------------------
-    def bills(self, path: str | Path) -> None:
+    def _bills_from(self, rows: Iterator[tuple[str, int | None, dict]]) -> None:
         groups: dict[str, list[tuple[str, int, dict]]] = defaultdict(list)
         order: list[str] = []
-        for name, i, row in self._rows("bills", path):
+        for name, i, row in rows:
+            if "_error" in row:
+                self.report.error(name, i, f"bill: {row['_error']}")
+                continue
             if not row["billNo"]:
                 self.report.error(name, i, "empty bill number")
                 continue
@@ -248,6 +333,9 @@ class Importer:
                               "_where": (name, i)})
             except RowError as e:
                 self.report.error(name, i, f"bill line: {e}")
+                bad = True
+            except (ValueError, ArithmeticError) as e:
+                self.report.error(name, i, f"bill line: unreadable value ({type(e).__name__})")
                 bad = True
         if bad:
             self.report.error(rows[0][0], rows[0][1], f"bill starting at row {rows[0][1]} held back: rows {[r[1] for r in rows]} include a bad one")
@@ -306,10 +394,11 @@ class Importer:
         self._bills[ref] = (revision, h, total, till, json.dumps({k: v for k, v in sorted(taken.items()) if v}))
 
     # -- payments -----------------------------------------------------------------------------------
-    def payments(self, path: str | Path) -> None:
+    def _payments_from(self, rows: Iterator[tuple[str, int | None, dict]]) -> None:
         seen: dict[tuple, int] = defaultdict(int)
-        for name, i, row in self._rows("payments", path):
+        for name, i, row in rows:
             try:
+                self._bad(row)
                 if not row["billNo"]:
                     raise RowError("empty bill number")
                 amount = self._minor(row["amount"], "amount")
@@ -327,6 +416,9 @@ class Importer:
             except RowError as e:
                 self.report.error(name, i, f"payment: {e}")
                 continue
+            except (ValueError, ArithmeticError) as e:
+                self.report.error(name, i, f"payment: unreadable value ({type(e).__name__})")
+                continue
             hexref = self.refs.hex(row["billNo"])
             ident = (hexref, t, tender, direction, amount, row.get("reference") or "")
             seen[ident] += 1
@@ -339,10 +431,11 @@ class Importer:
             self._event("pos.payment", t, f"till:{till}", data, f"pay|{hexref}|{content}", (name, i))
 
     # -- stock --------------------------------------------------------------------------------------
-    def movements(self, path: str | Path) -> None:
+    def _movements_from(self, rows: Iterator[tuple[str, int | None, dict]]) -> None:
         positions: dict[str, int] = defaultdict(int)
-        for name, i, row in self._rows("movements", path):
+        for name, i, row in rows:
             try:
+                self._bad(row)
                 if not row["docNo"]:
                     raise RowError("empty document number")
                 positions[row["docNo"]] += 1
@@ -358,12 +451,16 @@ class Importer:
             except RowError as e:
                 self.report.error(name, i, f"movement: {e}")
                 continue
+            except (ValueError, ArithmeticError) as e:
+                self.report.error(name, i, f"movement: unreadable value ({type(e).__name__})")
+                continue
             self._event("stock.movement", t, f"sku:{data['sku']}", data,
                         f"mv|{data['docRef']}|{line_no}|{data['direction']}|{data['reason']}", (name, i))
 
-    def stock(self, path: str | Path) -> None:
-        for name, i, row in self._rows("stock", path):
+    def _stock_from(self, rows: Iterator[tuple[str, int | None, dict]]) -> None:
+        for name, i, row in rows:
             try:
+                self._bad(row)
                 sku = _sku(row["sku"])
                 data = {"sku": sku, "qtyMilli": self._milli(row["qty"], "qty"),
                         "unit": self._map("unit", row["unit"]) if row.get("unit") else "pcs", "source": self.p.system}
@@ -371,19 +468,28 @@ class Importer:
             except RowError as e:
                 self.report.error(name, i, f"stock {row.get('sku')!r}: {e}")
                 continue
+            except (ValueError, ArithmeticError) as e:
+                self.report.error(name, i, f"stock: unreadable value ({type(e).__name__})")
+                continue
             self._event("stock.level", t, f"sku:{sku}", data, f"lvl|{sku}|{t}", (name, i))
 
-    def day_totals(self, path: str | Path) -> None:
-        for name, i, row in self._rows("dayTotals", path):
+    def _day_totals_from(self, rows: Iterator[tuple[str, int | None, dict]]) -> None:
+        for name, i, row in rows:
             try:
-                d = datetime.strptime(row["date"], self.p.date_format).date()
+                self._bad(row)
+                d = self._date(row["date"]) if row.get("date") not in (None, "") else None
+                if d is None:
+                    raise RowError("no business date")
                 t = int(datetime.combine(d, dtime(23, 59, 59), tzinfo=self.p.tz).timestamp() * 1000)
                 tenders = {k: self._minor(v, f"tender {k}") for k, v in row["_tenders"].items() if v}
                 data = {"businessDate": d.isoformat(), "salesMinor": self._minor(row["sales"], "sales"),
                         "refundsMinor": self._minor(row["refunds"], "refunds"), "bills": int(row["bills"]),
                         "paymentsByTender": tenders, "currency": self.p.currency, "source": self.p.system}
-            except (RowError, ValueError) as e:
+            except RowError as e:
                 self.report.error(name, i, f"day total {row.get('date')!r}: {e}")
+                continue
+            except (ValueError, ArithmeticError) as e:
+                self.report.error(name, i, f"day total: unreadable value ({type(e).__name__})")
                 continue
             self._event("pos.day.total", t, f"store:{self.store}", data, f"day|{d.isoformat()}", (name, i))
 

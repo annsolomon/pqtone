@@ -4,9 +4,16 @@
     pqt-connectors import --profile profiles/generic-csv.yaml --store store-001 --key billing.key \\
         --state /var/lib/pqt-edge/connector-state.db --outbox /var/lib/pqt-edge/outbox.db \\
         --bills bills.csv --payments payments.csv --movements purchases.csv --stock stock.csv --day-totals day.csv
+    pqt-connectors watch --dir /srv/billing-drop --profile my-pos.yaml --store store-001 --key billing.key \\
+        --state connector-state.db --outbox outbox.db          # imports what is saved into the folder
+    pqt-connectors check --profile my-pos.yaml --store store-001 --bills sample.json   # dry run, nothing kept
+    pqt-connectors suggest --kind bills --sample SalesRegister.xlsx --system my-pos > my-pos.yaml
 
-Exit codes (import): 0 every row imported; 2 some rows were reported (the rest was imported); 1 usage or
-setup error. Exit codes (reconcile): 0 every day adds up; 3 at least one alert.
+Files may be CSV, XLSX, JSON or NDJSON (ADR-037).
+
+Exit codes (import, check): 0 every row imported; 2 some rows were reported (the rest was imported); 1 usage
+or setup error. Exit codes (reconcile): 0 every day adds up; 3 at least one alert. watch runs until stopped
+(--once: one poll; exit 2 when a file failed).
 """
 from __future__ import annotations
 
@@ -19,10 +26,28 @@ from . import profile as profile_mod
 from .importer import Importer, State
 from .refs import Refs, load_key, new_key
 
+KIND_ARGS = (("bills", "bills"), ("payments", "payments"), ("movements", "movements"), ("stock", "stock"),
+             ("day_totals", "dayTotals"))
+
+
+def _sink(a: argparse.Namespace):
+    """(append, close) for the edge outbox or a JSONL file."""
+    if a.outbox:
+        from pqt_edge.outbox import Outbox  # the same outbox the camera events use (A3)
+
+        box = Outbox(a.outbox)
+        return box.append, box.close
+
+    def write(events: list[dict]) -> None:
+        with open(a.out, "a", encoding="utf-8") as f:
+            for e in events:
+                f.write(json.dumps(e, sort_keys=True, separators=(",", ":")) + "\n")
+    return write, lambda: None
+
 
 def _import(a: argparse.Namespace) -> int:
     prof = profile_mod.load(a.profile)
-    if not any([a.bills, a.payments, a.movements, a.stock, a.day_totals]):
+    if not any(getattr(a, arg) for arg, _ in KIND_ARGS):
         print("nothing to import: give at least one of --bills --payments --movements --stock --day-totals",
               file=sys.stderr)
         return 1
@@ -31,23 +56,15 @@ def _import(a: argparse.Namespace) -> int:
         return 1
     state = State(a.state)
     imp = Importer(prof, store=a.store, refs=Refs(load_key(a.key), prof.system), state=state, schemas=a.schemas)
-    for path, fn in ((a.bills, imp.bills), (a.payments, imp.payments), (a.movements, imp.movements),
-                     (a.stock, imp.stock), (a.day_totals, imp.day_totals)):
-        if path:
-            fn(path)
-    if a.outbox:
-        from pqt_edge.outbox import Outbox  # the same outbox the camera events use (A3)
-
-        box = Outbox(a.outbox)
-        report = imp.commit(box.append)
-        box.close()
-    else:
-        def write(events: list[dict]) -> None:
-            with open(a.out, "a", encoding="utf-8") as f:
-                for e in events:
-                    f.write(json.dumps(e, sort_keys=True, separators=(",", ":")) + "\n")
-        report = imp.commit(write)
-    state.close()
+    for arg, kind in KIND_ARGS:
+        if getattr(a, arg):
+            imp.ingest(kind, getattr(a, arg))
+    append, close = _sink(a)
+    try:
+        report = imp.commit(append)
+    finally:
+        close()
+        state.close()
     doc = report.as_dict()
     if a.report:
         Path(a.report).write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
@@ -55,6 +72,89 @@ def _import(a: argparse.Namespace) -> int:
     for e in doc["errors"][:20]:
         print(f"  {e['file']} row {e['row']}: {e['error']}", file=sys.stderr)
     return 2 if doc["errors"] else 0
+
+
+def _check(a: argparse.Namespace) -> int:
+    """Dry run: an in-memory state and a throw-away key, so nothing is kept and no reference is the real one."""
+    import os
+    from collections import Counter
+
+    prof = profile_mod.load(a.profile)
+    if not any(getattr(a, arg) for arg, _ in KIND_ARGS):
+        print("nothing to check: give at least one of --bills --payments --movements --stock --day-totals", file=sys.stderr)
+        return 1
+    imp = Importer(prof, store=a.store, refs=Refs(os.urandom(32), prof.system), state=State(":memory:"),
+                   schemas=a.schemas)
+    for arg, kind in KIND_ARGS:
+        if getattr(a, arg):
+            imp.ingest(kind, getattr(a, arg))
+    events: list[dict] = []
+    report = imp.commit(events.extend).as_dict()
+    imp.state.close()
+    kinds = {kind: report["files"].get(Path(getattr(a, arg)).name, 0) for arg, kind in KIND_ARGS if getattr(a, arg)}
+    print(json.dumps({"profile": prof.name, "records": kinds, "events": dict(sorted(Counter(e["type"] for e in events).items())),
+                      "sample": events[: a.show], "errors": report["errors"],
+                      "note": "dry run: a throw-away key, so references differ from a real import; nothing was kept"},
+                     indent=2, ensure_ascii=False))
+    return 2 if report["errors"] else 0
+
+
+def _suggest(a: argparse.Namespace) -> int:
+    import yaml
+
+    from .suggest import suggest
+
+    candidates = [Path(a.base)] if a.base else [Path(__file__).resolve().parent.parent / "profiles" / "generic-csv.yaml",
+                                                Path("/app/profiles/generic-csv.yaml")]
+    found = next((p for p in candidates if p.is_file()), None)
+    if a.base and found is None:
+        print(f"no profile at {a.base}", file=sys.stderr)
+        return 1
+    base = yaml.safe_load(found.read_text(encoding="utf-8")) if found else {}
+    base.pop("files", None)
+    print(suggest(a.kind, a.sample, system=a.system, base=base), end="")
+    return 0
+
+
+def _watch(a: argparse.Namespace) -> int:
+    import signal
+    import time
+
+    from . import watch
+
+    prof = profile_mod.load(a.profile)
+    key = load_key(a.key)
+    if bool(a.outbox) == bool(a.out):
+        print("give exactly one of --outbox (the edge outbox) or --out (a JSONL file)", file=sys.stderr)
+        return 1
+    if not Path(a.dir).is_dir():
+        print(f"{a.dir} is not a folder", file=sys.stderr)
+        return 1
+    stop = {"now": False}
+
+    def _stop(*_):
+        stop["now"] = True
+    signal.signal(signal.SIGTERM, _stop)
+    signal.signal(signal.SIGINT, _stop)
+
+    def make() -> Importer:
+        return Importer(prof, store=a.store, refs=Refs(key, prof.system), state=State(a.state), schemas=a.schemas)
+    failed = False
+    while True:
+        append, close = _sink(a)
+        try:
+            summary = watch.run_once(a.dir, prof, make, append, min_age_s=a.min_age)
+        finally:
+            close()
+        if summary["imported"] or summary["failed"]:
+            print(json.dumps(summary), flush=True)
+        failed = failed or bool(summary["failed"])
+        if a.once or stop["now"]:
+            return 2 if failed else 0
+        for _ in range(int(a.interval * 10)):
+            if stop["now"]:
+                return 2 if failed else 0
+            time.sleep(0.1)
 
 
 def _reconcile(a: argparse.Namespace) -> int:
@@ -85,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     k = sub.add_parser("init-key", help="create the store's reference key (once, at install)")
     k.add_argument("--key", required=True)
     k.set_defaults(fn=_init_key)
-    i = sub.add_parser("import", help="import billing-system CSV exports")
+    i = sub.add_parser("import", help="import billing-system exports (CSV, XLSX, JSON, NDJSON)")
     i.add_argument("--profile", required=True)
     i.add_argument("--store", required=True)
     i.add_argument("--key", required=True, help="the store key file (mode 600)")
@@ -100,6 +200,33 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("--day-totals")
     i.add_argument("--report", help="write the import report (files, events, bills, errors by row) here")
     i.set_defaults(fn=_import)
+    c = sub.add_parser("check", help="dry-run a profile on sample files: records, events, every error; nothing kept")
+    c.add_argument("--profile", required=True)
+    c.add_argument("--store", default="store-001")
+    c.add_argument("--schemas", help="also validate every event against this schemas/ directory")
+    c.add_argument("--show", type=int, default=3, help="how many events to print (pseudonymised, as they would leave)")
+    for flag in ("--bills", "--payments", "--movements", "--stock", "--day-totals"):
+        c.add_argument(flag)
+    c.set_defaults(fn=_check)
+    s_ = sub.add_parser("suggest", help="print a starting profile for a sample export, to review")
+    s_.add_argument("--kind", required=True, choices=["bills", "payments", "movements", "stock", "dayTotals"])
+    s_.add_argument("--sample", required=True, help="a CSV, XLSX, JSON or NDJSON sample (fake data is enough)")
+    s_.add_argument("--system", default="my-system", help="short name for the software ([a-z0-9-])")
+    s_.add_argument("--base", help="copy formats and word maps from this profile (default: the generic profile)")
+    s_.set_defaults(fn=_suggest)
+    w = sub.add_parser("watch", help="import files saved into a folder, once each; move them to done/ or failed/")
+    w.add_argument("--dir", required=True)
+    w.add_argument("--profile", required=True)
+    w.add_argument("--store", required=True)
+    w.add_argument("--key", required=True)
+    w.add_argument("--state", required=True)
+    w.add_argument("--outbox")
+    w.add_argument("--out")
+    w.add_argument("--schemas")
+    w.add_argument("--interval", type=float, default=30, help="seconds between polls")
+    w.add_argument("--min-age", type=float, default=10, help="a file must be unchanged this long before it is read")
+    w.add_argument("--once", action="store_true")
+    w.set_defaults(fn=_watch)
     r = sub.add_parser("reconcile", help="B6: check a day's billing events against each other and the day totals")
     r.add_argument("--events", nargs="+", required=True, help="JSONL files of X1 events")
     r.add_argument("--tz", default="Asia/Kolkata", help="the store's time zone (business dates)")

@@ -1,0 +1,331 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pqt.local/connectors/records/1.0.0",
+  "title": "PQT canonical billing records",
+  "description": "What any billing system or custom software sends to the PQT edge box (X1, ADR-037): a file, a push request or a mapped database or API source all become these records. Only these fields exist: customer names, phones, card numbers or notes have no place here (ADR-033).",
+  "type": "object",
+  "additionalProperties": false,
+  "minProperties": 1,
+  "properties": {
+    "bills": {
+      "type": "array",
+      "maxItems": 5000,
+      "items": {
+        "$ref": "#/$defs/bill"
+      }
+    },
+    "payments": {
+      "type": "array",
+      "maxItems": 5000,
+      "items": {
+        "$ref": "#/$defs/payment"
+      }
+    },
+    "movements": {
+      "type": "array",
+      "maxItems": 5000,
+      "items": {
+        "$ref": "#/$defs/movement"
+      }
+    },
+    "stock": {
+      "type": "array",
+      "maxItems": 5000,
+      "items": {
+        "$ref": "#/$defs/stock"
+      }
+    },
+    "dayTotals": {
+      "type": "array",
+      "maxItems": 5000,
+      "items": {
+        "$ref": "#/$defs/dayTotal"
+      }
+    }
+  },
+  "$defs": {
+    "decimal": {
+      "description": "Money in major units (rupees) or a quantity: a JSON number or decimal text. Never a float you computed; send what the bill says.",
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "string",
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+        }
+      ]
+    },
+    "timestamp": {
+      "description": "ISO 8601. Give the offset (+05:30); without one the profile's time zone applies.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]{1,6})?)?(Z|[+-][0-9]{2}:?[0-9]{2})?$"
+    },
+    "docNumber": {
+      "description": "The billing system's own number. It stays on the edge box: only an HMAC of it is sent (ADR-033).",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "till": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "sku": {
+      "description": "Item code (business data, not personal).",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "unit": {
+      "enum": [
+        "pcs",
+        "kg",
+        "g",
+        "l",
+        "ml",
+        "m",
+        "box",
+        "pack",
+        "other"
+      ]
+    },
+    "tender": {
+      "enum": [
+        "cash",
+        "card",
+        "upi",
+        "wallet",
+        "credit",
+        "voucher",
+        "other"
+      ]
+    },
+    "direction": {
+      "enum": [
+        "in",
+        "out"
+      ]
+    },
+    "reason": {
+      "enum": [
+        "purchase_receipt",
+        "sale",
+        "customer_return",
+        "supplier_return",
+        "transfer_in",
+        "transfer_out",
+        "adjustment",
+        "damage"
+      ]
+    },
+    "lineNo": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000
+    },
+    "bill": {
+      "description": "One line of a bill. Send every line of a bill together; send the whole bill again when it changes (it becomes the next revision).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "billNo",
+        "timestamp",
+        "sku",
+        "qty",
+        "amount"
+      ],
+      "properties": {
+        "billNo": {
+          "$ref": "#/$defs/docNumber"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "till": {
+          "$ref": "#/$defs/till"
+        },
+        "lineNo": {
+          "$ref": "#/$defs/lineNo"
+        },
+        "sku": {
+          "$ref": "#/$defs/sku"
+        },
+        "qty": {
+          "$ref": "#/$defs/decimal"
+        },
+        "unit": {
+          "$ref": "#/$defs/unit"
+        },
+        "amount": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/decimal"
+            }
+          ],
+          "description": "What the customer pays for the line, tax included."
+        },
+        "tax": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/decimal"
+            }
+          ],
+          "description": "Tax inside the amount (optional)."
+        }
+      }
+    },
+    "payment": {
+      "description": "Money in for a sale (direction in) or out for a refund (direction out). Without direction, a negative amount is a refund.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "billNo",
+        "timestamp",
+        "tender",
+        "amount"
+      ],
+      "properties": {
+        "billNo": {
+          "$ref": "#/$defs/docNumber"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "till": {
+          "$ref": "#/$defs/till"
+        },
+        "tender": {
+          "$ref": "#/$defs/tender"
+        },
+        "amount": {
+          "$ref": "#/$defs/decimal"
+        },
+        "direction": {
+          "$ref": "#/$defs/direction"
+        },
+        "reference": {
+          "$ref": "#/$defs/docNumber"
+        }
+      }
+    },
+    "movement": {
+      "description": "Stock received or leaving other than through a bill (bills move stock by themselves).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "docNo",
+        "timestamp",
+        "sku",
+        "qty",
+        "direction",
+        "reason"
+      ],
+      "properties": {
+        "docNo": {
+          "$ref": "#/$defs/docNumber"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "sku": {
+          "$ref": "#/$defs/sku"
+        },
+        "qty": {
+          "$ref": "#/$defs/decimal"
+        },
+        "unit": {
+          "$ref": "#/$defs/unit"
+        },
+        "direction": {
+          "$ref": "#/$defs/direction"
+        },
+        "reason": {
+          "$ref": "#/$defs/reason"
+        },
+        "lineNo": {
+          "$ref": "#/$defs/lineNo"
+        }
+      }
+    },
+    "stock": {
+      "description": "Stock on hand as the billing system reports it, at a moment.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sku",
+        "qty",
+        "timestamp"
+      ],
+      "properties": {
+        "sku": {
+          "$ref": "#/$defs/sku"
+        },
+        "qty": {
+          "$ref": "#/$defs/decimal"
+        },
+        "unit": {
+          "$ref": "#/$defs/unit"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+    "dayTotal": {
+      "description": "The billing system's own totals for a business day, for the daily reconcile.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "date",
+        "sales",
+        "refunds",
+        "bills"
+      ],
+      "properties": {
+        "date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "sales": {
+          "$ref": "#/$defs/decimal"
+        },
+        "refunds": {
+          "$ref": "#/$defs/decimal"
+        },
+        "bills": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tenders": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cash": {
+              "$ref": "#/$defs/decimal"
+            },
+            "card": {
+              "$ref": "#/$defs/decimal"
+            },
+            "upi": {
+              "$ref": "#/$defs/decimal"
+            },
+            "wallet": {
+              "$ref": "#/$defs/decimal"
+            },
+            "credit": {
+              "$ref": "#/$defs/decimal"
+            },
+            "voucher": {
+              "$ref": "#/$defs/decimal"
+            },
+            "other": {
+              "$ref": "#/$defs/decimal"
+            }
+          }
+        }
+      }
+    }
+  }
+}
