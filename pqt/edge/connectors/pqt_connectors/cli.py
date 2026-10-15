@@ -8,6 +8,9 @@
         --state connector-state.db --outbox outbox.db          # imports what is saved into the folder
     pqt-connectors check --profile my-pos.yaml --store store-001 --bills sample.json   # dry run, nothing kept
     pqt-connectors suggest --kind bills --sample SalesRegister.xlsx --system my-pos > my-pos.yaml
+    pqt-connectors push-client add --clients push-clients.yaml --id shop-pos --profile profiles/canonical.yaml
+    pqt-connectors serve --clients push-clients.yaml --store store-001 --key billing.key --state state.db \\
+        --outbox outbox.db                                       # the push API on 127.0.0.1:8787 (B5b)
 
 Files may be CSV, XLSX, JSON or NDJSON (ADR-037).
 
@@ -157,6 +160,71 @@ def _watch(a: argparse.Namespace) -> int:
             time.sleep(0.1)
 
 
+def _serve(a: argparse.Namespace) -> int:
+    import signal
+
+    from . import push
+
+    if bool(a.outbox) == bool(a.out):
+        print("give exactly one of --outbox (the edge outbox) or --out (a JSONL file)", file=sys.stderr)
+        return 1
+    if bool(a.tls_cert) != bool(a.tls_key):
+        print("give both --tls-cert and --tls-key", file=sys.stderr)
+        return 1
+    clients = push.load_clients(a.clients)
+    append, close = _sink(a)
+    srv = push.make_server(clients, store=a.store, key=load_key(a.key), state_path=a.state, sink=append,
+                           schemas=a.schemas, bind=a.bind, port=a.port,
+                           tls=(a.tls_cert, a.tls_key) if a.tls_cert else None, allow_insecure_lan=a.insecure_lan,
+                           max_body=int(a.max_body_mb * 1024 * 1024), rate=(a.rate, a.burst),
+                           records_schema=a.records_schema)
+
+    def _stop(*_):
+        import threading
+
+        threading.Thread(target=srv.shutdown, daemon=True).start()
+    signal.signal(signal.SIGTERM, _stop)
+    signal.signal(signal.SIGINT, _stop)
+    scheme = "https" if a.tls_cert else "http"
+    print(json.dumps({"listening": f"{scheme}://{a.bind}:{srv.server_address[1]}", "clients": [c.id for c in clients.clients]}),
+          flush=True)
+    try:
+        srv.serve_forever()
+    finally:
+        srv.server_close()
+        close()
+    return 0
+
+
+def _push_client(a: argparse.Namespace) -> int:
+    from . import push
+
+    if a.action == "list":
+        for c in push.load_clients(a.clients).clients:
+            print(f"{c.id}\t{'webhook ' + c.kind if c.webhook else 'push'}\t{c.profile_path}"
+                  f"\t{','.join(sorted(c.kinds)) if c.kinds else 'all kinds'}\t{'signed' if c.signature else ''}")
+        return 0
+    if a.action == "remove":
+        push.remove_client(a.clients, a.id)
+        print(f"removed {a.id}")
+        return 0
+    if not a.id or not a.profile:
+        print("add needs --id and --profile", file=sys.stderr)
+        return 1
+    sig = None
+    if a.sig_header:
+        sig = {"header": a.sig_header, "secret": a.sig_secret, "prefix": a.sig_prefix or "", "encoding": a.sig_encoding}
+    token = push.add_client(a.clients, client_id=a.id, profile=a.profile,
+                            kinds=a.kinds.split(",") if a.kinds else None, webhook=a.webhook, kind=a.kind, signature=sig)
+    if token:
+        print(f"added {a.id}. Its token, shown only now (the file keeps a hash): give it to the software as\n"
+              f"Authorization: Bearer <token>")
+        print(token)
+    else:
+        print(f"added webhook {a.id}: POST /v1/webhooks/{a.id}, signed with {a.sig_header}")
+    return 0
+
+
 def _reconcile(a: argparse.Namespace) -> int:
     from .reconcile import THRESHOLD_BP, reconcile
 
@@ -227,6 +295,37 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--min-age", type=float, default=10, help="a file must be unchanged this long before it is read")
     w.add_argument("--once", action="store_true")
     w.set_defaults(fn=_watch)
+    sv = sub.add_parser("serve", help="the push API: the shop's software or a webhook posts records (B5b)")
+    sv.add_argument("--clients", required=True, help="clients file (pqt-connectors push-client add)")
+    sv.add_argument("--store", required=True)
+    sv.add_argument("--key", required=True)
+    sv.add_argument("--state", required=True)
+    sv.add_argument("--outbox")
+    sv.add_argument("--out")
+    sv.add_argument("--schemas")
+    sv.add_argument("--records-schema", help="records.schema.json (default: next to the package or /app/connector-schemas)")
+    sv.add_argument("--bind", default="127.0.0.1")
+    sv.add_argument("--port", type=int, default=8787)
+    sv.add_argument("--tls-cert")
+    sv.add_argument("--tls-key")
+    sv.add_argument("--insecure-lan", action="store_true", help="allow a non-loopback bind without TLS (closed networks only)")
+    sv.add_argument("--max-body-mb", type=float, default=5)
+    sv.add_argument("--rate", type=float, default=10, help="requests per second per client")
+    sv.add_argument("--burst", type=int, default=20)
+    sv.set_defaults(fn=_serve)
+    pc = sub.add_parser("push-client", help="add, remove or list push and webhook clients")
+    pc.add_argument("action", choices=["add", "remove", "list"])
+    pc.add_argument("--clients", required=True)
+    pc.add_argument("--id")
+    pc.add_argument("--profile")
+    pc.add_argument("--kinds", help="comma-separated kinds this client may send (default: all its profile maps)")
+    pc.add_argument("--webhook", action="store_true", help="a webhook sender: no token, a signature instead")
+    pc.add_argument("--kind", help="webhooks: the kind each body is")
+    pc.add_argument("--sig-header", help="header carrying the HMAC-SHA256 of the body")
+    pc.add_argument("--sig-secret", help="env:NAME or file:/path of the shared secret")
+    pc.add_argument("--sig-prefix", help="text before the signature, e.g. sha256=")
+    pc.add_argument("--sig-encoding", choices=["hex", "base64"], default="hex")
+    pc.set_defaults(fn=_push_client)
     r = sub.add_parser("reconcile", help="B6: check a day's billing events against each other and the day totals")
     r.add_argument("--events", nargs="+", required=True, help="JSONL files of X1 events")
     r.add_argument("--tz", default="Asia/Kolkata", help="the store's time zone (business dates)")
@@ -236,7 +335,7 @@ def main(argv: list[str] | None = None) -> int:
     a = p.parse_args(argv)
     try:
         return a.fn(a)
-    except (profile_mod.ProfileError, OSError, ValueError) as e:
+    except (profile_mod.ProfileError, OSError, ValueError) as e:  # SecretError is a ValueError
         print(f"error: {e}", file=sys.stderr)
         return 1
 

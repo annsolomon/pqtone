@@ -14,7 +14,8 @@ on through the same outbox as the cameras, so a network cut loses nothing.
 | Your software can... | Use | Status |
 |---|---|---|
 | export or save a file (CSV, Excel, JSON) | **File drop**: save files into a folder on the edge box (or a share it reads) | available |
-| make an HTTP request when a bill is saved | **Push API** on the edge box, canonical JSON, no mapping needed | B5b |
+| make an HTTP request when a bill is saved | **Push API** on the edge box, canonical JSON, no mapping needed | available |
+| receive payment-gateway webhooks | **Webhook** on the edge box, checked by the gateway's signature | available |
 | be read from its database (a view is enough) | **Database source**: a read-only query with a cursor | B5c |
 | offer a REST API (cloud billing) | **REST source**: polled with your API key or OAuth | B5d |
 
@@ -85,6 +86,64 @@ both work.
 pqt-connectors watch --dir /srv/billing-drop --profile profiles/canonical.yaml --store store-001 \
   --key /var/lib/pqt-edge/billing.key --state /var/lib/pqt-edge/connector-state.db \
   --outbox /var/lib/pqt-edge/outbox.db --schemas /app/schemas
+```
+
+## Push API
+
+The edge box listens on `http://127.0.0.1:8787` (on the shop network only over TLS). Ask the person who
+installed PQT for a token; it is shown once and the box keeps only a hash of it.
+
+```bash
+pqt-connectors push-client add --clients /etc/pqt/push-clients.yaml --id shop-pos --profile /app/profiles/canonical.yaml
+```
+
+Send records whenever a bill is saved, edited or cancelled, or in batches; a retry never duplicates anything.
+
+```bash
+curl -X POST http://127.0.0.1:8787/v1/records -H "Authorization: Bearer $PQT_TOKEN" \
+  -H "Content-Type: application/json" -d @bill.json
+# {"events": 5, "alreadySent": 0, "records": {"bills": 2, "payments": 1}, "bills": {"new": 1, ...}, "errors": []}
+```
+
+```python
+import json, urllib.request
+req = urllib.request.Request("http://127.0.0.1:8787/v1/records", data=json.dumps(doc).encode(),
+                             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+print(json.load(urllib.request.urlopen(req, timeout=10)))
+```
+
+```javascript
+const r = await fetch("http://127.0.0.1:8787/v1/records", {method: "POST",
+  headers: {"Authorization": `Bearer ${token}`, "Content-Type": "application/json"}, body: JSON.stringify(doc)});
+```
+
+```csharp
+using var http = new HttpClient();
+http.DefaultRequestHeaders.Authorization = new("Bearer", token);
+var r = await http.PostAsync("http://127.0.0.1:8787/v1/records",
+    new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+```
+
+| Response | Meaning | What to do |
+|---|---|---|
+| 200 | Imported; `errors` lists records that were reported (by kind and number), the rest went through | Fix and resend the reported records |
+| 401 | Missing or wrong token (or signature) | Check the token |
+| 403 | This client may not send that kind | Ask for the kind to be allowed |
+| 413 / 415 / 400 / 422 | Too big (5 MB), not JSON, malformed, or not matching the schema (nothing imported) | Fix the request |
+| 429 | Too fast | Wait `Retry-After` seconds and resend |
+| 503 | The box cannot store right now | Resend later |
+
+Errors are problem details (`application/problem+json`) with a `code`, and never repeat what was sent. The
+full contract is `edge/connectors/openapi.yaml`; `GET /v1/schema` returns the records schema. Software that
+already has its own JSON shape can keep it: give its client a profile instead of the canonical one. Clients
+can also be set to sign each body (`X-PQT-Signature: sha256=<HMAC-SHA256 hex>`) and be limited to some kinds.
+
+**Webhooks** (payment gateways): `POST /v1/webhooks/<client>` with the gateway's own body, checked only by
+its HMAC signature header (no token), mapped by the client's profile (`path` says where the payment is):
+
+```bash
+pqt-connectors push-client add --clients /etc/pqt/push-clients.yaml --id gateway --webhook --kind payments \
+  --profile my-gateway.yaml --sig-header X-Gateway-Signature --sig-secret env:GATEWAY_WEBHOOK_SECRET
 ```
 
 ## Mapping an existing export: profiles

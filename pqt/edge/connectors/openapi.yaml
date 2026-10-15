@@ -1,0 +1,118 @@
+openapi: 3.1.0
+info:
+  title: PQT edge push API (billing records)
+  version: 1.0.0
+  description: |
+    Runs on the PQT edge box in the shop (X1 B5b, ADR-037). The shop's billing software, or a payment
+    gateway's webhook, sends billing records here; the box pseudonymises document numbers, builds events and
+    forwards them through its outbox. Loopback by default; on the shop network only over TLS.
+    Errors are RFC 9457 problem details with a stable `code`; they never echo submitted values.
+    Re-sending the same records adds nothing, so a client may retry any request that did not get a 200.
+servers:
+  - url: http://127.0.0.1:8787
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: One token per client (`pqt-connectors push-client add`); the box stores only its SHA-256.
+  schemas:
+    Records:
+      $ref: schemas/records.schema.json
+    Result:
+      type: object
+      required: [events, alreadySent, records, bills, errors]
+      properties:
+        events: {type: integer, description: Events handed to the outbox by this request}
+        alreadySent: {type: integer, description: Events an earlier request already sent}
+        records: {type: object, additionalProperties: {type: integer}, description: Records read per kind}
+        bills:
+          type: object
+          properties: {new: {type: integer}, revised: {type: integer}, unchanged: {type: integer}}
+        errors:
+          type: array
+          description: Records that were reported and not imported (the rest was); by kind and record number
+          items:
+            type: object
+            properties: {kind: {type: string}, record: {type: [integer, "null"]}, error: {type: string}}
+    Problem:
+      type: object
+      required: [type, title, status, code]
+      properties:
+        type: {type: string}
+        title: {type: string}
+        status: {type: integer}
+        code:
+          type: string
+          enum: [unauthorized, bad-signature, kind-not-allowed, malformed-json, invalid-records, length-required,
+                 too-large, unsupported-media-type, rate-limited, outbox-unavailable, not-found, method-not-allowed]
+        errors: {type: array, items: {type: string}}
+  responses:
+    Problem:
+      description: Problem details
+      content: {application/problem+json: {schema: {$ref: "#/components/schemas/Problem"}}}
+    RateLimited:
+      description: Too many requests from this client
+      headers: {Retry-After: {schema: {type: integer}}}
+      content: {application/problem+json: {schema: {$ref: "#/components/schemas/Problem"}}}
+paths:
+  /v1/records:
+    post:
+      summary: Send billing records
+      description: |
+        A JSON object with a list per kind. Clients whose profile is the canonical one are checked against the
+        records schema first (422, nothing imported, on any mismatch); other clients' records are mapped by their
+        profile and reported row by row. A client configured with a signature must also send the HMAC-SHA256 of
+        the raw body in its signature header.
+      security: [{bearer: []}]
+      parameters:
+        - {name: X-PQT-Signature, in: header, required: false, schema: {type: string},
+           description: "Only for clients configured to sign: e.g. sha256=<hex HMAC-SHA256 of the body>"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Records"}
+      responses:
+        "200": {description: Imported (see errors for reported records), content: {application/json: {schema: {$ref: "#/components/schemas/Result"}}}}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "411": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "415": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /v1/webhooks/{client}:
+    post:
+      summary: Receive a webhook (payment gateways and similar)
+      description: |
+        The body is whatever the sender posts; the client's profile says where the record is (`path`) and maps
+        its fields. Authenticated only by the HMAC-SHA256 signature header configured for the client.
+      parameters:
+        - {name: client, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9_-]{1,64}$"}}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object}}}
+      responses:
+        "200": {description: Imported, content: {application/json: {schema: {$ref: "#/components/schemas/Result"}}}}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "411": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "415": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /v1/health:
+    get:
+      summary: Liveness
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {type: object, properties: {status: {const: ok}}}}}}
+  /v1/schema:
+    get:
+      summary: The canonical records schema
+      responses:
+        "200": {description: JSON Schema 2020-12, content: {application/json: {schema: {type: object}}}}
