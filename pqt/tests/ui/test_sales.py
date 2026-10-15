@@ -107,8 +107,8 @@ def test_the_sales_page_opens_a_simulated_day_and_shows_billing_next_to_the_came
             r = api.post(f"{BASE}/v1/events/batch", data=json.dumps(trading_morning(run)),
                          headers={"Content-Type": "application/cloudevents-batch+json", "Authorization": f"Bearer {tok.json()['access_token']}"})
             assert r.ok, r.text()
-            statuses = {x["status"] for x in r.json()["results"]}
-            assert statuses == {"accepted"}, r.text()
+            refused = [x for x in r.json()["results"] if x["status"] != "accepted"]
+            assert not refused, "events refused:\n" + "\n".join(json.dumps(x) for x in refused)
         finally:
             api.dispose()
 
