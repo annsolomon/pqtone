@@ -27,6 +27,26 @@ def rule_severities(run: dict) -> dict[str, float]:
     return out
 
 
+def _loc(l: dict) -> str:
+    pl = l.get("physicalLocation", {})
+    return f'{pl.get("artifactLocation", {}).get("uri", "?")}:{pl.get("region", {}).get("startLine", "?")}'
+
+
+def explain(path: Path) -> dict[tuple[str, str], str]:
+    """(rule, location) -> the result's message with its related locations (e.g. the source of a flow)."""
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    out: dict[tuple[str, str], str] = {}
+    for run in doc.get("runs", []):
+        for res in run.get("results", []) or []:
+            rule = res.get("ruleId") or (res.get("rule") or {}).get("id", "?")
+            locs = res.get("locations") or []
+            loc = _loc(locs[0]) if locs else "?"
+            msg = (res.get("message") or {}).get("text", "")
+            related = [f"{_loc(r)} {(r.get('message') or {}).get('text', '')}".strip() for r in res.get("relatedLocations") or []]
+            out[(rule, loc)] = " | ".join([msg[:300], *related[:4]])
+    return out
+
+
 def findings(path: Path) -> list[tuple[float | None, str, str]]:
     doc = json.loads(path.read_text(encoding="utf-8"))
     rows = []
@@ -75,8 +95,12 @@ def main(argv: list[str]) -> int:
     if summary:
         with open(summary, "a", encoding="utf-8") as fh:
             fh.write("```\n" + "\n".join(lines) + "\n```\n")
+    why: dict[tuple[str, str], str] = {}
+    for f in files:
+        why.update(explain(f))
     for sev, rule, loc in blocking[:9]:
-        print(f"::error title=codeql {rule}::security-severity {sev} at {loc}")
+        detail = why.get((rule, loc), "").replace("%", "%25").replace("\r", " ").replace("\n", " ")
+        print(f"::error title=codeql {rule}::security-severity {sev} at {loc}" + (f" -- {detail}" if detail else ""))
     return 1 if blocking else 0
 
 
