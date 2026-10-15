@@ -23,10 +23,12 @@ from .detect.yolox import YoloxOnnxDetector
 from .evaluate import evaluate
 from .metrics import evaluate_tracking
 from .models import MODELS, resolve
+from .counts import COUNT_START
 from .mot import FrameGT, GroundTruth, load_gt
 from .runner import run_detection
 from .sources import open_source
 from .track import ByteTrackConfig, frame_times, run_tracking, write_tracks
+from .tune import Setting
 
 STATIC_SEQUENCES = ("MOT17-02", "MOT17-04", "MOT17-09")
 ATTRIBUTION = ("MOT17: Milan, Leal-Taixé, Reid, Roth, Schindler, \"MOT16: A Benchmark for Multi-Object "
@@ -58,11 +60,19 @@ def sequence_dir(root: Path, seq: str, variant: str = "FRCNN") -> Path:
 def bench_mot17(root: str | Path, *, model: str, out: str | Path, sequences: tuple[str, ...] = STATIC_SEQUENCES,
                 threads: int | None = None, max_frames: int | None = None,
                 tracker: ByteTrackConfig | None = None, configs: str | Path | None = None,
-                schemas: str | Path | None = None, mode: str = "full", noise_out: str | Path | None = None) -> dict:
+                schemas: str | Path | None = None, mode: str = "full", noise_out: str | Path | None = None,
+                setting: Setting | None = None) -> dict:
     """mode: full (whole frame at the model's input size), roi (the zones' region plus a margin; needs a
-    zone config) or tiled (2 × 2 overlapping tiles plus the full frame)."""
+    zone config) or tiled (2 × 2 overlapping tiles plus the full frame).
+
+    setting: a tracker and zone-timing setting chosen on the development set (V7 part 2, `tune.py`). It
+    replaces the tracker and the zone configs' enter/exit delays and lost-track timeout; zones never change."""
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
+    if setting is not None:
+        if tracker is not None:
+            raise ValueError("pass a tracker or a setting, not both")
+        tracker = setting.tracker()
     root, out = Path(root), Path(out)
     out.mkdir(parents=True, exist_ok=True)
     model_path = resolve(model)
@@ -106,7 +116,7 @@ def bench_mot17(root: str | Path, *, model: str, out: str | Path, sequences: tup
         if cam_path is not None and cam_path.is_file():
             per_seq[seq]["counts"] = _counts(seq, cam_path, tracks, frame_times(replay), gt_full, src.info.fps, out,
                                              schemas, noise_samples if noise_out else None,
-                                             noise_clips if noise_out else None)
+                                             noise_clips if noise_out else None, setting)
     noise, validation = None, None
     if noise_out:
         noise, doc = _write_noise_profile(noise_samples, Path(noise_out), model=model, mode=mode)
@@ -120,6 +130,7 @@ def bench_mot17(root: str | Path, *, model: str, out: str | Path, sequences: tup
         "detectConf": DETECT_CONF, "tracker": (tracker or ByteTrackConfig()).as_dict(),
         "runner": {"cpus": os.cpu_count(), "threads": threads, "python": platform.python_version(),
                    "machine": platform.machine()},
+        "setting": setting.as_dict() if setting else None,
         "sequences": per_seq, "attribution": ATTRIBUTION, **({"noiseProfile": noise} if noise else {}),
         **({"noiseValidation": validation} if validation else {}),
     }
@@ -127,8 +138,6 @@ def bench_mot17(root: str | Path, *, model: str, out: str | Path, sequences: tup
     (out / "report.md").write_text(render_md(report), encoding="utf-8")
     return report
 
-
-COUNT_START = "2026-01-01T09:00:00Z"  # arbitrary wall-clock origin for offline clips
 
 
 def _write_noise_profile(samples: list, path: Path, *, model: str, mode: str) -> tuple[dict, dict]:
@@ -206,18 +215,22 @@ def render_validation(v: dict) -> str:
 
 
 def _counts(seq: str, cam_path: Path, tracks: dict, times: dict[int, int], gt, fps: float, out: Path,
-            schemas: str | Path | None, noise_samples: list | None = None, noise_clips: list | None = None) -> dict:
+            schemas: str | Path | None, noise_samples: list | None = None, noise_clips: list | None = None,
+            setting: Setting | None = None) -> dict:
     """Zone events from the tracks, ground-truth counts from the annotations, scored by pqt-scorer (V6)."""
+    from . import camera as cam
     import secrets
 
-    from . import camera as cam
-    from .counts import gt_counts, write_counts
+    from .counts import count_events, gt_counts, write_counts
     from .emitter import contract_validator, parse_iso, schemas_dir_default, write_jsonl
     from .pipeline import cloud_events
 
     camera = cam.load(cam_path)
-    events = cloud_events(camera, {f: [(t.track_id, t.box) for t in ts] for f, ts in tracks.items()}, times,
-                          start_ms=parse_iso(COUNT_START), run_key=f"mot17:{seq}", secret=secrets.token_bytes(32))
+    lost_after_s = 2.0
+    if setting is not None:
+        camera, lost_after_s = setting.apply(camera), setting.lost_after_s
+    events = count_events(camera, {f: [(t.track_id, t.box) for t in ts] for f, ts in tracks.items()}, times,
+                          run_key=f"mot17:{seq}", lost_after_s=lost_after_s)
     check = contract_validator(schemas or schemas_dir_default())
     schema_errors = sum(len(check(e)) for e in events)
     write_jsonl(out / "events" / f"{seq}.jsonl", events)
@@ -239,14 +252,15 @@ def _counts(seq: str, cam_path: Path, tracks: dict, times: dict[int, int], gt, f
         tl = video.timelines(events, "occupancy")
         start = parse_iso(COUNT_START)
         errs = [video.count_at(tl.get(g.zone), start + g.offset_ms) - g.count for g in gt_samples]
-        zev, _ = zone_events(camera, {f: [(t.track_id, t.box) for t in ts] for f, ts in tracks.items()}, times)
+        zev, _ = zone_events(camera, {f: [(t.track_id, t.box) for t in ts] for f, ts in tracks.items()}, times,
+                             lost_after_s=lost_after_s)
         noise_samples.append(measure_sequence(gt, {f: [(t.track_id, t.box) for t in ts] for f, ts in tracks.items()},
                                               times, camera, zev, errs))
         if noise_clips is not None:
             # N5: the zone events a perfect tracker would give (ground-truth people as tracks), on the same clip.
             gt_tracks = {f: list(gt.people(f)) for f in sorted(tracks)}
             clean = cloud_events(camera, gt_tracks, times, start_ms=start, run_key=f"mot17-gt:{seq}",
-                                 secret=secrets.token_bytes(32))
+                                 secret=secrets.token_bytes(32))  # perfect-tracker reference: zone timing as configured
             noise_clips.append((clean, [(start + g.offset_ms, g.zone, g.count) for g in gt_samples], errs))
     return result
 
@@ -255,6 +269,8 @@ def render_md(r: dict) -> str:
     lines = [f"# Vision bench: {r['model']['name']}, {r.get('mode', 'full')} mode, on MOT17 (stage: {r['stage']})", "",
              f"Commit `{r['commit'][:12]}`, {r['createdAt']}, {r['runner']['cpus']} CPUs, "
              f"ONNX Runtime {r['model'].get('onnxruntime', '?')}, input {r['model'].get('input')}.", "",
+             *([f"Setting chosen on the development set (V7 part 2, never on MOT17): `{json.dumps(r['setting'], sort_keys=True)}`", ""]
+               if r.get("setting") else []),
              "| Sequence | Frames | GT people | AP50 | P@0.3 | R@0.3 | P@0.5 | R@0.5 | ms/frame |",
              "|---|---|---|---|---|---|---|---|---|"]
     for seq, s in r["sequences"].items():

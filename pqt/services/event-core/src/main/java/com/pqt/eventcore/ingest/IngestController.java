@@ -55,7 +55,7 @@ public class IngestController {
         String client = clientId(jwt);
         throttle(client, 1);
         ValidatedEvent e = validator.validate(parse(body));
-        authorize(client, e.source());
+        authorize(client, e);
         IngestService.Result r = ingest.ingest(e, "http", "client:" + client);
         return switch (r.status()) {
             case ACCEPTED -> ResponseEntity.status(HttpStatus.ACCEPTED).body(result(r, "accepted"));
@@ -85,7 +85,7 @@ public class IngestController {
             item.put("id", arr.get(i).path("id").asText(null));
             try {
                 ValidatedEvent e = validator.validate(arr.get(i));
-                if (!policy.clientMayPublish(client, e.source())) {
+                if (!policy.clientMayPublish(client, e.source()) || !SourcePolicy.storeMatchesSource(e.source(), e.storeId())) {
                     item.put("status", "forbidden");
                 } else {
                     item.put("status", ingest.ingest(e, "http", "client:" + client).status().name().toLowerCase());
@@ -112,10 +112,14 @@ public class IngestController {
         return azp != null ? azp : jwt.getClaimAsString("client_id");
     }
 
-    private void authorize(String client, String source) {
-        if (!policy.clientMayPublish(client, source)) {
+    private void authorize(String client, ValidatedEvent e) {
+        if (!policy.clientMayPublish(client, e.source())) {
             throw new ApiException(HttpStatus.FORBIDDEN, "source-not-allowed",
-                    "client " + client + " may not publish events for source " + source);
+                    "client " + client + " may not publish events for source " + e.source());
+        }
+        if (!SourcePolicy.storeMatchesSource(e.source(), e.storeId())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "store-not-allowed",
+                    "source " + e.source() + " may not publish events for store " + e.storeId());
         }
     }
 

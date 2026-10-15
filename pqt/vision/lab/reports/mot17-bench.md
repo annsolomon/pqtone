@@ -60,3 +60,21 @@ and V7 stays open. What the numbers say:
   under-counting on 04 (missed distant people).
 - Tuning more on these three sequences would fit the test set. V7 part 2 tunes on a separate
   development set (MOT20 training sequences, zones chosen the same way) and evaluates MOT17 once.
+
+## V7 part 2: MOT20-tuned setting, evaluated once on MOT17
+
+Tuned on MOT20-01/02/03/05 (first 1000 frames; PR #49 vision-tune run, commit `83d0c64`): track threshold
+0.4, buffer 30 frames, enter 1.0 s, exit 0.3 s, lost timeout 1.0 s (`vision/lab/config/tuned/yolox_s-roi.json`).
+MOT17 run on commit `511ebd4` (PR #49), 12 Oct 2026, yolox_s on the zone crop:
+
+| Sequence | Within ±1 | MAE | Bias | Max error | Gate |
+|---|---|---|---|---|---|
+| MOT17-02 | 90.0% | 0.650 | +0.350 | 4 | miss |
+| MOT17-04 | 94.3% | 0.600 | +0.200 | 2 | miss |
+| MOT17-09 | 83.3% | 0.889 | +0.111 | 3 | miss |
+
+**Mean 89.2% within ±1: bar missed, and lower than the part-1 configuration (94.8%).** The setting chosen
+on crowded MOT20 does not transfer to MOT17's sparser scenes: the lower track threshold creates more
+phantom tracks (10.8 per minute vs 2.5) and the 1 s enter delay drops short visits. As ADR-032 fixes in
+advance, this result stands and MOT17 does not choose between the two settings; V7 stays open with the
+next steps in `vision/lab/experiments.md`.

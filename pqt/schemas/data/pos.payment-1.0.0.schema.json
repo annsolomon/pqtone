@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pqt.local/pos/payment/1.0.0",
+  "title": "com.pqt.pos.payment data",
+  "description": "Money in for a sale or out for a refund (X1, B1). The amount is always positive; `direction` gives the sign. Allow-listed fields only: no customer identity, card numbers or free text (ADR-033).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "storeId",
+    "tillId",
+    "paymentNo",
+    "tender",
+    "direction",
+    "amountMinor",
+    "currency"
+  ],
+  "properties": {
+    "storeId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,64}$"
+    },
+    "tillId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,64}$"
+    },
+    "billRef": {
+      "type": "string",
+      "pattern": "^bill-[0-9a-f]{32}$",
+      "description": "HMAC-SHA256 of the bill number the payment settles or refunds with the store's key (ADR-033); never the real number."
+    },
+    "paymentNo": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "Position of this payment within its bill (split tenders), for stable ids."
+    },
+    "tender": {
+      "type": "string",
+      "enum": [
+        "cash",
+        "card",
+        "upi",
+        "wallet",
+        "credit",
+        "voucher",
+        "other"
+      ]
+    },
+    "direction": {
+      "type": "string",
+      "enum": [
+        "in",
+        "out"
+      ],
+      "description": "in: received from the customer; out: refunded."
+    },
+    "amountMinor": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000000000,
+      "description": "Amount in minor units, always positive."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "ISO 4217 code, e.g. INR."
+    },
+    "providerRef": {
+      "type": "string",
+      "pattern": "^pay-[0-9a-f]{32}$",
+      "description": "HMAC-SHA256 of the card, UPI or gateway transaction reference with the store's key (ADR-033); never the real number."
+    }
+  }
+}

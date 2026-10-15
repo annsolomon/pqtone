@@ -71,11 +71,12 @@ def propose_zone(gt: GroundTruth, *, width: int, height: int, fps: float) -> Zon
     return best
 
 
-def camera_doc(seq: str, proposal: ZoneProposal, *, width: int, height: int) -> dict:
+def camera_doc(seq: str, proposal: ZoneProposal, *, width: int, height: int, dataset: str = "MOT17",
+               use: str = "benchmarking only: ADR-013") -> dict:
     name = seq.lower()
     return {
-        "apiVersion": "camera.pqt/v1", "camera": name, "store": "mot17",
-        "description": (f"{seq} (MOT17, CC BY-NC-SA 3.0, benchmarking only: ADR-013). Zone chosen from ground truth "
+        "apiVersion": "camera.pqt/v1", "camera": name, "store": dataset.lower(),
+        "description": (f"{seq} ({dataset}, CC BY-NC-SA 3.0, {use}). Zone chosen from ground truth "
                         f"only by pqt_vision.mot_zones: {proposal.score:.0%} of 1-s samples hold 2-8 people "
                         f"(mean {proposal.mean}, range {proposal.min}-{proposal.max}, n={proposal.samples})."),
         "image": {"width": width, "height": height}, "units": "px",

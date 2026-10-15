@@ -348,6 +348,16 @@ CREATE TRIGGER no_update BEFORE UPDATE OR DELETE ON audit_log
 
 (Same trigger on `event`, `event_dedup`, `incident_review`. Partition drops are done by `migrator` only.)
 
+### 5.6 Billing and stock (X1, ADR-036)
+
+Six typed tables (V7) hold the billing and stock events: `pos_sale_line`, `pos_payment`, `pos_till_event`,
+`stock_movement`, `stock_level`, `pos_day_total`. event-core writes each row in the event's own ingest
+transaction, with only the contract's fields (ADR-033). They are append-only, partitioned by arrival day and
+dropped with the event retention. Row-level security is forced: `pqt_app` sees and writes only the store named
+by the transaction-local `pqt.store_id`, which event-core sets to the one store a request concerns; `pqt_read`
+reads every store. Real billing events may be up to 35 days old at ingest (`pqt.ingest.max-age-by-type`);
+everything else keeps 24 hours. `GET /api/stores/{id}/sales|payments|stock` read them for the console.
+
 ---
 
 ## 6. Topics
@@ -609,7 +619,8 @@ Full model: `docs/security/threat-model.md`, reviewed at every tier boundary.
 - TLS required, clients use `sslmode=verify-full`.
 - Roles: `migrator` (DDL, Flyway only), `app_ingest` (INSERT on event/dedup/outbox, UPDATE `outbox.published_at` only), `app_review` (incident updates, INSERT review/audit), `app_read` (SELECT), `scorer_read` (SELECT on incidents). No app connects as owner or superuser.
 - `event_dedup`, `event`, `incident_review`, `audit_log` are append-only (§5.5).
-- Row-level security on `store_id → tenant_id` is designed in for multi-tenancy (Tier 2+).
+- Row-level security on `store_id → tenant_id` is designed in for multi-tenancy (Tier 2+). The billing tables (§5.6) already force it, scoped to one store per transaction.
+- An edge source (`urn:pqt:edge:<store>:<device>`) may only write events for the store it names (ADR-036).
 - Connection limits per role; `statement_timeout` and `idle_in_transaction_session_timeout` set per role.
 
 ### 11.5 API hardening (`event-core`)
@@ -684,6 +695,7 @@ These are architectural constraints, not policy aspirations. Changing any of the
 | Data | Retention |
 |---|---|
 | `event` partitions | 30 days |
+| Billing and stock tables (§5.6) | 30 days, with the event partitions |
 | Kafka event topics | 7 days |
 | DLQ | 30 days |
 | Incidents and reviews | 1 year |

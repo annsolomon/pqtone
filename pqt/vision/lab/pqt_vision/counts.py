@@ -37,3 +37,29 @@ def write_counts(path: str | Path, rows: list[tuple[float, str, int]]) -> None:
         w = csv.writer(f)
         w.writerow(["offset_s", "zone", "count"])
         w.writerows(rows)
+
+
+COUNT_START = "2026-01-01T09:00:00Z"  # arbitrary wall-clock origin for offline clips
+
+
+def count_events(camera: CameraConfig, tracks: dict, times: dict[int, int], *, run_key: str,
+                 lost_after_s: float = 2.0) -> list[dict]:
+    """The zone CloudEvents of a tracked clip, starting at COUNT_START, with a fresh per-run pseudonym key."""
+    import secrets
+
+    from .emitter import parse_iso
+    from .pipeline import cloud_events
+
+    return cloud_events(camera, tracks, times, start_ms=parse_iso(COUNT_START), run_key=run_key,
+                        secret=secrets.token_bytes(32), lost_after_s=lost_after_s)
+
+
+def score_occupancy(rows: list[tuple[float, str, int]], events: list[dict]) -> dict:
+    """pqt-scorer's count score (occupancy) of `count_events` output against `gt_counts` rows, in memory:
+    the same numbers as writing the CSV and scoring it (needs pqt-scorer)."""
+    from pqt_scorer import video
+
+    from .emitter import parse_iso
+
+    samples = [video.Sample(int(round(float(o) * 1000)), z, int(c)) for o, z, c in rows]
+    return video.score(samples, events, metric="occupancy", start_ms=parse_iso(COUNT_START))

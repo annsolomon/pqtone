@@ -90,6 +90,42 @@ def test_roi_mode_needs_a_zone_config_and_judges_only_inside_the_region(tmp_path
     assert "skipped" in (tmp_path / "out" / "report.md").read_text()
 
 
+def test_a_tuned_setting_replaces_the_tracker_and_the_zone_timing_but_not_the_zones(tmp_path: Path, monkeypatch):
+    import pytest
+    import yaml
+
+    from pqt_vision.track import ByteTrackConfig
+    from pqt_vision.tune import Setting
+
+    rows = [f"{f},1,{5 + f},5,10,30,1,1,1.0" for f in range(1, 13)]
+    write_mot_sequence(tmp_path / "train", name="MOT17-02-FRCNN", gt_rows=rows, fps=2)
+    cfg = tmp_path / "cfg"
+    cfg.mkdir()
+    doc = {"apiVersion": "camera.pqt/v1", "camera": "mot17-02", "store": "mot17", "units": "px",
+           "image": {"width": 64, "height": 48}, "homography": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+           "zones": [{"id": "zone-1", "kind": "zone", "polygon": [[0, 0], [64, 0], [64, 48], [0, 48]]}],
+           "membership": {"enterSeconds": 0.5, "exitSeconds": 0.5, "boundaryMargin": 1}}
+    (cfg / "mot17-02.yaml").write_text(yaml.safe_dump(doc), encoding="utf-8")
+    monkeypatch.setattr(bench, "resolve", lambda m: Path("unused.onnx"))
+    monkeypatch.setattr(bench, "YoloxOnnxDetector", GTDetector)
+    s = Setting(0.4, 60, 10.0, 0.3, 1.0)  # an enter delay longer than the person's 6 s visit
+    r = bench.bench_mot17(tmp_path / "train", model="fake", out=tmp_path / "out", sequences=("MOT17-02",),
+                          configs=cfg, schemas=Path(__file__).resolve().parents[3] / "schemas", setting=s)
+    assert r["setting"] == s.as_dict() and r["tracker"] == s.tracker().as_dict()
+    events = (tmp_path / "out" / "events" / "MOT17-02.jsonl").read_text()
+    assert "zone.entered" not in events  # the tuned delay reached the zone engine: the visit is never confirmed
+    assert yaml.safe_load((cfg / "mot17-02.yaml").read_text()) == doc  # the committed zone config is not changed
+    assert "Setting chosen on the development set" in (tmp_path / "out" / "report.md").read_text()
+    base = bench.bench_mot17(tmp_path / "train", model="fake", out=tmp_path / "out2", sequences=("MOT17-02",),
+                             configs=cfg, schemas=Path(__file__).resolve().parents[3] / "schemas")
+    assert base["setting"] is None and "zone.entered" in (tmp_path / "out2" / "events" / "MOT17-02.jsonl").read_text()
+    assert (r["sequences"]["MOT17-02"]["counts"]["score"]["zones"]["zone-1"]["mae"]
+            > base["sequences"]["MOT17-02"]["counts"]["score"]["zones"]["zone-1"]["mae"])
+    with pytest.raises(ValueError, match="not both"):
+        bench.bench_mot17(tmp_path / "train", model="fake", out=tmp_path / "out3", sequences=("MOT17-02",),
+                          tracker=ByteTrackConfig(), setting=s)
+
+
 def test_the_noise_profile_is_validated_on_the_same_clips(tmp_path: Path, monkeypatch):
     import pytest
     import yaml

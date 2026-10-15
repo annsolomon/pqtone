@@ -102,6 +102,66 @@
         }
       ],
       "subjectPattern": "^edge:[a-z0-9-]{1,64}$"
+    },
+    {
+      "type": "com.pqt.pos.sale.line",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pqt.local/pos/sale.line/1.0.0",
+          "file": "data/pos.sale.line-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^till:[a-z0-9-]{1,64}$"
+    },
+    {
+      "type": "com.pqt.pos.payment",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pqt.local/pos/payment/1.0.0",
+          "file": "data/pos.payment-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^till:[a-z0-9-]{1,64}$"
+    },
+    {
+      "type": "com.pqt.pos.till.event",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pqt.local/pos/till.event/1.0.0",
+          "file": "data/pos.till.event-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^till:[a-z0-9-]{1,64}$"
+    },
+    {
+      "type": "com.pqt.stock.movement",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pqt.local/stock/movement/1.0.0",
+          "file": "data/stock.movement-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^sku:[A-Za-z0-9._-]{1,64}$"
+    },
+    {
+      "type": "com.pqt.stock.level",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pqt.local/stock/level/1.0.0",
+          "file": "data/stock.level-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^sku:[A-Za-z0-9._-]{1,64}$"
+    },
+    {
+      "type": "com.pqt.pos.day.total",
+      "versions": [
+        {
+          "dataschema": "https://schemas.pqt.local/pos/day.total/1.0.0",
+          "file": "data/pos.day.total-1.0.0.schema.json"
+        }
+      ],
+      "subjectPattern": "^store:[a-z0-9-]{1,64}$"
     }
   ]
 }

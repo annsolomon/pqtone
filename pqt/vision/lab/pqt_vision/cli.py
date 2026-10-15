@@ -207,10 +207,24 @@ def _bench(a: argparse.Namespace) -> int:
     from .bench import STATIC_SEQUENCES, bench_mot17
 
     seqs = tuple(a.sequences.split(",")) if a.sequences else STATIC_SEQUENCES
+    setting = None
+    if a.setting:
+        from .tune import load_setting
+
+        setting = load_setting(a.setting)
     r = bench_mot17(a.root, model=a.model, out=a.out, sequences=seqs, threads=a.threads, max_frames=a.max_frames,
-                    configs=a.configs, schemas=a.schemas, mode=a.mode, noise_out=a.noise_profile)
+                    configs=a.configs, schemas=a.schemas, mode=a.mode, noise_out=a.noise_profile, setting=setting)
     print((Path(a.out) / "report.md").read_text(encoding="utf-8"))
     return 0 if r["sequences"] else 1
+
+
+def _tune(a: argparse.Namespace) -> int:
+    from .tune import DEV_SEQUENCES, tune
+
+    seqs = tuple(a.sequences.split(",")) if a.sequences else DEV_SEQUENCES
+    doc = tune(a.root, model=a.model, out=a.out, sequences=seqs, max_frames=a.max_frames or None, threads=a.threads)
+    print((Path(a.out) / "tuned.md").read_text(encoding="utf-8"))
+    return 0 if doc["best"] else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -311,7 +325,17 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--mode", choices=["full", "roi", "tiled"], default="full",
                    help="detect on the whole frame, on the zones' region, or on overlapping tiles (V7)")
     b.add_argument("--noise-profile", help="also measure a store-sim noise profile and write it here (N1)")
+    b.add_argument("--setting", help="a setting.json chosen on the development set by `tune` (V7 part 2)")
     b.set_defaults(fn=_bench)
+
+    tu = sub.add_parser("tune", help="choose tracker and zone-timing settings on MOT20, never on MOT17 (V7 part 2)")
+    tu.add_argument("--root", required=True, help="the MOT20/train directory")
+    tu.add_argument("--model", default="yolox_s")
+    tu.add_argument("--out", required=True, help="writes tuned.json, tuned.md and setting.json here")
+    tu.add_argument("--sequences", help="comma-separated, default MOT20-01,MOT20-02,MOT20-03,MOT20-05")
+    tu.add_argument("--max-frames", type=int, default=1000, help="first N frames of each clip (0: all)")
+    tu.add_argument("--threads", type=int)
+    tu.set_defaults(fn=_tune)
 
     a = p.parse_args(args)
     return a.fn(a)
