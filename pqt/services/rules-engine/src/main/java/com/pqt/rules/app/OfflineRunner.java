@@ -20,8 +20,10 @@ import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.TestInputTopic;
 import org.apache.kafka.streams.TestOutputTopic;
+import org.apache.kafka.streams.TopologyConfig;
 import org.apache.kafka.streams.TopologyTestDriver;
 import org.apache.kafka.streams.kstream.Consumed;
+import org.apache.kafka.streams.state.BuiltInDslStoreSuppliers;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -38,6 +40,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * Runs the production rule engine over a recorded event file in emission order, mimicking
@@ -97,18 +103,25 @@ public final class OfflineRunner {
         return new Stats(n, invalid, dups, late, incidents.size() + windowed.size());
     }
 
-    /** The production footfall topology over the accepted events, in arrival order. */
+    /**
+     * The production footfall topology over the accepted events, in arrival order. The driver commits after
+     * every record, and a RocksDB window store flushes on every commit, which made the offline gate spend
+     * minutes per matrix in disk flushes (and the noisy matrices, five to seven times larger, most of an
+     * hour). The DSL stores are therefore in memory here: the same window, grace and suppress code, without
+     * the disk. Production keeps RocksDB.
+     */
     static List<String> footfall(List<String[]> accepted, FootfallConfig cfg) throws IOException {
         Topics topics = new Topics("store.events.v1", "incidents.v1", "incidents.shadow.v1", "rules.heartbeat.v1");
-        StreamsBuilder builder = new StreamsBuilder();
-        FootfallTopology.addTo(builder, builder.stream(topics.validated(), Consumed.with(Serdes.String(), Serdes.String())
-                .withTimestampExtractor(new CloudEventTimestampExtractor())), cfg, topics,
-                new RulesMetrics(new SimpleMeterRegistry()), Duration.ofDays(365));
         Path stateDir = Files.createTempDirectory("offline-footfall");
         Properties p = new Properties();
         p.put(StreamsConfig.APPLICATION_ID_CONFIG, "rules-engine-offline");
         p.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "offline:9092");
         p.put(StreamsConfig.STATE_DIR_CONFIG, stateDir.toString());
+        p.put(StreamsConfig.DSL_STORE_SUPPLIERS_CLASS_CONFIG, BuiltInDslStoreSuppliers.InMemoryDslStoreSuppliers.class);
+        StreamsBuilder builder = new StreamsBuilder(new TopologyConfig(new StreamsConfig(p)));
+        FootfallTopology.addTo(builder, builder.stream(topics.validated(), Consumed.with(Serdes.String(), Serdes.String())
+                .withTimestampExtractor(new CloudEventTimestampExtractor())), cfg, topics,
+                new RulesMetrics(new SimpleMeterRegistry()), Duration.ofDays(365));
         List<String> out = new ArrayList<>();
         try (TopologyTestDriver driver = new TopologyTestDriver(builder.build(), p, Instant.EPOCH)) {
             TestInputTopic<String, String> in =
@@ -142,25 +155,43 @@ public final class OfflineRunner {
         if (a.containsKey("--matrix")) {
             Path dir = Path.of(a.get("--matrix"));
             JsonNode cases = Json.MAPPER.readTree(Files.readAllBytes(dir.resolve("cases.json")));
-            for (JsonNode c : cases) {
-                Path caseDir = Path.of(c.path("dir").asText());
-                writeStats(caseDir, run(caseDir.resolve("events.jsonl"), caseDir.resolve("incidents.jsonl"), engine, footfall));
+            // Cases are independent (own state, own footfall driver, own output files) and the engine holds
+            // only its configuration, so they run in parallel; results are reported in case order.
+            int threads = Integer.parseInt(a.getOrDefault("--threads",
+                    String.valueOf(Math.max(1, Runtime.getRuntime().availableProcessors()))));
+            ExecutorService pool = Executors.newFixedThreadPool(threads);
+            try {
+                List<Future<String>> done = new ArrayList<>();
+                for (JsonNode c : cases) {
+                    Path caseDir = Path.of(c.path("dir").asText());
+                    done.add(pool.submit(() -> writeStats(caseDir,
+                            run(caseDir.resolve("events.jsonl"), caseDir.resolve("incidents.jsonl"), engine, footfall))));
+                }
+                for (Future<String> f : done) {
+                    try {
+                        System.out.println(f.get());
+                    } catch (ExecutionException ex) {
+                        throw ex.getCause() instanceof Exception e ? e : new IllegalStateException(ex.getCause());
+                    }
+                }
+            } finally {
+                pool.shutdownNow();
             }
-            System.out.println("{\"cases\":" + cases.size() + "}");
+            System.out.println("{\"cases\":" + cases.size() + ",\"threads\":" + threads + "}");
         } else {
             Path events = Path.of(required(a, "--events"));
             Path out = Path.of(required(a, "--out"));
             Stats s = run(events, out, engine, footfall);
-            writeStats(out.getParent() == null ? Path.of(".") : out.getParent(), s);
+            System.out.println(writeStats(out.getParent() == null ? Path.of(".") : out.getParent(), s));
         }
     }
 
-    private static void writeStats(Path dir, Stats s) throws IOException {
+    private static String writeStats(Path dir, Stats s) throws IOException {
         ObjectNode n = Json.MAPPER.createObjectNode();
         n.put("events", s.events()).put("invalid", s.invalid()).put("duplicates", s.duplicates())
                 .put("lateDropped", s.late()).put("incidents", s.incidents());
         Files.writeString(dir.resolve("offline_stats.json"), n.toString() + "\n");
-        System.out.println(dir + " " + n);
+        return dir + " " + n;
     }
 
     private static String required(Map<String, String> a, String key) {
