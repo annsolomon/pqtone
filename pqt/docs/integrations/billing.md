@@ -17,7 +17,7 @@ on through the same outbox as the cameras, so a network cut loses nothing.
 | make an HTTP request when a bill is saved | **Push API** on the edge box, canonical JSON, no mapping needed | available |
 | receive payment-gateway webhooks | **Webhook** on the edge box, checked by the gateway's signature | available |
 | be read from its database (a view is enough) | **Database source**: a read-only query with a cursor | available |
-| offer a REST API (cloud billing) | **REST source**: polled with your API key or OAuth | B5d |
+| offer a REST API (cloud billing) | **REST source**: polled with your API key or OAuth | available |
 
 Writing new software, or adding PQT to your own? Send **canonical records** (below) by file drop now, or
 by the push API. Using an existing product (TallyPrime, Zoho, Vyapar, Marg, Busy, GoFrugal, a gateway)?
@@ -186,6 +186,42 @@ Only a single `SELECT` with the `:cursor` parameter is accepted, and the connect
 well. The cursor moves only after the events are safely in the outbox, never past a row that could not be
 read (it is reported until fixed), and a page never splits rows that share a cursor value. Drivers for
 PostgreSQL, MySQL and SQL Server are optional installs (`pip install 'pqt-connectors[postgresql]'`).
+
+## REST source
+
+For cloud billing systems with a JSON API. The edge box polls it; nothing is ever written to it.
+
+```yaml
+# in sources.yaml
+  - id: cloud-pos
+    type: http
+    profile: cloud-pos.yaml        # maps the API's fields (use `each` for invoice lines)
+    baseUrl: https://api.example.com
+    auth:                          # apiKey | bearer | basic | oauth2ClientCredentials | oauth2RefreshToken
+      type: oauth2RefreshToken
+      tokenUrl: https://accounts.example.com/oauth/token
+      clientId: env:CLOUD_POS_CLIENT_ID
+      clientSecret: env:CLOUD_POS_CLIENT_SECRET
+      refreshToken: file:/var/lib/pqt-edge/secrets/cloud-pos.refresh   # rotated tokens are written back here
+    endpoints:
+      bills:
+        path: /v1/invoices
+        params: {status: all}
+        records: data.invoices     # where the list is in each reply
+        pagination: {type: page, param: page, start: 1}   # page | offset | cursor | link | nextUrl | none
+        since: {param: updated_since, cursor: updated_at, format: iso8601,
+                start: "2026-10-01T00:00:00+05:30", lookback: PT10M}
+```
+
+```bash
+pqt-connectors poll --sources sources.yaml --id cloud-pos --store store-001 --key /var/lib/pqt-edge/billing.key \
+  --state /var/lib/pqt-edge/connector-state.db --outbox /var/lib/pqt-edge/outbox.db
+```
+
+Only HTTPS. Credentials are `env:`/`file:` references; a refused OAuth token is renewed once. Redirects and
+next-page links to another host are refused, so credentials never leave the configured host. `429` and
+`503` are retried after `Retry-After`, other server errors with back-off; if the API stays down the poll is
+reported and the next one retries the same window.
 
 ## Mapping an existing export: profiles
 

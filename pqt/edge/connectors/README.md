@@ -15,7 +15,9 @@ software, connects through the canonical records (ADR-037): the guide for the sh
 - **Database (B5c)**: `poll` runs a read-only query per kind with a stored cursor (SQLite built in;
   PostgreSQL, MySQL/MariaDB, SQL Server as optional extras); single SELECT only, read-only connection,
   lookback for late commits, pages never split a cursor value, a bad row holds the cursor.
-- **Records fed by a program** (`Importer.feed`): the REST source (B5d).
+- **REST (B5d)**: `poll` reads a JSON API page by page from a `since` cursor (API key, bearer, basic,
+  OAuth2 client credentials or refresh token with rotation kept in its `file:` secret; page, offset, cursor,
+  link or nextUrl pagination; `Retry-After` and back-off; HTTPS only; redirects and other hosts refused).
 - `profiles/canonical.yaml`: the canonical field names, nothing to map. `profiles/generic-csv.yaml`: the
   generic CSV export below.
 - `check` dry-runs a profile on samples (throw-away key, in-memory state, nothing kept); `suggest` writes a
@@ -65,4 +67,4 @@ then `store-sim export-billing --run run --out exports --shift-to <yesterday>` a
 (event-core takes real billing events up to 35 days old, ADR-036). `make chaos-edge` does exactly this on the
 edge box during the cable test and checks the result end to end (X1 B8).
 
-The REST source follows in B5d, ready profiles for named systems in B5e (ADR-037).
+Ready profiles for named systems in B5e (ADR-037).

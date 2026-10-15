@@ -12,7 +12,7 @@
     pqt-connectors serve --clients push-clients.yaml --store store-001 --key billing.key --state state.db \\
         --outbox outbox.db                                       # the push API on 127.0.0.1:8787 (B5b)
     pqt-connectors poll --sources sources.yaml --id shop-db --store store-001 --key billing.key \\
-        --state state.db --outbox outbox.db                      # one poll of a database source (B5c)
+        --state state.db --outbox outbox.db                      # one poll of a database or REST source
 
 Files may be CSV, XLSX, JSON or NDJSON (ADR-037).
 
@@ -236,20 +236,28 @@ def load_sources(path: str | Path) -> list[dict]:
     return doc["sources"]
 
 
-def _poll(a: argparse.Namespace) -> int:
-    from .sqlsource import SqlSource
+def make_source(cfg: dict, base: Path):
+    """A polling source from its config: `sql` (B5c) or `http` (B5d)."""
+    if cfg.get("type") == "sql":
+        from .sqlsource import SqlSource
 
+        return SqlSource.from_config(cfg, base=base)
+    if cfg.get("type") == "http":
+        from .restsource import RestSource
+
+        return RestSource.from_config(cfg, base=base)
+    raise ValueError(f"source {cfg.get('id')}: type must be sql or http")
+
+
+def _poll(a: argparse.Namespace) -> int:
     cfg = next((s for s in load_sources(a.sources) if s.get("id") == a.id), None)
     if cfg is None:
         print(f"no source {a.id} in {a.sources}", file=sys.stderr)
         return 1
-    if cfg.get("type") != "sql":
-        print(f"source {a.id} is of type {cfg.get('type')!r}; poll runs sql sources", file=sys.stderr)
-        return 1
     if bool(a.outbox) == bool(a.out):
         print("give exactly one of --outbox (the edge outbox) or --out (a JSONL file)", file=sys.stderr)
         return 1
-    src = SqlSource.from_config(cfg, base=Path(a.sources).resolve().parent)
+    src = make_source(cfg, Path(a.sources).resolve().parent)
     state = State(a.state)
     append, close = _sink(a)
     try:
@@ -367,7 +375,7 @@ def main(argv: list[str] | None = None) -> int:
     pc.add_argument("--sig-prefix", help="text before the signature, e.g. sha256=")
     pc.add_argument("--sig-encoding", choices=["hex", "base64"], default="hex")
     pc.set_defaults(fn=_push_client)
-    po = sub.add_parser("poll", help="one poll of a database source from a sources file (B5c)")
+    po = sub.add_parser("poll", help="one poll of a database (B5c) or REST (B5d) source from a sources file")
     po.add_argument("--sources", required=True, help="connector.pqt/v1 sources file")
     po.add_argument("--id", required=True)
     po.add_argument("--store", required=True)
