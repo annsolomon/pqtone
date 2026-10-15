@@ -21,7 +21,10 @@ import java.util.UUID;
  * dwell zone (zone.exited with how=lost) its visit stays open for {@code stitch}; a track that appears in
  * the same zone within that time (zone.entered with how=appeared) continues the visit under the original
  * key, the most recently lost visit first. A visit nobody continues ends at the deadline. Real entries
- * and exits (crossed, or no `how`) behave exactly as in 1.0.0.
+ * and exits (crossed, or no `how`) behave exactly as in 1.0.0. Two details keep hand-overs independent of
+ * delivery: within one instant losses are applied before other tracks' entries ({@link #lostBeforeAppeared}),
+ * and a dwell-zone exit that arrives behind the watermark, though still counted late, ends or hands over a
+ * visit that has not been reported instead of leaving it open until its TTL ({@code lateExit}).
  *
  * <p>This class has no framework dependencies; it is the unit under test and is shared by
  * the Kafka Streams processor and the offline runner.
@@ -72,6 +75,7 @@ public final class RuleEngine {
         if (s.watermarkMs != Long.MIN_VALUE && e.timeMs <= s.watermarkMs) {
             s.lateDropped++;
             out.late = true;
+            if (cfg.dwellStitchMs > 0) lateExit(s, e);
             return out;
         }
         insertSorted(s.buffer, e);
@@ -101,6 +105,7 @@ public final class RuleEngine {
             released.add(next);
             it.remove();
         }
+        if (cfg.dwellStitchMs > 0) released = lostBeforeAppeared(released);
         for (Event ev : released) {
             fireUntil(s, ev.timeMs, false, out);
             apply(s, ev, out);
@@ -108,6 +113,134 @@ public final class RuleEngine {
         }
         fireUntil(s, watermark, true, out);
         s.watermarkMs = watermark;
+    }
+
+    /**
+     * N4: identity switches report the old track lost and the new one appeared at the same instant, in
+     * whichever order the producer sent them. Within one instant the engine applies, so that hand-overs never
+     * depend on that order: first the losses of tracks that do not enter at this instant, then the rest in
+     * (sequence, id) order, each entry followed at once by its own track's exits at this instant (a piece
+     * seen for an instant takes the visit and passes it on). Groups without a loss keep their order, so
+     * replays stay deterministic.
+     */
+    static List<Event> lostBeforeAppeared(List<Event> released) {
+        List<Event> out = null;
+        int i = 0;
+        while (i < released.size()) {
+            long t = released.get(i).timeMs;
+            int j = i + 1;
+            while (j < released.size() && released.get(j).timeMs == t) j++;
+            List<Event> group = released.subList(i, j);
+            List<Event> ordered = j - i > 1 ? handOverOrder(group) : null;
+            if (ordered != null && out == null) out = new ArrayList<>(released.subList(0, i));
+            if (out != null) out.addAll(ordered != null ? ordered : group);
+            i = j;
+        }
+        return out == null ? released : out;
+    }
+
+    /** The order above for one instant, or null when it is the same as the input order. */
+    private static List<Event> handOverOrder(List<Event> group) {
+        Map<String, List<Event>> exitsOf = new java.util.HashMap<>();
+        java.util.Set<String> entering = new java.util.HashSet<>();
+        boolean anyLost = false;
+        for (Event e : group) {
+            if (e.trackId == null) continue;
+            String k = e.trackId + "|" + e.zoneId;
+            if (Event.ZONE_ENTERED.equals(e.type)) entering.add(k);
+            if (Event.ZONE_EXITED.equals(e.type)) {
+                exitsOf.computeIfAbsent(k, x -> new ArrayList<>()).add(e);
+                anyLost |= Event.HOW_LOST.equals(e.how);
+            }
+        }
+        if (!anyLost) return null;
+        List<Event> out = new ArrayList<>(group.size());
+        java.util.Set<Event> placed = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        for (Event e : group) {
+            if (Event.ZONE_EXITED.equals(e.type) && Event.HOW_LOST.equals(e.how) && e.trackId != null
+                    && !entering.contains(e.trackId + "|" + e.zoneId)) {
+                out.add(e);
+                placed.add(e);
+            }
+        }
+        for (Event e : group) {
+            if (!placed.add(e)) continue;
+            out.add(e);
+            if (Event.ZONE_ENTERED.equals(e.type) && e.trackId != null) {
+                for (Event x : exitsOf.getOrDefault(e.trackId + "|" + e.zoneId, List.of())) {
+                    if (placed.add(x)) out.add(x);
+                }
+            }
+        }
+        return out.equals(group) ? null : out;
+    }
+
+    /**
+     * N4: a dwell-zone exit that arrives behind the watermark. It is still counted as late, and it only touches
+     * visits that have not been reported (so nothing is ever dated before its report): it keeps them from
+     * staying open until their TTL and makes the continuation the loss would have made on time.
+     *
+     * <p>A late real exit ends the visit. A late loss is applied as if on time and then re-decides the one
+     * continuation in its stitch window that it would have won: a visit begun since by a track that appeared
+     * (and continued nobody) is joined to the lost visit; a visit continued since from a loss older than this
+     * one gives that continuation up to the lost visit (most recently lost first) and goes back to waiting.
+     * The earliest such continuation is taken. Late entries stay dropped: their track may already be gone.
+     */
+    private void lateExit(StoreState s, Event e) {
+        if (!Event.ZONE_EXITED.equals(e.type) || !cfg.dwell.enabled() || e.zoneId == null || e.trackId == null
+                || !cfg.dwellZones.contains(e.zoneId)) {
+            return;
+        }
+        String raw = e.trackId + "|" + e.zoneId;
+        String key = s.dwellAlias.getOrDefault(raw, raw);
+        StoreState.DwellState held = s.dwell.get(key);
+        if (held == null || held.open || held.lostMs != null || e.timeMs < held.entryMs) return;
+        if (!Event.HOW_LOST.equals(e.how)) {
+            s.dwell.remove(key);
+            removeAliases(s, key);
+            return;
+        }
+        long t = e.timeMs;
+        held.lostMs = t;
+        s.dwellAlias.remove(raw);
+        String suffix = "|" + e.zoneId;
+        String best = null;
+        boolean orphan = false;
+        long bestAt = Long.MAX_VALUE;
+        for (Map.Entry<String, StoreState.DwellState> en : s.dwell.entrySet()) {
+            StoreState.DwellState v = en.getValue();
+            if (v.open || en.getKey().equals(key) || !en.getKey().endsWith(suffix)) continue;
+            Long at = null;
+            boolean isOrphan = false;
+            if (v.appeared && v.entryMs >= t && v.entryMs - t <= cfg.dwellStitchMs) {
+                at = v.entryMs;
+                isOrphan = true;
+            } else if (v.resumedMs != null && v.prevLostMs != null && v.prevLostMs < t
+                    && v.resumedMs >= t && v.resumedMs - t <= cfg.dwellStitchMs) {
+                at = v.resumedMs;
+            }
+            if (at != null && at < bestAt) {
+                best = en.getKey();
+                bestAt = at;
+                orphan = isOrphan;
+            }
+        }
+        if (best == null) return;   // the stitch deadline ends it at the next advance, as an on-time loss would
+        StoreState.DwellState v = s.dwell.get(best);
+        held.prevLostMs = t;
+        held.lostMs = v.lostMs;
+        held.resumedMs = orphan ? (v.resumedMs != null ? v.resumedMs : v.entryMs) : v.resumedMs;
+        boolean carried = s.dwellAlias.containsValue(best);
+        String from = best;
+        s.dwellAlias.replaceAll((k, x) -> x.equals(from) ? key : x);
+        if (orphan) {
+            s.dwell.remove(best);
+            if (v.lostMs == null && !carried) s.dwellAlias.put(best, key);  // its own track still carries the visit
+        } else {
+            v.lostMs = v.prevLostMs;  // back to waiting since its own loss; its deadline may already have passed
+            v.prevLostMs = null;
+            v.resumedMs = null;
+        }
     }
 
     private static void insertSorted(List<Event> buffer, Event e) {
@@ -305,6 +438,7 @@ public final class RuleEngine {
             StoreState.DwellState d = new StoreState.DwellState();
             d.entryMs = e.timeMs;
             d.entryEventId = e.id;
+            d.appeared = Event.HOW_APPEARED.equals(e.how);
             s.dwell.put(key, d);
         } else if (Event.ZONE_EXITED.equals(type) && cfg.dwell.enabled() && e.zoneId != null && e.trackId != null) {
             String raw = e.trackId + "|" + e.zoneId;
@@ -344,6 +478,7 @@ public final class RuleEngine {
         }
         if (best == null) return false;
         StoreState.DwellState d = s.dwell.get(best);
+        d.prevLostMs = d.lostMs;
         d.lostMs = null;
         d.resumedMs = e.timeMs;
         s.dwellAlias.put(e.trackId + suffix, best);

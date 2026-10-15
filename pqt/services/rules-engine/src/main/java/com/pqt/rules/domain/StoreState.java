@@ -43,6 +43,10 @@ public final class StoreState {
         public Long lostMs;
         /** N4: when the visit was last continued by another track (its limit cannot be reported earlier). */
         public Long resumedMs;
+        /** N4: the visit began with a track that appeared inside the zone and continued nobody's visit (yet). */
+        public boolean appeared;
+        /** N4: when it was last continued, the time its previous track had been lost (a late loss may re-decide it). */
+        public Long prevLostMs;
 
         public DwellState() {
         }

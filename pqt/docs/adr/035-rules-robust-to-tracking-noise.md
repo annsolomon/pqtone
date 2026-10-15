@@ -53,6 +53,32 @@ Thresholds stay as they are: the fix belongs in perception and in the rules, not
 Measured profile, with 1-5: every enforce-mode rule P 1.00 / R 1.00 in every scenario. 2× measured:
 R-DWELL-001 restricted_dwell R 0.96, R-QUEUE-001 restricted_dwell P 0.86; everything else 1.00.
 
+## Amendment (2026-10-15): hand-overs independent of delivery
+
+CI ran the rules-engine itself under the measured profile and R-DWELL-001 failed (P/R ≈ 0 in most scenarios)
+where the reference engine had passed. Two delivery details the reference did not model:
+
+1. **Same-instant order.** An identity switch reports the old track `lost` and the new one `appeared` at the
+   same instant, and the producer may send the appearance first (the simulator does; a real zone engine can).
+   The engine releases events in (time, sequence, id) order, so the new track found no lost visit and every
+   visit broke into pieces. Now, within one instant, losses of tracks that do not enter at that instant are
+   applied first; each entry is followed at once by its own track's exits at that instant (a piece seen for an
+   instant takes the visit and passes it on). Everything else keeps its order; replays stay deterministic.
+2. **Late exits.** With ~30 pieces per long visit, a 2% late rate leaves most visits with a `lost` dropped
+   behind the watermark; each left a visit open until its 4 h TTL and reported a 10-minute dwell that never
+   was. A dwell-zone exit behind the watermark is still counted as late, and still never opens an incident,
+   but it now applies to visits **not yet reported**: a real exit ends the visit; a loss is applied as if on
+   time and re-makes the one continuation in its stitch window that it would have won on time (a visit begun
+   since by an appearing track is joined back; a visit continued since from an older loss gives that
+   continuation back, most recently lost first). A reported visit is not touched (nothing is dated before its
+   report). Late entries stay dropped. Only with `stitch` > 0: 1.0.0 behaviour is unchanged.
+
+Thresholds are unchanged. Rules-engine domain classes on the store-sim matrix (10 scenarios × 3 seeds; R-DWELL-001
+and R-QUEUE-001; R-FOOT-001 confirmed by CI): clean all rows ok (R-DWELL 1.00/1.00 everywhere); measured all
+enforce rows ok, R-DWELL 1.00/1.00 except late_beyond_grace P 0.67 / R 1.00 (gate 0.50: one visit reported
+before its late loss arrived, the degradation that scenario measures); 2× measured (reported, not gated):
+R-DWELL late_beyond_grace P 0.20, R-QUEUE restricted_dwell P 0.86 and two queue latency rows.
+
 ## Consequences
 
 - Wrong-person continuation is limited to tracking breaks: a `lost` followed by an `appeared`. Two people
