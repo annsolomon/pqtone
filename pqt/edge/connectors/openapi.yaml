@@ -27,6 +27,7 @@ components:
         events: {type: integer, description: Events handed to the outbox by this request}
         alreadySent: {type: integer, description: Events an earlier request already sent}
         records: {type: object, additionalProperties: {type: integer}, description: Records read per kind}
+        ignored: {type: boolean, description: "Webhooks: an event the client's `only` filter does not accept (acknowledged, not imported)"}
         bills:
           type: object
           properties: {new: {type: integer}, revised: {type: integer}, unchanged: {type: integer}}

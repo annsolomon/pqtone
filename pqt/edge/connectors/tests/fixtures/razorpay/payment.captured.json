@@ -1,0 +1,27 @@
+{
+  "entity": "event",
+  "account_id": "acc_TESTACCOUNT01",
+  "event": "payment.captured",
+  "contains": ["payment"],
+  "payload": {
+    "payment": {
+      "entity": {
+        "id": "pay_TESTPAYMENT01",
+        "entity": "payment",
+        "amount": 54000,
+        "currency": "INR",
+        "status": "captured",
+        "order_id": "order_TESTORDER001",
+        "method": "upi",
+        "captured": true,
+        "description": "Bill payment",
+        "notes": [],
+        "vpa": "someone@upi",
+        "email": "someone@example.com",
+        "contact": "+919000000000",
+        "created_at": 1767242740
+      }
+    }
+  },
+  "created_at": 1767242746
+}

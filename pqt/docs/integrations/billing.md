@@ -19,9 +19,11 @@ on through the same outbox as the cameras, so a network cut loses nothing.
 | be read from its database (a view is enough) | **Database source**: a read-only query with a cursor | available |
 | offer a REST API (cloud billing) | **REST source**: polled with your API key or OAuth | available |
 
-Writing new software, or adding PQT to your own? Send **canonical records** (below) by file drop now, or
-by the push API. Using an existing product (TallyPrime, Zoho, Vyapar, Marg, Busy, GoFrugal, a gateway)?
-A ready profile may exist (B5e); otherwise a profile maps its export in a few minutes.
+Writing new software, or adding PQT to your own? Send **canonical records** (below) through the push API or
+a file drop. Using an existing product? TallyPrime is read directly over its XML/HTTP interface and Razorpay
+payments arrive by webhook, with ready profiles (`edge/connectors/profiles/README.md` says what was verified);
+for anything else (Vyapar, Marg, Busy, GoFrugal, Zoho, a spreadsheet) a profile maps its export, database or
+API in a few minutes, starting from `pqt-connectors suggest`.
 
 ## Canonical records
 

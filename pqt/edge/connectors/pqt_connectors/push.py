@@ -92,6 +92,7 @@ class Client:
     webhook: bool = False
     kind: str | None = None
     canonical: bool = field(default=False)
+    only: dict[str, set[str]] | None = None  # webhooks: path -> accepted values (e.g. event: payment.captured)
 
 
 class Clients:
@@ -134,7 +135,7 @@ def load_clients(path: str | Path) -> Clients:
         if cid in ids:
             raise ValueError(f"{path}: client id {cid} appears twice")
         ids.add(cid)
-        unknown = set(c) - {"id", "tokenSha256", "profile", "kinds", "signature", "webhook", "kind"}
+        unknown = set(c) - {"id", "tokenSha256", "profile", "kinds", "signature", "webhook", "kind", "only"}
         if unknown:
             raise ValueError(f"{path}: client {cid}: unknown key(s) {sorted(unknown)}")
         ppath = Path(c.get("profile", ""))
@@ -161,13 +162,19 @@ def load_clients(path: str | Path) -> Clients:
             th = str(c.get("tokenSha256", ""))
             if len(th) != 64 or any(ch not in "0123456789abcdef" for ch in th):
                 raise ValueError(f"{path}: client {cid} needs tokenSha256 (pqt-connectors push-client add)")
+        only = None
+        if c.get("only") is not None:
+            if not webhook or not isinstance(c["only"], dict) or not all(isinstance(v, list) and v for v in c["only"].values()):
+                raise ValueError(f"{path}: client {cid}: only is for webhooks: a path and the values to accept")
+            only = {str(k): {str(x) for x in v} for k, v in c["only"].items()}
         out.append(Client(cid, prof, str(ppath), c.get("tokenSha256"), kinds, sig, webhook, c.get("kind"),
-                          _is_canonical(prof)))
+                          _is_canonical(prof), only))
     return Clients(out)
 
 
 def add_client(path: str | Path, *, client_id: str, profile: str, kinds: list[str] | None = None,
-               webhook: bool = False, kind: str | None = None, signature: dict | None = None) -> str | None:
+               webhook: bool = False, kind: str | None = None, signature: dict | None = None,
+               only: dict[str, list[str]] | None = None) -> str | None:
     """Add a client to the clients file (mode 600); returns the new token (shown once), None for webhooks."""
     path = Path(path)
     doc = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {"apiVersion": API, "clients": []}
@@ -184,6 +191,8 @@ def add_client(path: str | Path, *, client_id: str, profile: str, kinds: list[st
         entry["kinds"] = kinds
     if signature:
         entry["signature"] = signature
+    if only:
+        entry["only"] = only
     doc.setdefault("clients", []).append(entry)
     _write_private(path, doc)
     load_clients(path)  # refuse to leave a file the server would not start with
@@ -495,6 +504,14 @@ def make_server(clients: Clients, *, store: str, key: bytes, state_path: str | P
             doc = self._parse(raw)
             if doc is MISSING:
                 return
+            if client.only:
+                from .records import text as as_text
+
+                for where_, accepted in client.only.items():
+                    if as_text(resolve_path(doc, where_)) not in accepted:
+                        # Acknowledged (senders retry anything else) but not imported: another kind of event.
+                        return self._send(200, {"events": 0, "alreadySent": 0, "records": {}, "bills": {}, "errors": [],
+                                                "ignored": True})
             where = client.profile.file_opts.get(client.kind, {}).get("path")
             found = resolve_path(doc, where) if where else doc
             records = [found] if isinstance(found, dict) else found

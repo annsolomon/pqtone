@@ -216,8 +216,18 @@ def _push_client(a: argparse.Namespace) -> int:
     sig = None
     if a.sig_header:
         sig = {"header": a.sig_header, "secret": a.sig_secret, "prefix": a.sig_prefix or "", "encoding": a.sig_encoding}
+    only = None
+    if a.only:
+        only = {}
+        for spec in a.only:
+            path_, _, values = spec.partition("=")
+            if not path_ or not values:
+                print("--only takes PATH=VALUE[,VALUE...], e.g. event=payment.captured", file=sys.stderr)
+                return 1
+            only[path_] = values.split(",")
     token = push.add_client(a.clients, client_id=a.id, profile=a.profile,
-                            kinds=a.kinds.split(",") if a.kinds else None, webhook=a.webhook, kind=a.kind, signature=sig)
+                            kinds=a.kinds.split(",") if a.kinds else None, webhook=a.webhook, kind=a.kind, signature=sig,
+                            only=only)
     if token:
         print(f"added {a.id}. Its token, shown only now (the file keeps a hash): give it to the software as\n"
               f"Authorization: Bearer <token>")
@@ -246,7 +256,11 @@ def make_source(cfg: dict, base: Path):
         from .restsource import RestSource
 
         return RestSource.from_config(cfg, base=base)
-    raise ValueError(f"source {cfg.get('id')}: type must be sql or http")
+    if cfg.get("type") == "tally":
+        from .tally import TallySource
+
+        return TallySource.from_config(cfg, base=base)
+    raise ValueError(f"source {cfg.get('id')}: type must be sql, http or tally")
 
 
 def _poll(a: argparse.Namespace) -> int:
@@ -267,8 +281,11 @@ def _poll(a: argparse.Namespace) -> int:
     finally:
         close()
         state.close()
-    print(json.dumps({k: result[k] for k in ("source", "records", "events", "cursors")} | {"errors": len(result["errors"])},
-                     default=str))
+    summary = {k: result[k] for k in ("source", "records", "events") if k in result}
+    summary["cursors"] = result.get("cursors", result.get("cursor"))
+    if "vouchers" in result:
+        summary["vouchers"] = result["vouchers"]
+    print(json.dumps(summary | {"errors": len(result["errors"])}, default=str))
     for e in result["errors"][:20]:
         print(f"  {e['file']} record {e['row']}: {e['error']}", file=sys.stderr)
     return 2 if result["errors"] else 0
@@ -374,8 +391,10 @@ def main(argv: list[str] | None = None) -> int:
     pc.add_argument("--sig-secret", help="env:NAME or file:/path of the shared secret")
     pc.add_argument("--sig-prefix", help="text before the signature, e.g. sha256=")
     pc.add_argument("--sig-encoding", choices=["hex", "base64"], default="hex")
+    pc.add_argument("--only", action="append", help="webhooks: accept only bodies where PATH has one of these values "
+                    "(PATH=V1,V2; e.g. event=payment.captured); others are acknowledged and ignored")
     pc.set_defaults(fn=_push_client)
-    po = sub.add_parser("poll", help="one poll of a database (B5c) or REST (B5d) source from a sources file")
+    po = sub.add_parser("poll", help="one poll of a database, REST or TallyPrime source from a sources file")
     po.add_argument("--sources", required=True, help="connector.pqt/v1 sources file")
     po.add_argument("--id", required=True)
     po.add_argument("--store", required=True)

@@ -1,0 +1,46 @@
+# TallyPrime (X1 B5e, ADR-037): vouchers read from TallyPrime's HTTP server (XML, default port 9000) by the
+# `tally` source; this profile maps the records the adapter builds. Copy it per shop and list that shop's own
+# cash, bank and wallet ledgers under maps.tender: only vouchers' entries in those ledgers become payments.
+# Verified against TallyPrime's integration documentation (2026-10-15): the HTTP server on port 9000 (F1 >
+# Settings > Advanced Configuration), Export requests (TALLYREQUEST Export, TYPE Data), dates as YYYYMMDD,
+# quantities like " 2 Nos", rates like "245.00/Nos". Confirm on the shop's Tally: the voucher type names in
+# use (sales, credit note, purchase), the units, and the ledger names. Tally vouchers carry a date, not a time:
+# events are stamped at the end of the voucher's day.
+apiVersion: connector.pqt/v1
+name: tallyprime
+system: tally
+description: TallyPrime Day Book vouchers through the tally source.
+timezone: Asia/Kolkata
+timestampFormat: iso8601
+currency: INR
+moneyUnit: major
+tillDefault: tally
+files:
+  bills:
+    columns: {billNo: billNo, timestamp: timestamp, till: till, lineNo: lineNo, sku: sku, qty: qty, unit: unit, amount: amount}
+  payments:
+    columns: {billNo: billNo, timestamp: timestamp, till: till, tender: tender, amount: amount, direction: direction}
+  movements:
+    columns: {docNo: docNo, timestamp: timestamp, sku: sku, qty: qty, unit: unit, direction: direction, reason: reason, lineNo: lineNo}
+maps:
+  tender:
+    cash: [cash, cash-in-hand, cash in hand, petty cash]
+    card: [card, card payments, pos card, swipe machine]
+    upi: [upi, upi collections, gpay, phonepe, paytm upi, bhim upi]
+    wallet: [wallet, paytm wallet, amazon pay]
+    credit: []
+    voucher: []
+    other: []
+  unit:
+    pcs: [nos, no, pcs, pc, piece, pieces, unit, units]
+    kg: [kgs, kg, kilogram]
+    g: [gms, gm, gram, grams]
+    l: [ltr, ltrs, litre, litres, liter]
+    ml: [mls]
+    m: [mtr, mtrs, metre, meter]
+    box: [box, boxes, bx]
+    pack: [pkt, pkts, packet, pack]
+    other: []
+  direction: {in: [], out: []}
+  reason: {purchase_receipt: [], sale: [], customer_return: [], supplier_return: [], transfer_in: [], transfer_out: [],
+           adjustment: [], damage: []}
