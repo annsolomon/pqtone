@@ -76,6 +76,8 @@ class State:
             CREATE TABLE IF NOT EXISTS payments (bill TEXT NOT NULL, content TEXT NOT NULL, no INTEGER NOT NULL,
                                                  PRIMARY KEY (bill, content));
             CREATE TABLE IF NOT EXISTS sent (id TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS cursors (source TEXT NOT NULL, kind TEXT NOT NULL, value TEXT NOT NULL,
+                                                PRIMARY KEY (source, kind));
         """)
         # What each bill's current version takes off the shelf, per SKU and unit (added in B8; older state
         # files gain the column and treat their bills as having taken nothing recorded).
@@ -111,6 +113,23 @@ class State:
                                 (ref, rev, h, total, till, stock))
             for (bill, content), no in payments.items():
                 self.db.execute("INSERT OR IGNORE INTO payments (bill, content, no) VALUES (?, ?, ?)", (bill, content, no))
+            self.db.execute("COMMIT")
+        except BaseException:
+            self.db.execute("ROLLBACK")
+            raise
+
+    def cursor(self, source: str, kind: str) -> str | None:
+        """Where a polling source (database, REST) got to for a kind (B5c, B5d)."""
+        row = self.db.execute("SELECT value FROM cursors WHERE source = ? AND kind = ?", (source, kind)).fetchone()
+        return row[0] if row else None
+
+    def set_cursors(self, source: str, values: dict[str, str]) -> None:
+        if not values:
+            return
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            self.db.executemany("INSERT INTO cursors (source, kind, value) VALUES (?, ?, ?) ON CONFLICT (source, kind) "
+                                "DO UPDATE SET value = excluded.value", [(source, k, v) for k, v in values.items()])
             self.db.execute("COMMIT")
         except BaseException:
             self.db.execute("ROLLBACK")

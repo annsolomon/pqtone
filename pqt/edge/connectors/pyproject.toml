@@ -11,6 +11,12 @@ dependencies = ["PyYAML==6.0.2", "jsonschema==4.23.0", "openpyxl==3.1.5", "defus
 
 [project.optional-dependencies]
 test = ["pytest==8.3.3"]
+# Database sources (B5c), installed only on boxes that read that kind of database. psycopg is LGPL-3.0, used
+# unmodified as a library (the binary wheel bundles libpq, PostgreSQL licence); PyMySQL MIT; pyodbc MIT-0 (it
+# needs the database vendor's ODBC driver on the box).
+postgresql = ["psycopg[binary]==3.2.3"]
+mysql = ["PyMySQL==1.1.1"]
+sqlserver = ["pyodbc==5.2.0"]
 
 [project.scripts]
 pqt-connectors = "pqt_connectors.cli:main"

@@ -11,6 +11,8 @@
     pqt-connectors push-client add --clients push-clients.yaml --id shop-pos --profile profiles/canonical.yaml
     pqt-connectors serve --clients push-clients.yaml --store store-001 --key billing.key --state state.db \\
         --outbox outbox.db                                       # the push API on 127.0.0.1:8787 (B5b)
+    pqt-connectors poll --sources sources.yaml --id shop-db --store store-001 --key billing.key \\
+        --state state.db --outbox outbox.db                      # one poll of a database source (B5c)
 
 Files may be CSV, XLSX, JSON or NDJSON (ADR-037).
 
@@ -225,6 +227,45 @@ def _push_client(a: argparse.Namespace) -> int:
     return 0
 
 
+def load_sources(path: str | Path) -> list[dict]:
+    import yaml
+
+    doc = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(doc, dict) or doc.get("apiVersion") != "connector.pqt/v1" or not isinstance(doc.get("sources"), list):
+        raise ValueError(f"{path}: not a connector.pqt/v1 sources file")
+    return doc["sources"]
+
+
+def _poll(a: argparse.Namespace) -> int:
+    from .sqlsource import SqlSource
+
+    cfg = next((s for s in load_sources(a.sources) if s.get("id") == a.id), None)
+    if cfg is None:
+        print(f"no source {a.id} in {a.sources}", file=sys.stderr)
+        return 1
+    if cfg.get("type") != "sql":
+        print(f"source {a.id} is of type {cfg.get('type')!r}; poll runs sql sources", file=sys.stderr)
+        return 1
+    if bool(a.outbox) == bool(a.out):
+        print("give exactly one of --outbox (the edge outbox) or --out (a JSONL file)", file=sys.stderr)
+        return 1
+    src = SqlSource.from_config(cfg, base=Path(a.sources).resolve().parent)
+    state = State(a.state)
+    append, close = _sink(a)
+    try:
+        imp = Importer(src.profile, store=a.store, refs=Refs(load_key(a.key), src.profile.system), state=state,
+                       schemas=a.schemas)
+        result = src.poll(imp, append)
+    finally:
+        close()
+        state.close()
+    print(json.dumps({k: result[k] for k in ("source", "records", "events", "cursors")} | {"errors": len(result["errors"])},
+                     default=str))
+    for e in result["errors"][:20]:
+        print(f"  {e['file']} record {e['row']}: {e['error']}", file=sys.stderr)
+    return 2 if result["errors"] else 0
+
+
 def _reconcile(a: argparse.Namespace) -> int:
     from .reconcile import THRESHOLD_BP, reconcile
 
@@ -326,6 +367,16 @@ def main(argv: list[str] | None = None) -> int:
     pc.add_argument("--sig-prefix", help="text before the signature, e.g. sha256=")
     pc.add_argument("--sig-encoding", choices=["hex", "base64"], default="hex")
     pc.set_defaults(fn=_push_client)
+    po = sub.add_parser("poll", help="one poll of a database source from a sources file (B5c)")
+    po.add_argument("--sources", required=True, help="connector.pqt/v1 sources file")
+    po.add_argument("--id", required=True)
+    po.add_argument("--store", required=True)
+    po.add_argument("--key", required=True)
+    po.add_argument("--state", required=True)
+    po.add_argument("--outbox")
+    po.add_argument("--out")
+    po.add_argument("--schemas")
+    po.set_defaults(fn=_poll)
     r = sub.add_parser("reconcile", help="B6: check a day's billing events against each other and the day totals")
     r.add_argument("--events", nargs="+", required=True, help="JSONL files of X1 events")
     r.add_argument("--tz", default="Asia/Kolkata", help="the store's time zone (business dates)")
