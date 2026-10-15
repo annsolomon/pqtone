@@ -34,7 +34,8 @@ decisions have to hold for every connector, whichever billing system it reads.
    `(source, id)` key. When the source alters a bill, the connector emits the new lines with
    `revision + 1` and a `pos.till.event` of kind `void` for the previous revision; consumers take the
    highest revision per bill. Nothing already stored is updated or deleted.
-5. **B5 system.** The first live connector is chosen when the shop's billing system is known; its
+5. **B5 system.** *Superseded by ADR-037 (open integration: any system through files, a push API, a
+   database or a REST API).* The first live connector is chosen when the shop's billing system is known; its
    transport-specific choices (TallyPrime XML over the LAN, a cloud API with OAuth, or gateway webhooks)
    are recorded in a follow-up ADR.
 
