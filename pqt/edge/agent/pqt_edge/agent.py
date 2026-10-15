@@ -131,7 +131,8 @@ class Agent:
         hb = heartbeat.event(agent_id=self.cfg.agent_id, store=self.cfg.store, session=self.session, seq=self._hb_seq,
                              now_ms=int(time.time() * 1000), started_ms=self.started_ms, cameras=self._camera_rows(),
                              outbox=self.outbox.stats(), state_dir=self.cfg.outbox_path.parent,
-                             clock_offset_ms=self.uplinker.uplink.clock_offset_ms)
+                             clock_offset_ms=self.uplinker.uplink.clock_offset_ms,
+                             connector_status=self.cfg.connector_status_path)
         try:
             self.outbox.append([hb])
         except OutboxFull:

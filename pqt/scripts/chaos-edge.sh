@@ -14,6 +14,12 @@
 # nothing, the daily reconcile over what event-core stored must pass and match the simulator's truth, and the
 # console's sales and payments for that day must show the same figures.
 #
+# X1 B5f rides along too: the connector service (`pqt-connectors run`) runs next to the agent with a push API and a
+# POS database source. While the link is down the shop's POS posts bills to the push API and its database gets
+# more; after the drain both sources must be complete (0 missing, 0 duplicate), a repeated post must add nothing,
+# the service must report both sources healthy, and the agent's heartbeat must carry that health to the console.
+# Those bills are dated the day before the B8 day, so the B8 figures stay exact.
+#
 # CUT_SECONDS defaults to 120 for CI; the plan's full test is `make chaos-edge CUT_SECONDS=1800`.
 # A full disk is covered by the outbox unit tests (OutboxFull); a clock jump needs libfaketime and is not
 # simulated here (A5 reports clock offset instead).
@@ -54,10 +60,20 @@ billing_import() {
     --stock /config/billing/stock.csv --day-totals /config/billing/day.csv --report "/var/lib/pqt-edge/$1"
 }
 
-log "building and starting the simulated camera and the edge agent"
+log "building and starting the simulated camera, the edge agent and the connector service"
 $EDGE build edge-agent
 connector init-key --key /var/lib/pqt-edge/billing.key
-$EDGE up -d cam-sim edge-agent
+# X1 B5f: a push client for the shop's POS (its token stays in the state folder, mode 600) and the POS database.
+SRC_DAY=$(TZ=Asia/Kolkata date -d '2 days ago' +%F)
+cp edge/chaos/sources.yaml edge/chaos/chaos-db.yaml "$W/config/"
+token=$(connector push-client add --clients /var/lib/pqt-edge/push-clients.yaml --id chaos-pos \
+  --profile /app/profiles/canonical.yaml | tail -n 1)
+( umask 077; printf '%s' "$token" > "$W/state/push-token" )
+unset token
+$COMPOSE run --rm --no-deps tools python scripts/chaos_pos.py db --path /work/edge/state/pos.db --day "$SRC_DAY" --count 10 >/dev/null
+pos_push() { $EDGE exec -T connectors python - push --url http://127.0.0.1:8787 --token-file /var/lib/pqt-edge/push-token \
+  --day "$SRC_DAY" --count 30 < scripts/chaos_pos.py; }
+$EDGE up -d cam-sim edge-agent connectors
 agent=$($EDGE ps -q edge-agent)
 net="$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$agent" | tr ' ' '\n' | grep '_edge$')"
 log "agent container ${agent:0:12} on network $net"
@@ -102,6 +118,12 @@ sleep 5
 log "billing: the file connector imports yesterday's exports into the outbox while the link is down"
 billing_import billing-import.json
 log "billing: $(jq_py 'str(d["events"]) + " events, " + str(d["bills"]["new"]) + " bills, " + str(len(d["errors"])) + " rows reported"' < "$W/state/billing-import.json")"
+log "billing: the shop's POS posts 30 bills to the push API and its database gets 10 more (link still down)"
+pushed=$(pos_push)
+log "billing: push API answered $pushed"
+[ "$(echo "$pushed" | jq_py 'd["events"] > 0 and d["failed"] == 0 and d["errors"] == 0')" = "True" ] || {
+  log "the push API did not take the POS's bills"; $EDGE logs --no-color --tail 40 connectors; exit 1; }
+$COMPOSE run --rm --no-deps tools python scripts/chaos_pos.py db --path /work/edge/state/pos.db --day "$SRC_DAY" --count 20 >/dev/null
 
 sleep $((CUT / 3))
 log "camera outage: stopping the simulated camera for 15 s"
@@ -138,8 +160,17 @@ done
 log "billing: importing the same files again (must add nothing)"
 billing_import billing-reimport.json
 log "billing: second import $(jq_py 'str(d["events"]) + " events, " + str(d["bills"]["unchanged"]) + " bills unchanged"' < "$W/state/billing-reimport.json")"
-log "stopping the agent"
+log "billing: the POS posts the same bills again (must add nothing)"
+again=$(pos_push)
+log "billing: push API answered $again"
+[ "$(echo "$again" | jq_py 'd["events"] == 0 and d["failed"] == 0')" = "True" ] || { log "a repeated post added events"; exit 1; }
+health=$(cat "$W/state/connectors-status.json" 2>/dev/null || echo '{}')
+log "billing: connector service health $(echo "$health" | jq_py 'json.dumps([{k: s.get(k) for k in ("id", "ok", "failures", "events")} for s in d.get("sources", [])])')"
+[ "$(echo "$health" | jq_py 'len(d.get("sources", [])) == 2 and all(s["ok"] and s["events"] > 0 for s in d["sources"])')" = "True" ] || {
+  log "a connector source is not healthy"; $EDGE logs --no-color --tail 60 connectors; exit 1; }
+log "stopping the agent, then the connector service"
 $EDGE stop -t 35 edge-agent >/dev/null  # cameras stop, then up to 10 s of draining (drainOnStopSeconds)
+$EDGE stop -t 15 connectors >/dev/null
 status > "$W/reports/status-final.json"
 python3 - "$W/reports/run.json" "$CUT" "${recovery:-null}" <<'PY'
 import json, sys
@@ -147,7 +178,8 @@ json.dump({"cutSeconds": int(sys.argv[2]), "killedMidStream": True, "cameraRecov
           open(sys.argv[1], "w"))
 PY
 $COMPOSE run --rm --no-deps tools python scripts/chaos_edge_check.py --outbox /work/edge/state/outbox.db \
-  --run /work/edge/reports/run.json --out /work/edge/reports/chaos-edge.json --require-source urn:pqt:edge:store-001:pos-file
+  --run /work/edge/reports/run.json --out /work/edge/reports/chaos-edge.json --require-source urn:pqt:edge:store-001:pos-file \
+  --require-source urn:pqt:edge:store-001:pos-custom --require-source urn:pqt:edge:store-001:pos-chaos-db
 
 log "billing: reconcile and ground truth over what event-core stored"
 $COMPOSE run --rm --no-deps tools python scripts/billing_e2e_check.py --run /work/edge/billing-run --day "$BILL_DAY" \

@@ -76,6 +76,8 @@ class AgentConfig:
     heartbeat_every_s: float = 30.0
     # At a clean stop, how long to keep sending what is pending once the cameras have stopped (A4).
     drain_on_stop_s: float = 10.0
+    # X1 B5f: the billing connector service's status file, reported in the heartbeat (edge.heartbeat 1.1.0).
+    connector_status_path: Path | None = None
 
     def client_secret(self) -> str:
         return read_secret(self.client_secret_file, strict=self.strict_secrets)
@@ -107,6 +109,7 @@ def load(path: str | Path) -> AgentConfig:
             cameras=cams, status_path=Path(doc.get("statusPath", "/var/lib/pqt-edge/status.json")),
             status_every_s=float(doc.get("statusEverySeconds", 10)), strict_secrets=strict,
             heartbeat_every_s=float(doc.get("heartbeatEverySeconds", 30)),
-            drain_on_stop_s=float(doc.get("drainOnStopSeconds", 10)))
+            drain_on_stop_s=float(doc.get("drainOnStopSeconds", 10)),
+            connector_status_path=Path(doc["connectorStatusPath"]) if doc.get("connectorStatusPath") else None)
     except KeyError as e:
         raise ConfigError(f"missing setting {e}") from e

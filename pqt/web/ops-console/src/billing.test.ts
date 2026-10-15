@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildSalesChart, dayWindow, describeDay, joinBuckets, localDay, localTime, mainCurrency, minorDigits, money, per100, quantity, summarize, zoneOffsetMs } from "./billing";
-import type { Payments, Sales, Traffic } from "./types";
+import { ago, buildSalesChart, connectorRows, connectorState, dayWindow, describeDay, joinBuckets, localDay, localTime, mainCurrency, minorDigits, money, per100, quantity, summarize, zoneOffsetMs } from "./billing";
+import type { EdgeConnector, EdgeHealth, Payments, Sales, Traffic } from "./types";
 
 const win = { storeId: "store-001", simRunId: null, from: "2026-05-27T18:30:00Z", to: "2026-05-28T18:30:00Z" };
 
@@ -132,5 +132,40 @@ describe("the sales chart", () => {
   it("describes the day in one sentence", () => {
     const summary = summarize(sales, payments, t, "INR");
     expect(describeDay(summary, rows, "INR", "Asia/Kolkata")).toBe("2 bills for ₹180.00, busiest at 10:00 with ₹150.00; the longest queue was 4.");
+  });
+});
+
+describe("billing sources on the edge box (X1 B5f)", () => {
+  const conn = (over: Partial<EdgeConnector>): EdgeConnector => ({
+    id: "shop-db", type: "sql", ok: true, stale: false, failures: 0, lastSuccessAgeSeconds: 40, events: 12, rowErrors: 0, ...over,
+  });
+  const edge = (connectors: EdgeConnector[], stale = false): EdgeHealth => ({
+    storeId: "store-001", generatedAt: "2026-10-15T10:00:00Z", staleAfterSeconds: 120,
+    agents: [{ agentId: "edge-1", source: "urn:pqt:edge:store-001:edge-1", at: "2026-10-15T09:59:40Z", stale, agentVersion: "0.1.0",
+      uptimeSeconds: 60, alarms: [], cameras: [], outbox: {}, connectors, clockOffsetMs: 0 }],
+  });
+
+  it("says plainly how each source is doing", () => {
+    expect(connectorState(conn({}), false)).toEqual({ label: "Working", tone: "ok" });
+    expect(connectorState(conn({ ok: false, failures: 1 }), false)).toEqual({ label: "Retrying (1 failed attempt)", tone: "warn" });
+    expect(connectorState(conn({ ok: false, failures: 4 }), false)).toEqual({ label: "Failing (4 failed attempts)", tone: "bad" });
+    expect(connectorState(conn({ stale: true }), false)).toEqual({ label: "No recent success", tone: "bad" });
+    expect(connectorState(conn({ rowErrors: 3 }), false)).toEqual({ label: "Working, 3 records need fixing", tone: "warn" });
+    expect(connectorState(conn({}), true)).toEqual({ label: "Unknown (edge box silent)", tone: "bad" });
+  });
+
+  it("lists every source of every box, with how long ago it last worked", () => {
+    const rows = connectorRows(edge([conn({}), conn({ id: "push", type: "push", lastSuccessAgeSeconds: null })]));
+    expect(rows.map((r) => [r.id, r.kind, r.lastSuccess])).toEqual([
+      ["shop-db", "Database", "40 s ago"], ["push", "Push API", "not yet"],
+    ]);
+    expect(connectorRows({ ...edge([]), agents: [] })).toEqual([]);
+  });
+
+  it("formats ages for people", () => {
+    expect(ago(5)).toBe("5 s ago");
+    expect(ago(125)).toBe("2 min ago");
+    expect(ago(7300)).toBe("2 h ago");
+    expect(ago(200000)).toBe("2 days ago");
   });
 });

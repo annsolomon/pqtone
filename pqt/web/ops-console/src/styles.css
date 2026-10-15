@@ -266,3 +266,9 @@ th { font-size: var(--s-1); color: var(--ink-2); font-weight: 600; }
 .verdict-info { color: var(--ink-2); }
 .promote-how { margin-top: 10px; }
 .promote-how ol { padding-left: 20px; }
+
+/* X1 B5f: billing source state (the words carry the meaning; colour only reinforces it) */
+.source-state { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-weight: 600; border: 1px solid currentColor; }
+.source-state.tone-ok { color: #0b6b2f; background: #e7f6ec; }
+.source-state.tone-warn { color: #7a4b00; background: #fff4e0; }
+.source-state.tone-bad { color: #9b1c1c; background: #fde8e8; }

@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pqt.local/edge/heartbeat/1.1.0",
+  "title": "com.pqt.edge.heartbeat data",
+  "description": "Health of one edge agent (Tier 2, milestone A5): cameras, outbox, disk and clock. Operational data only: no frames, boxes, tracks or anything about people. Not rule input: the rules engine skips com.pqt.edge.* events. 1.1.0 (X1 B5f) adds the billing connectors' health on the box.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "agentId",
+    "agentVersion",
+    "uptimeSeconds",
+    "cameras",
+    "outbox",
+    "alarms"
+  ],
+  "properties": {
+    "agentId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,64}$"
+    },
+    "agentVersion": {
+      "type": "string",
+      "pattern": "^[0-9A-Za-z.+-]{1,32}$"
+    },
+    "uptimeSeconds": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "cameras": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "cameraId",
+          "connected",
+          "fps",
+          "frames",
+          "readErrors",
+          "reconnects"
+        ],
+        "properties": {
+          "cameraId": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,64}$"
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "fps": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 240
+          },
+          "frames": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "readErrors": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reconnects": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "paused": {
+            "type": "boolean",
+            "description": "Perception paused because the outbox is full of unsent events."
+          }
+        }
+      }
+    },
+    "outbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pending",
+        "rejected",
+        "bytes",
+        "quotaBytes",
+        "oldestPendingAgeMs"
+      ],
+      "properties": {
+        "pending": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rejected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quotaBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "oldestPendingAgeMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "diskFreeBytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "temperatureC": {
+      "type": "number",
+      "minimum": -40,
+      "maximum": 150
+    },
+    "clockOffsetMs": {
+      "type": "integer",
+      "description": "Agent clock minus the server clock (from the ingest response's Date header; second resolution). Positive: the agent is ahead. Absent until the first response."
+    },
+    "alarms": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "clock_offset",
+          "outbox_full",
+          "outbox_rejected",
+          "camera_down",
+          "disk_low",
+          "connector_failing"
+        ]
+      }
+    },
+    "connectors": {
+      "type": "array",
+      "maxItems": 64,
+      "description": "Billing connector sources on the box (pqt-connectors run). Health only: never data, errors or secrets.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "type",
+          "ok",
+          "stale",
+          "failures"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,64}$"
+          },
+          "type": {
+            "enum": [
+              "watch",
+              "sql",
+              "http",
+              "tally",
+              "push"
+            ]
+          },
+          "ok": {
+            "type": "boolean",
+            "description": "The last attempt succeeded."
+          },
+          "stale": {
+            "type": "boolean",
+            "description": "No success for more than three intervals, or the service stopped reporting."
+          },
+          "failures": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Failed attempts in a row."
+          },
+          "lastSuccessAgeSeconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "events": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Events sent since the service started."
+          },
+          "rowErrors": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Records reported (bad data) in the last attempt."
+          }
+        }
+      }
+    }
+  }
+}

@@ -281,6 +281,26 @@ services:
       - ../../.work/edge/state:/var/lib/pqt-edge
     networks: [edge, cameras]
 
+  # X1 B5f: the billing connector service on the same box, writing into the same outbox; no network of its own
+  # (the push API listens on its loopback; the database is a file on the box).
+  connectors:
+    image: pqt/edge-agent:local
+    profiles: [edge]
+    <<: [*logging, *hardened]
+    user: "${PQT_UID:-1000}:${PQT_GID:-1000}"
+    read_only: true
+    tmpfs: [/tmp]
+    network_mode: none
+    environment:
+      HOME: /tmp
+    entrypoint: ["pqt-connectors"]
+    command: ["run", "--sources", "/config/sources.yaml", "--store", "store-001", "--key", "/var/lib/pqt-edge/billing.key",
+              "--state", "/var/lib/pqt-edge/connector-state.db", "--outbox", "/var/lib/pqt-edge/outbox.db",
+              "--schemas", "/app/schemas", "--status", "/var/lib/pqt-edge/connectors-status.json"]
+    volumes:
+      - ../../.work/edge/config:/config:ro
+      - ../../.work/edge/state:/var/lib/pqt-edge
+
   # ------------------------------------------------------------------ observability
   jaeger:
     image: jaegertracing/all-in-one:1.62.0

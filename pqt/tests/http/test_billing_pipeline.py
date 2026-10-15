@@ -14,7 +14,7 @@ import pytest
 from conftest import login
 
 REPORT = os.environ.get("PQT_BILLING_E2E")
-pytestmark = pytest.mark.skipif(not REPORT, reason="runs inside make chaos-edge (X1 B8), after the billing import")
+pytestmark = pytest.mark.skipif(not REPORT, reason="runs inside make chaos-edge (X1 B8, B5f), after the billing import")
 IST = timezone(timedelta(hours=5, minutes=30))
 
 
@@ -70,3 +70,16 @@ def test_the_consoles_stock_for_the_imported_day_has_every_sku_that_moved():
     sold = [s for s in skus if s["outByReason"].get("sale")]
     assert sold, "bills take stock off the shelf"
     assert all(s["level"] is not None for s in sold), "every SKU sold has a reported level from the billing system"
+
+
+def test_the_edge_boxs_billing_sources_are_reported_healthy_on_the_console():
+    """X1 B5f: the connector service's health, carried by the agent's heartbeat (edge.heartbeat 1.1.0)."""
+    v = login("viewer")
+    r = v.get("/api/stores/store-001/edge")
+    assert r.status_code == 200, r.text
+    agents = {a["agentId"]: a for a in r.json()["agents"]}
+    assert "edge-chaos" in agents, list(agents)
+    conns = {c["id"]: c for c in agents["edge-chaos"]["connectors"]}
+    assert set(conns) == {"push", "chaos-db"}, conns
+    assert conns["chaos-db"]["ok"] and conns["chaos-db"]["events"] > 0 and conns["chaos-db"]["failures"] == 0
+    assert conns["push"]["ok"] and conns["push"]["type"] == "push"

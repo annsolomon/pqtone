@@ -101,6 +101,43 @@ components:
               amountMinor: {type: [integer, "null"], format: int64, description: Till events only}
               currency: {type: [string, "null"], description: Till events only}
         truncated: {type: boolean, description: More than 5000 points matched; the series stops at the limit}
+    EdgeHealth:
+      type: object
+      required: [storeId, generatedAt, staleAfterSeconds, agents]
+      properties:
+        storeId: {type: string}
+        generatedAt: {type: string, format: date-time}
+        staleAfterSeconds: {type: integer}
+        agents:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            properties:
+              agentId: {type: string}
+              source: {type: string}
+              at: {type: string, format: date-time, description: Event time of the agent's latest heartbeat}
+              stale: {type: boolean, description: No heartbeat for longer than staleAfterSeconds}
+              agentVersion: {type: string}
+              uptimeSeconds: {type: integer}
+              alarms: {type: array, items: {type: string}}
+              cameras: {type: array, items: {type: object}}
+              outbox: {type: object}
+              connectors:
+                type: array
+                description: Billing connector sources on the box (edge.heartbeat 1.1.0); empty for older agents
+                items:
+                  type: object
+                  properties:
+                    id: {type: string}
+                    type: {type: string, enum: [watch, sql, http, tally, push]}
+                    ok: {type: boolean}
+                    stale: {type: boolean}
+                    failures: {type: integer}
+                    lastSuccessAgeSeconds: {type: [integer, "null"]}
+                    events: {type: integer}
+                    rowErrors: {type: integer}
+              clockOffsetMs: {type: [integer, "null"]}
     ReviewMetrics:
       type: object
       required: [days, generatedAt, rules]
@@ -349,6 +386,19 @@ paths:
           description: OK
           content: {application/json: {schema: {$ref: "#/components/schemas/Payments"}}}
         "400": {description: A parameter is invalid}
+  /api/stores/{storeId}/edge:
+    get:
+      summary: The store's edge boxes and their billing connectors (X1 B5f)
+      description: The latest heartbeat of each edge agent of the store in the last 7 days, with cameras, outbox, alarms and billing connector health. Operational data only.
+      security: [{session: []}]
+      parameters: [{name: storeId, in: path, required: true, schema: {type: string, pattern: "^[a-z0-9-]{1,64}$"}}]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EdgeHealth"}
+        "400": {description: Invalid store id}
   /api/stores/{storeId}/traffic:
     get:
       summary: Visitors and queue lengths in the same buckets as the sales (X1 B7)

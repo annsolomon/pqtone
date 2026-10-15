@@ -62,3 +62,21 @@ money, idempotent ids, revisions) lives in that importer, not in the CSV reader.
   in any event or log line.
 - Live sources run in the edge connector service (B5f) with their state beside the outbox, so a network
   cut never loses or duplicates billing data (the cable test covers them).
+
+## Amendment (2026-10-15, B5f): running the sources and reporting their health
+
+- **One service per box.** `pqt-connectors run` runs every source in a `connector.pqt/v1` sources file (`watch`,
+  `sql`, `http`, `tally`, `push`) on its own schedule, sharing one importer state written by one source at a time
+  (the push API takes the same lock). A failing source backs off (interval x 2^failures, at most 15 minutes);
+  the others carry on.
+- **Health without data.** The service writes a status file on the box (mode 600) with each source's state and
+  last error (value-free). The edge agent reads it into its heartbeat, which becomes `edge.heartbeat` 1.1.0
+  (additive: a `connectors` array and the alarm `connector_failing`; schema-compat passes). The heartbeat carries
+  only ok, stale, failures in a row, seconds since the last success, events sent and rows reported, never error
+  text, data or secrets. A source failing three times in a row, without success for three intervals, or a
+  service that stopped updating its file for 10 minutes raises `connector_failing`.
+- **On the console.** `GET /api/stores/{id}/edge` (viewer) returns each edge agent's latest heartbeat of the last
+  7 days; the Sales page lists the billing sources with their state in words.
+- **In the cable test.** `make chaos-edge` runs the service next to the agent with a push API and a POS database
+  source; both must come through the cut with 0 missing and 0 duplicate events, a repeated post must add nothing,
+  and the console must show both sources healthy.

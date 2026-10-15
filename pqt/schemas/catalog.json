@@ -99,6 +99,10 @@
         {
           "dataschema": "https://schemas.pqt.local/edge/heartbeat/1.0.0",
           "file": "data/edge.heartbeat-1.0.0.schema.json"
+        },
+        {
+          "dataschema": "https://schemas.pqt.local/edge/heartbeat/1.1.0",
+          "file": "data/edge.heartbeat-1.1.0.schema.json"
         }
       ],
       "subjectPattern": "^edge:[a-z0-9-]{1,64}$"

@@ -225,6 +225,31 @@ next-page links to another host are refused, so credentials never leave the conf
 `503` are retried after `Retry-After`, other server errors with back-off; if the API stays down the poll is
 reported and the next one retries the same window.
 
+## Running it on the edge box
+
+All sources of a shop go in one sources file, and one service runs them, each on its own schedule:
+
+```yaml
+# /etc/pqt/sources.yaml
+apiVersion: connector.pqt/v1
+sources:
+  - {id: drop, type: watch, dir: /srv/billing-drop, profile: /app/profiles/canonical.yaml, interval: 30}
+  - {id: shop-pos, type: push, clients: /etc/pqt/push-clients.yaml, bind: 127.0.0.1, port: 8787}
+  - {id: shop-db, type: sql, interval: 60, ...}      # as in "Database source"
+  - {id: cloud-pos, type: http, interval: 300, ...}  # as in "REST source"
+```
+
+```bash
+pqt-connectors run --sources /etc/pqt/sources.yaml --store store-001 --key /var/lib/pqt-edge/billing.key \
+  --state /var/lib/pqt-edge/connector-state.db --outbox /var/lib/pqt-edge/outbox.db \
+  --status /var/lib/pqt-edge/connectors-status.json
+```
+
+A source that fails retries later (twice as long each time, at most every 15 minutes) while the others carry
+on. Each source's health (working, retrying, failing, no recent success) reaches the PQT console through the
+edge box's heartbeat and shows on the Sales page under "Billing sources"; the details of an error stay in the
+status file on the box.
+
 ## Mapping an existing export: profiles
 
 A profile (YAML) says where each canonical field is in your files. Start from a sample with fake data:

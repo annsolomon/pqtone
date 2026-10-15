@@ -11,6 +11,8 @@
     pqt-connectors push-client add --clients push-clients.yaml --id shop-pos --profile profiles/canonical.yaml
     pqt-connectors serve --clients push-clients.yaml --store store-001 --key billing.key --state state.db \\
         --outbox outbox.db                                       # the push API on 127.0.0.1:8787 (B5b)
+    pqt-connectors run --sources sources.yaml --store store-001 --key billing.key --state state.db \\
+        --outbox outbox.db --status connectors-status.json   # every source, on its schedule (B5f)
     pqt-connectors poll --sources sources.yaml --id shop-db --store store-001 --key billing.key \\
         --state state.db --outbox outbox.db                      # one poll of a database or REST source
 
@@ -291,6 +293,35 @@ def _poll(a: argparse.Namespace) -> int:
     return 2 if result["errors"] else 0
 
 
+def _run(a: argparse.Namespace) -> int:
+    import signal
+    import threading
+
+    from .service import Service
+
+    if bool(a.outbox) == bool(a.out):
+        print("give exactly one of --outbox (the edge outbox) or --out (a JSONL file)", file=sys.stderr)
+        return 1
+    if a.outbox:
+        from pqt_edge.outbox import Outbox  # one connection, used under the service's import lock
+
+        box = Outbox(a.outbox)
+        sink, close = box.append, box.close
+    else:
+        sink, close = _sink(a)
+    svc = Service.from_file(a.sources, store=a.store, key=load_key(a.key), state_path=a.state, sink=sink,
+                            schemas=a.schemas, status_path=a.status)
+    stop = threading.Event()
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    signal.signal(signal.SIGINT, lambda *_: stop.set())
+    print(json.dumps({"running": [{"id": j.id, "type": j.type, "interval": j.interval} for j in svc.jobs]}), flush=True)
+    try:
+        svc.run(stop)
+    finally:
+        close()
+    return 0
+
+
 def _reconcile(a: argparse.Namespace) -> int:
     from .reconcile import THRESHOLD_BP, reconcile
 
@@ -404,6 +435,16 @@ def main(argv: list[str] | None = None) -> int:
     po.add_argument("--out")
     po.add_argument("--schemas")
     po.set_defaults(fn=_poll)
+    rn = sub.add_parser("run", help="run every source in a sources file on its schedule, with health (B5f)")
+    rn.add_argument("--sources", required=True)
+    rn.add_argument("--store", required=True)
+    rn.add_argument("--key", required=True)
+    rn.add_argument("--state", required=True)
+    rn.add_argument("--outbox")
+    rn.add_argument("--out")
+    rn.add_argument("--schemas")
+    rn.add_argument("--status", help="health file for the edge agent's heartbeat (default: none)")
+    rn.set_defaults(fn=_run)
     r = sub.add_parser("reconcile", help="B6: check a day's billing events against each other and the day totals")
     r.add_argument("--events", nargs="+", required=True, help="JSONL files of X1 events")
     r.add_argument("--tz", default="Asia/Kolkata", help="the store's time zone (business dates)")

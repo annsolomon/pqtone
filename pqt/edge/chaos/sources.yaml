@@ -1,0 +1,25 @@
+# Billing connector sources for `make chaos-edge` (X1 B5f): the shop's own POS posting to the push API, and a POS
+# database polled with a cursor. Run by `pqt-connectors run` in the connectors container next to the agent.
+apiVersion: connector.pqt/v1
+sources:
+  - id: push
+    type: push
+    clients: /var/lib/pqt-edge/push-clients.yaml   # written by the script (push-client add); mode 600
+    bind: 127.0.0.1
+    port: 8787
+  - id: chaos-db
+    type: sql
+    profile: chaos-db.yaml
+    driver: sqlite
+    dsn: /var/lib/pqt-edge/pos.db
+    interval: 5
+    queries:
+      bills:
+        sql: |
+          SELECT b.bill_no, b.billed_at, b.counter, l.line_no, l.item_code, l.qty, l.uom, l.net, b.modified_at
+            FROM bills b JOIN bill_lines l ON l.bill_no = b.bill_no
+           WHERE b.modified_at > :cursor
+           ORDER BY b.modified_at, b.bill_no, l.line_no
+        cursor: modified_at
+        start: "2000-01-01 00:00:00"
+        lookback: PT1M

@@ -349,12 +349,12 @@ def make_server(clients: Clients, *, store: str, key: bytes, state_path: str | P
                 tls: tuple[str, str] | None = None, allow_insecure_lan: bool = False, max_body: int = 5 * 1024 * 1024,
                 rate: tuple[float, int] = (10.0, 20), records_schema: str | Path | None = None,
                 log: Callable[[str], None] | None = None, request_timeout: float = REQUEST_TIMEOUT_S,
-                max_connections: int = MAX_CONNECTIONS) -> ThreadingHTTPServer:
+                max_connections: int = MAX_CONNECTIONS, import_lock: threading.Lock | None = None) -> ThreadingHTTPServer:
     if not _loopback(bind) and tls is None and not allow_insecure_lan:
         raise ValueError(f"binding to {bind} exposes the push API to the shop network: give a TLS certificate and key "
                          "(or --insecure-lan on a closed, trusted network)")
     schema_doc, schema_validator = _records_schema(records_schema)
-    import_lock = threading.Lock()
+    import_lock = import_lock or threading.Lock()  # shared with the connector service's other sources (one state writer)
     bucket = Bucket(*rate)
     emit = log or (lambda line: print(line, file=sys.stderr, flush=True))
 

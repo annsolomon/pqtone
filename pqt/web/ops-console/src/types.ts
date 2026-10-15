@@ -255,3 +255,36 @@ export interface Traffic extends BillingWindow {
   buckets: TrafficBucket[];
   truncated: boolean;
 }
+
+/** X1 B5f: one billing connector source on an edge box, from the box's heartbeat (edge.heartbeat 1.1.0). */
+export interface EdgeConnector {
+  id: string;
+  type: "watch" | "sql" | "http" | "tally" | "push";
+  ok: boolean;
+  stale: boolean;
+  failures: number;
+  lastSuccessAgeSeconds?: number | null;
+  events?: number;
+  rowErrors?: number;
+}
+
+export interface EdgeAgent {
+  agentId: string;
+  source: string;
+  at: string;
+  stale: boolean;
+  agentVersion: string;
+  uptimeSeconds: number;
+  alarms: string[];
+  cameras: unknown[];
+  outbox: Record<string, number>;
+  connectors: EdgeConnector[];
+  clockOffsetMs: number | null;
+}
+
+export interface EdgeHealth {
+  storeId: string;
+  generatedAt: string;
+  staleAfterSeconds: number;
+  agents: EdgeAgent[];
+}

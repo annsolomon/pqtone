@@ -151,6 +151,10 @@ def test_the_sales_page_opens_a_simulated_day_and_shows_billing_next_to_the_came
             expect(stock.get_by_role("row", name=re.compile("E2E-RICE"))).to_contain_text("2 kg sold")
             expect(stock.get_by_role("row", name=re.compile("E2E-RICE"))).to_contain_text("50 kg at 09:30")
 
+            # X1 B5f: the billing sources panel (store 002 has no edge box: it says so).
+            sources = page.get_by_role("region", name="Billing sources")
+            expect(sources).to_contain_text("No edge box has reported for this store")
+
             report = AxeReport()
             report.scan(page, "sales")
             report.write(Path(REPORTS) / "axe-sales")

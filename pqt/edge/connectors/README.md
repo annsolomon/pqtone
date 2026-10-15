@@ -5,6 +5,11 @@ cameras send, through the same edge outbox. Data rules: ADR-033. Any billing sys
 software, connects through the canonical records (ADR-037): the guide for the shop's developer is
 `docs/integrations/billing.md`, the schema `pqt_connectors/schemas/records.schema.json`.
 
+## Running every source (B5f)
+
+`run` runs a sources file's sources on their schedules with back-off and writes a health file that the edge
+agent puts into its heartbeat (edge.heartbeat 1.1.0); the console shows it under "Billing sources".
+
 ## Sources (B5a)
 
 - **Files**: CSV, XLSX, JSON (a list, an object holding lists, or nested invoices with `each`), NDJSON;
