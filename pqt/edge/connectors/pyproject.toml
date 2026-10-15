@@ -4,8 +4,10 @@ version = "0.1.0"
 description = "PQT billing connectors (X1): billing-system exports to X1 CloudEvents through the edge outbox"
 requires-python = ">=3.12"
 # PyYAML (MIT) for profiles, jsonschema (MIT) for pre-send validation; both already used by store-sim.
+# openpyxl (MIT, with et-xmlfile, MIT) reads Excel sources (B5a); defusedxml (PSF-2.0) makes openpyxl's XML
+# parsing refuse entity expansion and external entities, and parses TallyPrime XML later (B5e). ADR-037.
 # The edge outbox comes from pqt-edge, installed on the box; it is imported only with --outbox.
-dependencies = ["PyYAML==6.0.2", "jsonschema==4.23.0"]
+dependencies = ["PyYAML==6.0.2", "jsonschema==4.23.0", "openpyxl==3.1.5", "defusedxml==0.7.1"]
 
 [project.optional-dependencies]
 test = ["pytest==8.3.3"]

@@ -1,7 +1,19 @@
 # Billing connectors (`pqt-connectors`)
 
 X1 (`docs/plans/x1-billing-sync.md`): the shop's billing data, as the same kind of CloudEvents the
-cameras send, through the same edge outbox. Data rules: ADR-033.
+cameras send, through the same edge outbox. Data rules: ADR-033. Any billing system, including a shop's own
+software, connects through the canonical records (ADR-037): the guide for the shop's developer is
+`docs/integrations/billing.md`, the schema `schemas/records.schema.json`.
+
+## Sources (B5a)
+
+- **Files**: CSV, XLSX, JSON (a list, an object holding lists, or nested invoices with `each`), NDJSON;
+  `import` once, or `watch` a drop folder (`done/`, `failed/` with a report per file).
+- **Records fed by a program** (`Importer.feed`): the push API, database and REST sources (B5b-B5d).
+- `profiles/canonical.yaml`: the canonical field names, nothing to map. `profiles/generic-csv.yaml`: the
+  generic CSV export below.
+- `check` dry-runs a profile on samples (throw-away key, in-memory state, nothing kept); `suggest` writes a
+  starting profile from a sample's column names and lists what it left out.
 
 ## File connector (B4)
 
@@ -47,4 +59,4 @@ then `store-sim export-billing --run run --out exports --shift-to <yesterday>` a
 (event-core takes real billing events up to 35 days old, ADR-036). `make chaos-edge` does exactly this on the
 edge box during the cable test and checks the result end to end (X1 B8).
 
-Live connectors for a specific billing system (B5) wait for the shop's choice of system.
+Push API, database and REST sources follow in B5b-B5d, ready profiles for named systems in B5e (ADR-037).
