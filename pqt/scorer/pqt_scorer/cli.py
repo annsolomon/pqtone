@@ -70,7 +70,25 @@ def cmd_offline(a) -> int:
     write_reports(a.out, results, extra)
     (Path(a.out) / "baseline.candidate.json").write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
     print((Path(a.out) / "score.md").read_text())
+    if a.report_only:
+        return 0
     return 0 if all(not r["failures"] for r in results) and not extra else 1
+
+
+def cmd_noise_report(a) -> int:
+    from .noise import compare, render
+
+    runs = []
+    for spec in a.run:
+        label, _, path = spec.partition("=")
+        runs.append((label, json.loads((Path(path) / "score.json").read_text())))
+    doc = compare(runs, gate_label=a.gate_label)
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "noise.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+    (out / "noise.md").write_text(render(doc))
+    print(render(doc))
+    return 0 if (not a.gate or doc["gate"]["passed"]) else 1
 
 
 def _connect():
@@ -118,8 +136,14 @@ def cmd_e2e(a) -> int:
     incidents = [{"ruleId": r, "mode": mo, "storeId": s, "key": k, "detectedMs": int(d), "kind": "OPENED"}
                  for r, mo, s, k, d in rows]
     gt = read_jsonl(case / "ground_truth.jsonl")
+    rule_ids = [r for r in RULES if not getattr(a, "only", None) or r in a.only.split(",")]
+    if getattr(a, "only", None) and set(a.only.split(",")) - set(RULES):
+        print(f"unknown rule ids in --only: {sorted(set(a.only.split(',')) - set(RULES))}", file=sys.stderr)
+        return 2
+    gt = [g for g in gt if g["ruleId"] in rule_ids]
+    incidents = [i for i in incidents if i["ruleId"] in rule_ids]
     per = score(gt, incidents, tolerance_before_ms=dur_ms(m["toleranceBefore"]),
-                max_latency_ms=dur_ms(m["maxLatency"]), rule_ids=RULES)
+                max_latency_ms=dur_ms(m["maxLatency"]), rule_ids=rule_ids)
     scenario = manifest["scenario"]
     modes = _rule_modes(gt, incidents)
     results = []
@@ -138,7 +162,7 @@ def cmd_e2e(a) -> int:
         import psycopg
 
         data = score_rows(results, run_id=run_id, scenario=scenario, versions=rule_versions(a.rules),
-                          gates={r: (g.precision, g.recall) for r in RULES
+                          gates={r: (g.precision, g.recall) for r in rule_ids
                                  for g in [gate_for(thresholds, scenario, r)]}, conf=conf)
         with psycopg.connect(os.environ["PQT_DB_APP_DSN"], autocommit=True) as wconn:
             print(f"recorded {write_scores(wconn, data)} rule scores for {run_id} in pqt.rule_score")
@@ -213,7 +237,14 @@ def main(argv: list[str] | None = None) -> int:
     o.add_argument("--thresholds", default="scorer/thresholds.yaml")
     o.add_argument("--baseline", default="scorer/baseline.json")
     o.add_argument("--out", required=True)
+    o.add_argument("--report-only", action="store_true", help="write the reports but always exit 0 (N3 noise runs)")
     o.set_defaults(fn=cmd_offline)
+    nr = sub.add_parser("noise-report", help="compare offline scores across noise profiles (Tier 2 N3)")
+    nr.add_argument("--run", action="append", required=True, help="label=report-dir (holding score.json); repeat")
+    nr.add_argument("--gate-label", default="measured", help="the profile the rules must hold under (N4)")
+    nr.add_argument("--gate", action="store_true", help="exit 1 when any gated rule fails under --gate-label")
+    nr.add_argument("--out", required=True)
+    nr.set_defaults(fn=cmd_noise_report)
     e = sub.add_parser("e2e", help="score a live run from PostgreSQL")
     e.add_argument("--case-dir", required=True)
     e.add_argument("--thresholds", default="scorer/thresholds.yaml")
@@ -221,6 +252,8 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("--out", required=True)
     e.add_argument("--record", action="store_true", help="record the score per rule in pqt.rule_score (R6)")
     e.add_argument("--rules", default="config/rules.yaml", help="rules file the run was simulated with")
+    e.add_argument("--only", help="comma-separated rule ids to score (default: all); see ADR-011 for why a replay "
+                                  "after other runs in the same stack cannot score R-FOOT-001")
     e.set_defaults(fn=cmd_e2e)
     st = sub.add_parser("stored", help="check a run's events are all stored exactly once (HTTP sink e2e)")
     st.add_argument("--case-dir", required=True)

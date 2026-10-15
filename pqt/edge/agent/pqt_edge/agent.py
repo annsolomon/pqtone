@@ -122,4 +122,13 @@ class Agent:
             log.info("status %s", json.dumps({"outbox": self.outbox.stats(), "uplink": self.uplinker.metrics}))
         for t in threads:
             t.join(timeout=10)
+        self._drain_on_stop(threads[-1])
         self.cfg.status_path.write_text(json.dumps(self.status(), indent=2) + "\n", encoding="utf-8")
+
+    def _drain_on_stop(self, uplink_thread: threading.Thread) -> None:
+        """The cameras have stopped, so nothing new is produced: send what the last seconds left pending, if
+        event-core answers, instead of leaving it for the next start (A4 found the race at stop)."""
+        if self.cfg.drain_on_stop_s <= 0 or uplink_thread.is_alive():
+            return  # an uplink thread still busy (a long back-off) keeps the outbox to itself
+        d = self.uplinker.drain(self.cfg.drain_on_stop_s)
+        log.info("stop: sent %d pending events (%s); %d left for the next start", d["sent"], d["outcome"], d["pending"])

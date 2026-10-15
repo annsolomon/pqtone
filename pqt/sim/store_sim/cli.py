@@ -33,14 +33,40 @@ def cmd_run(a) -> int:
     return 0
 
 
+def _noisy_scenarios(a, scenarios: list[str]) -> dict[str, str]:
+    """Tier 2 N3: copies of the scenarios with faults.vision pointing at the (optionally scaled) profile."""
+    from . import vision_noise
+
+    work = Path(a.out) / "_noise"
+    work.mkdir(parents=True, exist_ok=True)
+    profile = yaml.safe_load(Path(a.noise_profile).read_text())
+    if a.noise_scale != 1.0:
+        profile = vision_noise.scale(profile, a.noise_scale)
+    errors = vision_noise.validate(profile)
+    if errors:
+        raise SystemExit(f"noise profile invalid: {errors}")
+    prof_path = work / f"{profile['name']}.yaml"
+    prof_path.write_text(yaml.safe_dump(profile, sort_keys=False))
+    out = {}
+    for sc in scenarios:
+        doc = yaml.safe_load(Path(f"{a.scenarios_dir}/{sc}.yaml").read_text())
+        doc.setdefault("faults", {})["vision"] = {"profile": str(prof_path.resolve())}
+        path = work / f"{sc}.yaml"
+        path.write_text(yaml.safe_dump(doc, sort_keys=False))
+        out[sc] = str(path)
+    return out
+
+
 def cmd_matrix(a) -> int:
     matrix = yaml.safe_load(Path(a.matrix).read_text())
     cases = []
+    paths = {sc: f"{a.scenarios_dir}/{sc}.yaml" for sc in matrix["scenarios"]}
+    if a.noise_profile:
+        paths = _noisy_scenarios(a, matrix["scenarios"])
     for sc in matrix["scenarios"]:
         for seed in matrix["seeds"]:
             case_dir = Path(a.out) / f"{sc}-{seed}"
-            out = simulate(seed=seed, layout_path=a.layout, scenario_path=f"{a.scenarios_dir}/{sc}.yaml",
-                           rules_path=a.rules)
+            out = simulate(seed=seed, layout_path=a.layout, scenario_path=paths[sc], rules_path=a.rules)
             write_files(out, case_dir)
             cases.append({"scenario": sc, "seed": seed, "dir": str(case_dir), "runId": out.run_id,
                           "groundTruth": len(out.ground_truth)})
@@ -77,6 +103,8 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("--matrix", default="scorer/matrix.yaml")
     m.add_argument("--scenarios-dir", default="sim/scenarios")
     m.add_argument("--out", required=True)
+    m.add_argument("--noise-profile", help="apply this vision noise profile to every scenario (Tier 2 N3)")
+    m.add_argument("--noise-scale", type=float, default=1.0, help="multiply the profile's error rates (N3: 2)")
     m.set_defaults(fn=cmd_matrix)
 
     d = sub.add_parser("verify-determinism", help="run the same seed twice and compare hashes")
