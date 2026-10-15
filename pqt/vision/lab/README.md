@@ -1,7 +1,7 @@
 # vision-lab (`pqt-vision`)
 
 Tier 2, Project 6. Turns camera video into the same CloudEvents store-sim produces. Plan:
-`docs/plans/tier-2-real-vision.md`. Decisions: ADR-012 (detector, licences), ADR-013 (MOT17 terms).
+`docs/plans/tier-2-real-vision.md`. Decisions: ADR-012 (detector, licences), ADR-013 (MOT17 terms), ADR-032 (MOT20 as the tuning set).
 Privacy: `docs/privacy/vision-data.md`.
 
 ```
@@ -19,7 +19,13 @@ make dev-setup                                   # installs pqt-vision into .ven
 .venv/bin/pqt-vision cache-info vision/lab/data/runs/r1/clip
 .venv/bin/pqt-vision eval-det --seq <MOT17 sequence dir> --dets <cache dir>
 .venv/bin/pqt-vision bench-mot17 --root <MOT17/train> --model yolox_s --out .work/vision-bench/yolox_s
+.venv/bin/pqt-vision tune --root <MOT20/train> --model yolox_s --out .work/vision-tune/yolox_s-roi
+.venv/bin/pqt-vision bench-mot17 ... --mode roi --setting vision/lab/config/tuned/yolox_s-roi.json
 ```
+
+`tune` (V7 part 2) chooses the tracker and zone-timing setting on MOT20, the development set, and writes
+`setting.json`; the MOT17 bench then runs with that setting. MOT17 results never feed back into the choice.
+Every run is logged in `experiments.md`.
 
 `detect` writes a part file every `--chunk` frames; running it again with the same `--out` resumes and
 refuses to mix detector settings. Detections are cached at a low threshold (0.05) so the operating
@@ -31,6 +37,7 @@ threshold can be chosen later without re-running the model.
 |---|---|
 | Unit tests (synthetic frames only) | `make test-fast`, CI `unit` job |
 | MOT17 benchmark | `.github/workflows/vision-bench.yml` on pull requests touching `pqt/vision/**` (report as a check annotation) and by hand (report committed to the `vision-results` branch) |
+| Tuning on MOT20 (V7 part 2) | `.github/workflows/vision-tune.yml` on pull requests touching `tune.py` and by hand |
 | GPU detection on your own consented clips | `notebooks/detect.ipynb` on Colab Pro; caches come back to `vision/lab/data/runs/` (git-ignored) |
 
 Nothing under `vision/` may be a video, image, model file or detection cache in git; a test enforces it.
