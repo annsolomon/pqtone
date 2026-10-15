@@ -1,0 +1,60 @@
+# Generic CSV exports (X1 B4). Any billing system that can export bills, payments, purchases, stock and
+# day totals as CSV can use this profile, or a copy with its own column names. Only the columns named here
+# are read; customer names, phone numbers and anything else in the files are ignored.
+apiVersion: connector.pqt/v1
+name: generic-csv
+system: file
+description: Column names as in docs (edge/connectors/README.md); dates DD-MM-YYYY, times HH:MM:SS, India time.
+timezone: Asia/Kolkata
+dateFormat: "%d-%m-%Y"
+timeFormat: "%H:%M:%S"
+currency: INR
+decimalSeparator: "."
+thousandsSeparator: ","
+tillDefault: till-1
+files:
+  bills:
+    columns: {billNo: Bill No, date: Date, time: Time, till: Counter, lineNo: Line, sku: Item Code, qty: Qty,
+              unit: Unit, amount: Amount, tax: Tax}
+  payments:
+    columns: {billNo: Bill No, date: Date, time: Time, till: Counter, tender: Mode, amount: Amount, direction: Type,
+              reference: Txn Ref}
+  movements:
+    columns: {docNo: Doc No, date: Date, time: Time, sku: Item Code, qty: Qty, unit: Unit, direction: Direction,
+              reason: Reason, lineNo: Line}
+  stock:
+    columns: {sku: Item Code, qty: Qty, unit: Unit, date: Date, time: Time}
+  dayTotals:
+    columns: {date: Date, sales: Sales, refunds: Refunds, bills: Bills,
+              tenders: {cash: Cash, upi: UPI, card: Card, wallet: Wallet, credit: Credit}}
+maps:
+  tender:
+    cash: [cash, cash payment]
+    upi: [upi, gpay, google pay, phonepe, paytm upi, bhim]
+    card: [card, credit card, debit card, pos card]
+    wallet: [paytm wallet, wallet, amazon pay]
+    credit: [credit sale, on account, khata]
+    voucher: [gift voucher, coupon]
+    other: []
+  unit:
+    pcs: [nos, no, piece, pieces, pc, ea, each, unit]
+    kg: [kgs, kilogram]
+    g: [gm, gms, gram]
+    l: [ltr, litre, liter]
+    ml: [mls]
+    m: [mtr, metre, meter]
+    box: [boxes]
+    pack: [pkt, packet]
+    other: []
+  direction:
+    in: [sale, payment, received, receipt, inward]
+    out: [refund, return, paid out, outward]
+  reason:
+    purchase_receipt: [purchase, goods received, grn]
+    sale: []
+    customer_return: [sales return]
+    supplier_return: [purchase return]
+    transfer_in: [stock transfer in]
+    transfer_out: [stock transfer out]
+    adjustment: [stock adjustment, physical stock]
+    damage: [damaged, expired, wastage]

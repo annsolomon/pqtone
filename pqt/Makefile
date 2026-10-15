@@ -172,7 +172,7 @@ clean: ## Stop and delete all data, generated secrets and reports
 .PHONY: openapi-check dev-setup test-fast schema-compat test-it baseline-accept scale scale-ladder scale-stress
 dev-setup: ## One-time, no Docker: Python venv with sim, scorer and vision-lab, and web dependencies
 	python3 -m venv .venv
-	.venv/bin/pip install -q -e './sim[test]' -e './scorer[test]' -e './vision/lab[test]' -e './edge/agent[test]'
+	.venv/bin/pip install -q -e './sim[test]' -e './scorer[test]' -e './vision/lab[test]' -e './edge/agent[test]' -e './edge/connectors[test]'
 	cd web/ops-console && npm ci
 
 test-it: ## Integration tests (Testcontainers: PostgreSQL 16, Redpanda); needs Docker and JDK 21
@@ -188,7 +188,7 @@ test-fast: ## No Docker, under 3 min: Java unit tests, Python tests, web typeche
 	.venv/bin/python scripts/schema-compat.py
 	cd services/event-core && mvn -B -q -ntp -DskipITs verify
 	cd services/rules-engine && mvn -B -q -ntp verify
-	.venv/bin/pytest -q sim/tests scorer/tests scripts/tests vision/lab/tests edge/agent/tests
+	.venv/bin/pytest -q sim/tests scorer/tests scripts/tests vision/lab/tests edge/agent/tests edge/connectors/tests
 	cd web/ops-console && npm run -s typecheck && npm test --silent
 
 # ---------------------------------------------------------------- milestone R5: scale test

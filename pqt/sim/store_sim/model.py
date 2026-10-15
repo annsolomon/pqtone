@@ -47,7 +47,7 @@ class Record:
 
 
 class StoreModel:
-    def __init__(self, layout: dict, scenario: dict, seed: int):
+    def __init__(self, layout: dict, scenario: dict, seed: int, billing=None):
         self.layout = layout
         self.sc = scenario
         self.store_id = layout["storeId"]
@@ -103,6 +103,7 @@ class StoreModel:
         self._order = 0
         self.records: list[Record] = []
         self.n_shoppers = 0
+        self.billing = billing  # X1 B2: a billing.BillingModel when the scenario has `billing:`
 
     # ---------------------------------------------------------------- scheduler
     def _at(self, t: int, fn, *args) -> None:
@@ -117,6 +118,8 @@ class StoreModel:
         for t in self._arrival_times():
             self._at(t, self._arrive)
         self._at(0, self._staff_check)
+        if self.billing is not None:
+            self._schedule_billing()
         for q in self.queues:
             self._emit_queue_length(0, q)
         cap = self.duration_ms + HARD_CAP_MS
@@ -127,6 +130,9 @@ class StoreModel:
                 break
             fn(t, *args)
             last_activity = max(last_activity, t)
+        if self.billing is not None:  # closing: the billing system's day totals and a last stock snapshot
+            last_activity += 1000
+            self._emit_billing(self.billing.close(last_activity))
         self.activity_end_ms = last_activity
         self.end_ms = ((last_activity // TICK_MS) + 1) * TICK_MS + TRAILING_MS
         activity = self.records
@@ -245,9 +251,50 @@ class StoreModel:
         trk = reg.busy
         reg.busy = None
         self._emit(t, "zone.exited", f"track:{trk}", {"zoneId": q.zone_id, "trackId": trk})
+        if self.billing is not None:
+            self._emit_billing(self.billing.bill(t, reg.id))
         if reg.closing:
             self._close(t, reg)
         self._try_serve(t, q)
+
+    # ---------------------------------------------------------------- billing (X1 B2)
+    def _emit_billing(self, recs: list) -> None:
+        for t, short, subject, data in recs:
+            self._emit(t, short, subject, data)
+
+    def _schedule_billing(self) -> None:
+        """Deliveries, stock snapshots, planted empty-till refunds and no-sales; all draws from the billing
+        RNG, so the store's own streams are untouched."""
+        b = self.billing
+        cfg = b.cfg
+        every = parse_duration_ms(cfg.get("stockSnapshotEvery", "PT30M"))
+        for t in range(0, self.duration_ms + 1, every):
+            self._at(t, lambda tt: self._emit_billing(b.snapshot(tt)))
+        for d in cfg.get("deliveries") or []:
+            self._at(parse_duration_ms(d["at"]), lambda tt, d=d: self._emit_billing(b.delivery(tt, d["docNo"], d["lines"])))
+        n = int((cfg.get("anomalies") or {}).get("emptyTillRefunds", 0))
+        for t in sorted(int(x) for x in b.rng.uniform(0.1 * self.duration_ms, 0.9 * self.duration_ms, size=n)):
+            self._at(t, self._billing_empty_till_refund)
+        rate = float(cfg.get("noSalePerHour", 0.0))
+        if rate > 0:
+            t = 0.0
+            while True:
+                t += float(b.rng.exponential(3600.0 / rate)) * 1000
+                if t >= self.duration_ms:
+                    break
+                self._at(int(t), self._billing_no_sale)
+
+    def _billing_empty_till_refund(self, t: int) -> None:
+        idle = [r for r in self.registers if r.busy is None]
+        if not idle:  # every till busy: try again in a minute
+            self._at(t + 60_000, self._billing_empty_till_refund)
+            return
+        self._emit_billing(self.billing.refund(t, idle[0].id, planted=True))
+
+    def _billing_no_sale(self, t: int) -> None:
+        idle = [r for r in self.registers if r.open and r.busy is None]
+        if idle:
+            self._emit_billing(self.billing.no_sale(t, idle[0].id))
 
     # ---------------------------------------------------------------- staffing
     def _close(self, t: int, reg: Register) -> None:

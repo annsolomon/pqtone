@@ -1,0 +1,18 @@
+name: refund_abuse
+description: >-
+  X1 B2: billing_day plus refunds keyed at a till while nobody is being served there (planted, in the
+  billing ground truth as empty_till_refund), and a day total that disagrees with its own bills by 0.8%
+  (day_total_mismatch). Camera data shows the till zone empty at those moments.
+duration: PT2H
+arrivals:
+  - {from: PT0S, to: PT2H, perHour: 110}
+billing:
+  catalogue: ../../config/catalogue/store-001.json
+  basketMeanLines: 4
+  tenders: {cash: 0.35, upi: 0.5, card: 0.15}
+  refundProbability: 0.02
+  voidProbability: 0.03
+  stockSnapshotEvery: PT30M
+  anomalies:
+    emptyTillRefunds: 4
+    dayTotalSkewBp: 80

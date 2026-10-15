@@ -84,6 +84,15 @@ def cmd_determinism(a) -> int:
     return 0 if same else 1
 
 
+def cmd_export_billing(a) -> int:
+    """X1: a run's billing as the CSV exports a billing system would write (edge/connectors generic profile)."""
+    from .billing_export import export
+
+    events = [json.loads(line) for line in (Path(a.run) / "events.jsonl").read_text().splitlines() if line.strip()]
+    print(json.dumps(export(events, a.out, store=a.store)))
+    return 0
+
+
 def cmd_noise_validate(a) -> int:
     from .noise_validate import render_md, validate_profile
 
@@ -128,6 +137,11 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--scenario", default="sim/scenarios/baseline.yaml")
     d.set_defaults(fn=cmd_determinism)
 
+    xb = sub.add_parser("export-billing", help="X1: write a run's billing as billing-system CSV exports")
+    xb.add_argument("--run", required=True, help="a run directory (events.jsonl)")
+    xb.add_argument("--out", required=True)
+    xb.add_argument("--store", help="only this store (multi-store runs)")
+    xb.set_defaults(fn=cmd_export_billing)
     nv = sub.add_parser("noise-validate", help="Tier 2 N5: KS test of simulated vs measured count errors")
     _common(nv)
     nv.add_argument("--profile", required=True, help="a measured noise profile with queueCountError")

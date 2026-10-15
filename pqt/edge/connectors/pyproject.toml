@@ -1,0 +1,21 @@
+[project]
+name = "pqt-connectors"
+version = "0.1.0"
+description = "PQT billing connectors (X1): billing-system exports to X1 CloudEvents through the edge outbox"
+requires-python = ">=3.12"
+# PyYAML (MIT) for profiles, jsonschema (MIT) for pre-send validation; both already used by store-sim.
+# The edge outbox comes from pqt-edge, installed on the box; it is imported only with --outbox.
+dependencies = ["PyYAML==6.0.2", "jsonschema==4.23.0"]
+
+[project.optional-dependencies]
+test = ["pytest==8.3.3"]
+
+[project.scripts]
+pqt-connectors = "pqt_connectors.cli:main"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["pqt_connectors*"]
