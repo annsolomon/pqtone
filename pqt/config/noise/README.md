@@ -10,6 +10,7 @@ perception errors before it meets a real camera.
 |---|---|
 | `none.yaml` | A perfect camera. The control in the noise matrix. |
 | `example.yaml` | The shape of a measured profile, with made-up numbers. |
+| `mot17-yolox-s-roi.yaml` | Measured (N1) on MOT17-02/04/09 with the selected V7 pipeline: YOLOX-S on the zone crop, ByteTrack defaults, the V4 zone engine. Used by `make offline-noise`. Open-dataset track (ADR-013): replace with a profile from our own footage at P5. Thin evidence (n < 30): phantom track duration (n = 3) and extra tracks per fragmented person (n = 15). |
 | `sim/store_sim/noise_profile.schema.json` | The schema every profile must match (packaged with the simulator). |
 
 ## Using one in a scenario
@@ -20,9 +21,16 @@ faults:
 ```
 
 The simulator validates the profile, records its name and SHA-256 in `manifest.json`, and folds
-the hash into the run id. **In Tier 1 it applies nothing** (`visionNoiseApplied: 0` in the
-manifest counts). Perception noise runs on its own RNG stream, before the transport faults
-(`outOfOrder`, `late`, `duplicates`, `malformed`), so turning it on never changes their draws.
+the hash into the run id. Since Tier 2 (N2) it applies the profile to the visits before events are
+made: missed visits, timing jitter, fragments and ID switches (new track ids), phantom tracks, and
+queue membership rebuilt from the noisy tracks. Ground truth always comes from the clean visits.
+The manifest counts what was applied (`visionDropped`, `visionFragments`, `visionIdSwitches`,
+`visionJittered`, `visionPhantoms`). `none.yaml` changes nothing and draws nothing. Perception noise
+runs on its own RNG stream, before the transport faults (`outOfOrder`, `late`, `duplicates`,
+`malformed`), so turning it on never changes their draws.
+
+`store-sim matrix --noise-profile <file> --noise-scale 2` runs the whole matrix with every rate
+doubled (jitter spread too); `make offline-noise` scores clean, measured and 2x measured side by side (CI runs it as its own job, "offline score under vision noise").
 
 ## Privacy
 

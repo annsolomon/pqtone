@@ -70,7 +70,25 @@ def cmd_offline(a) -> int:
     write_reports(a.out, results, extra)
     (Path(a.out) / "baseline.candidate.json").write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
     print((Path(a.out) / "score.md").read_text())
+    if a.report_only:
+        return 0
     return 0 if all(not r["failures"] for r in results) and not extra else 1
+
+
+def cmd_noise_report(a) -> int:
+    from .noise import compare, render
+
+    runs = []
+    for spec in a.run:
+        label, _, path = spec.partition("=")
+        runs.append((label, json.loads((Path(path) / "score.json").read_text())))
+    doc = compare(runs, gate_label=a.gate_label)
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "noise.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+    (out / "noise.md").write_text(render(doc))
+    print(render(doc))
+    return 0 if (not a.gate or doc["gate"]["passed"]) else 1
 
 
 def _connect():
@@ -219,7 +237,14 @@ def main(argv: list[str] | None = None) -> int:
     o.add_argument("--thresholds", default="scorer/thresholds.yaml")
     o.add_argument("--baseline", default="scorer/baseline.json")
     o.add_argument("--out", required=True)
+    o.add_argument("--report-only", action="store_true", help="write the reports but always exit 0 (N3 noise runs)")
     o.set_defaults(fn=cmd_offline)
+    nr = sub.add_parser("noise-report", help="compare offline scores across noise profiles (Tier 2 N3)")
+    nr.add_argument("--run", action="append", required=True, help="label=report-dir (holding score.json); repeat")
+    nr.add_argument("--gate-label", default="measured", help="the profile the rules must hold under (N4)")
+    nr.add_argument("--gate", action="store_true", help="exit 1 when any gated rule fails under --gate-label")
+    nr.add_argument("--out", required=True)
+    nr.set_defaults(fn=cmd_noise_report)
     e = sub.add_parser("e2e", help="score a live run from PostgreSQL")
     e.add_argument("--case-dir", required=True)
     e.add_argument("--thresholds", default="scorer/thresholds.yaml")

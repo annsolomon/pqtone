@@ -1,0 +1,66 @@
+# Measured by pqt-vision bench-mot17 (milestone N1). Rates and distributions only.
+# Source: CI run on PR #46 (commit 31dc2fcb), MOT17-02/04/09, yolox_s roi, ByteTrack defaults.
+apiVersion: noise.pqt/v1
+name: mot17-yolox-s-roi
+description: Measured on MOT17 fixed-camera sequences with yolox_s (roi mode), ByteTrack defaults and the V4 zone
+  engine (open-dataset track).
+measuredFrom:
+  clips: 3
+  trackMinutes: 4.35
+  cameras:
+  - mot17-02
+  - mot17-04
+  - mot17-09
+  measuredAt: '2026-10-12'
+  notes: 'Open-dataset track (ADR-013): MOT17 fixed-camera sequences, zones from ground truth. queueCountError is zone occupancy
+    error from 1-second samples, not 10-second queue samples. Replace with a profile from our own footage at P5.'
+detection:
+  missRate:
+    base: 0.0805
+  falsePositivesPerMinute: 2.483
+  phantomTrackDurationMs:
+    kind: lognormal
+    mu: 3.969
+    sigma: 0.327
+    n: 3
+tracking:
+  idSwitchesPerTrackMinute: 1.8407
+  fragmentation:
+    probability: 0.3261
+    extraTracks:
+      kind: empirical
+      values:
+      - 1
+      - 2
+      - 3
+      weights:
+      - 0.7333
+      - 0.2
+      - 0.0667
+      n: 15
+timing:
+  entryJitterMs:
+    kind: normal
+    mean: -214.3
+    sd: 953.1
+    n: 63
+  exitJitterMs:
+    kind: normal
+    mean: 431.8
+    sd: 865.3
+    n: 68
+queueCountError:
+  kind: empirical
+  values:
+  - -1
+  - 0
+  - 1
+  - 2
+  - 5
+  weights:
+  - 0.2603
+  - 0.5068
+  - 0.1918
+  - 0.0274
+  - 0.0137
+  n: 73

@@ -91,6 +91,8 @@ jobs:
           cache: maven
           cache-dependency-path: pqt/services/*/pom.xml
       - name: make all
+        # Below the job's 60 minutes, so a hang fails the step and "Failure details" still prints the stack's logs.
+        timeout-minutes: 48
         run: make all SEED=42 2>&1 | tee "$RUNNER_TEMP/make-all.log"
       - name: Quality report
         if: always()
@@ -168,6 +170,46 @@ jobs:
           path: pqt/.work/reports/offline/baseline.candidate.json
       - if: always()
         run: make down
+
+  # Tier 2 N3/N4: the offline matrix again under clean, measured and 2x measured vision noise. Its own job:
+  # the noisy matrices are five to seven times the clean one and would push the end-to-end job past its limit.
+  offline-noise:
+    name: offline score under vision noise
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+        working-directory: pqt
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
+      - name: Build the tools and rules-engine images
+        run: |
+          make bootstrap
+          docker compose --env-file .env -f deploy/compose/docker-compose.yml --profile tools build tools rules-engine
+      - name: make offline-noise
+        timeout-minutes: 48
+        run: make offline-noise 2>&1 | tee "$RUNNER_TEMP/offline-noise.log"
+      - name: Results
+        if: always()
+        run: |
+          grep -E '^\[offline-noise' "$RUNNER_TEMP/offline-noise.log" > "$RUNNER_TEMP/noise-steps.log" || true
+          ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "offline-noise steps" "$RUNNER_TEMP/noise-steps.log" 30 || true
+          [ -s .work/reports/noise/noise.md ] && cat .work/reports/noise/noise.md >> "$GITHUB_STEP_SUMMARY" || true
+          [ -s .work/reports/noise/noise.md ] && ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "offline-noise (N3)" .work/reports/noise/noise.md 80 || true
+      - name: Failure details
+        if: failure()
+        run: ../.github/scripts/annotate.sh "make offline-noise (last lines)" "$RUNNER_TEMP/offline-noise.log" 60
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: noise-reports
+          path: pqt/.work/reports/noise
+          if-no-files-found: warn
 
   # Milestone Q1: one sticky PR comment with the score and its delta against the base branch's
   # baseline. A separate job so only it holds pull-requests: write. Fork PRs get a read-only
