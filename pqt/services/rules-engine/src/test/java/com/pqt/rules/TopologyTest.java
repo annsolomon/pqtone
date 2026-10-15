@@ -78,4 +78,23 @@ class TopologyTest {
             assertTrue(key.path("watermarkMs").asLong() >= base + 470_000);
         }
     }
+
+    @Test
+    void edgeHeartbeatsAreSkippedWithoutCountingAsInvalid() throws Exception {
+        Properties p = new Properties();
+        p.put(StreamsConfig.APPLICATION_ID_CONFIG, "rules-engine-test-edge");
+        p.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "dummy:9092");
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        RulesMetrics metrics = new RulesMetrics(registry);
+        try (TopologyTestDriver driver = new TopologyTestDriver(
+                RulesTopology.build(new RuleEngine(RuleEngineTest.cfg("shadow")), T, metrics, "test", Duration.ofHours(6)), p)) {
+            TestInputTopic<String, String> in = driver.createInputTopic(T.validated(), new StringSerializer(), new StringSerializer());
+            TestOutputTopic<String, String> enforce = driver.createOutputTopic(T.incidents(), new StringDeserializer(), new StringDeserializer());
+            long base = Instant.parse("2026-01-01T09:00:00Z").toEpochMilli();
+            in.pipeInput("store-001", event(base, "com.pqt.edge.heartbeat", "{\"agentId\":\"edge-001\"}"));
+            in.pipeInput("store-001", event(base, "com.pqt.store.unknown.thing", "{}"));
+            assertEquals(1.0, registry.counter("pqt.rules.events.invalid").count());  // only the unknown store type
+            assertTrue(enforce.readValuesToList().isEmpty());
+        }
+    }
 }

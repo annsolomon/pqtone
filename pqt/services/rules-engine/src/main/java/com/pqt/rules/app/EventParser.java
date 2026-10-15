@@ -21,6 +21,13 @@ public final class EventParser {
     private EventParser() {
     }
 
+    /** Event families other than com.pqt.store.* (e.g. com.pqt.edge.heartbeat) are not rule input. */
+    static final String RULE_INPUT_PREFIX = "com.pqt.store.";
+
+    /**
+     * Parses one CloudEvent. Returns {@code null} for a valid event of a family the rules do not use
+     * (such as edge heartbeats, Tier 2 A5): callers skip it without counting it as invalid.
+     */
     public static Event parse(String json) throws InvalidEventException {
         JsonNode n;
         try {
@@ -33,6 +40,7 @@ public final class EventParser {
         e.id = text(n, "id", true);
         e.source = text(n, "source", true);
         e.type = text(n, "type", true);
+        if (!e.type.startsWith(RULE_INPUT_PREFIX)) return null;
         if (!KNOWN_TYPES.contains(e.type)) throw new InvalidEventException("unknown type " + e.type);
         String time = text(n, "time", true);
         try {

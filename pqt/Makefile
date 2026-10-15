@@ -19,7 +19,7 @@ HOT_SEED ?= $(shell echo $$(( $$(date +%s) + 15485863 )))
 export DOCKER_BUILDKIT := 1
 export COMPOSE_DOCKER_CLI_BUILD := 1
 
-.PHONY: all help bootstrap build offline offline-noise up chaos-edge e2e e2e-pipeline e2e-http e2e-http-sim e2e-vision e2e-db e2e-ui e2e-hot-reload rules-publish rules-reset summary sim down clean logs ps
+.PHONY: all help bootstrap build offline offline-noise noise-validate up chaos-edge e2e e2e-pipeline e2e-http e2e-http-sim e2e-vision e2e-db e2e-ui e2e-hot-reload rules-publish rules-reset summary sim down clean logs ps
 
 all: bootstrap build test-it offline up e2e chaos-edge summary ## Build + unit tests, integration tests, offline quality gate, start the stack, live end-to-end tests, edge cable test, summary (offline-noise runs as its own CI job)
 
@@ -59,6 +59,9 @@ offline-noise: bootstrap ## Tier 2 N3: the offline matrix under clean, measured 
 	@echo "[offline-noise $$(date -u +%T)] report"
 	$(RUN) tools pqt-scorer noise-report --run clean=/work/reports/noise/clean --run measured=/work/reports/noise/measured \
 	  --run measured-x2=/work/reports/noise/measured-x2 --out /work/reports/noise $(NOISE_GATE)
+
+noise-validate: ## Tier 2 N5 (secondary, no Docker): store-sim queue scenarios with the measured profile vs its measured count errors (KS)
+	.venv/bin/store-sim noise-validate --profile $(NOISE_PROFILE) --out "$(WORK)/reports/noise-validate"
 
 up: bootstrap ## Start the stack and wait until it is healthy
 	$(COMPOSE) up -d

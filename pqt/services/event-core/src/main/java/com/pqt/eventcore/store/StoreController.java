@@ -123,7 +123,7 @@ public class StoreController {
         checkId(storeId);
         return jdbc.query("""
                 SELECT id, type, event_time, subject, sim_run_id, data::text
-                  FROM pqt.event WHERE store_id = ?
+                  FROM pqt.event WHERE store_id = ? AND type LIKE 'com.pqt.store.%'
                  ORDER BY received_at DESC, event_seq DESC LIMIT ?""",
                 (rs, i) -> {
                     Map<String, Object> m = new LinkedHashMap<>();

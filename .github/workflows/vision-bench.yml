@@ -7,6 +7,8 @@ on:
   pull_request:
     paths:
       - "pqt/vision/**"
+      - "pqt/sim/store_sim/vision_noise.py"
+      - "pqt/sim/store_sim/noise_validate.py"
       - ".github/workflows/vision-bench.yml"
   workflow_dispatch:
     inputs:
@@ -117,6 +119,8 @@ jobs:
           if [ -s "$f" ]; then ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "vision bench $MODEL $MODE" "$f" 40; fi
           n="../.work/vision-bench/$MODEL-$MODE/noise-profile.yaml"
           if [ -s "$n" ]; then ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "noise profile $MODEL $MODE" "$n" 120; fi
+          v="../.work/vision-bench/$MODEL-$MODE/noise-validation.md"
+          if [ -s "$v" ]; then ANNOTATE_LEVEL=notice ../.github/scripts/annotate.sh "noise validation $MODEL $MODE" "$v" 40; fi
       - name: Failure details
         if: failure()
         run: |
@@ -133,6 +137,7 @@ jobs:
           mkdir -p "$stage"
           cp ".work/vision-bench/$MODEL-$MODE/report.json" ".work/vision-bench/$MODEL-$MODE/report.md" "$stage/"
           cp ".work/vision-bench/$MODEL-$MODE/noise-profile.yaml" "$stage/" 2>/dev/null || true
+          cp ".work/vision-bench/$MODEL-$MODE/noise-validation.md" "$stage/" 2>/dev/null || true
           if [ -f "$MOT17_DIR/MOT17.zip.sha256" ]; then cp "$MOT17_DIR/MOT17.zip.sha256" "$stage/"; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
