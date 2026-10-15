@@ -99,7 +99,7 @@ def _move(src: Path, folder: Path) -> Path:
 def _write_new(path: Path, text: str) -> Path:
     while True:
         try:
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o640)
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
             break
         except FileExistsError:
             path = _free_name(path.parent, path.name)
