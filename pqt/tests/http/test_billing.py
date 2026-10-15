@@ -23,7 +23,8 @@ def post(event, token):
 
 def billing_event(short: str, schema_path: str, subject: str, time: str, data: dict, store: str = STORE) -> dict:
     return {
-        "specversion": "1.0", "id": f"e2e-{uuid.uuid4()}", "source": f"urn:pqt:edge:{STORE}:pos-file",
+        # Its own source: the file connector's (pos-file) belongs to the B8 cable test, which checks every event in it.
+        "specversion": "1.0", "id": f"e2e-{uuid.uuid4()}", "source": f"urn:pqt:edge:{STORE}:pos-e2e",
         "type": f"com.pqt.{short}", "time": time, "subject": subject,
         "dataschema": f"https://schemas.pqt.local/{schema_path}/1.0.0", "datacontenttype": "application/json",
         "storeid": store, "partitionkey": store, "data": {"storeId": store, **data},
