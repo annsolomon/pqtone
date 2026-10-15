@@ -6,7 +6,8 @@ info:
     Runs on the PQT edge box in the shop (X1 B5b, ADR-037). The shop's billing software, or a payment
     gateway's webhook, sends billing records here; the box pseudonymises document numbers, builds events and
     forwards them through its outbox. Loopback by default; on the shop network only over TLS.
-    Errors are RFC 9457 problem details with a stable `code`; they never echo submitted values.
+    Errors are RFC 9457 problem details with a stable `code`; they never echo submitted values. 503 `busy` when
+    the box already holds its maximum of open connections; idle connections are dropped after 15 s.
     Re-sending the same records adds nothing, so a client may retry any request that did not get a 200.
 servers:
   - url: http://127.0.0.1:8787
@@ -45,7 +46,8 @@ components:
         code:
           type: string
           enum: [unauthorized, bad-signature, kind-not-allowed, malformed-json, invalid-records, length-required,
-                 too-large, unsupported-media-type, rate-limited, outbox-unavailable, not-found, method-not-allowed]
+                 too-large, unsupported-media-type, rate-limited, outbox-unavailable, busy, internal-error, not-found,
+                 method-not-allowed]
         errors: {type: array, items: {type: string}}
   responses:
     Problem:
@@ -83,6 +85,7 @@ paths:
         "415": {$ref: "#/components/responses/Problem"}
         "422": {$ref: "#/components/responses/Problem"}
         "429": {$ref: "#/components/responses/RateLimited"}
+        "500": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
   /v1/webhooks/{client}:
     post:
@@ -105,14 +108,17 @@ paths:
         "415": {$ref: "#/components/responses/Problem"}
         "422": {$ref: "#/components/responses/Problem"}
         "429": {$ref: "#/components/responses/RateLimited"}
+        "500": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
   /v1/health:
     get:
       summary: Liveness
       responses:
         "200": {description: OK, content: {application/json: {schema: {type: object, properties: {status: {const: ok}}}}}}
+        "503": {$ref: "#/components/responses/Problem"}
   /v1/schema:
     get:
       summary: The canonical records schema
       responses:
         "200": {description: JSON Schema 2020-12, content: {application/json: {schema: {type: object}}}}
+        "503": {$ref: "#/components/responses/Problem"}

@@ -309,3 +309,160 @@ def test_tls_on_the_shop_network(tmp_path):
     finally:
         srv.shutdown()
         srv.server_close()
+
+
+# -- hardening (security review of B5a/B5b) ------------------------------------------------------------------------
+import socket
+import time as _time
+
+
+def raw_http(base: str, data: bytes, wait: float = 3.0) -> bytes:
+    host, port = base.split("//")[1].split(":")
+    s = socket.create_connection((host, int(port)), timeout=wait)
+    try:
+        s.sendall(data)
+        out = b""
+        while True:
+            try:
+                chunk = s.recv(65536)
+            except socket.timeout:
+                break
+            if not chunk:
+                break
+            out += chunk
+        return out
+    finally:
+        s.close()
+
+
+@pytest.mark.parametrize("length", ["-1", "+5", "1_0", "abc", "5e1"])
+def test_a_content_length_that_is_not_plain_digits_is_refused_unread(server, length):
+    base, sent, _ = server
+    head = (f"POST /v1/webhooks/gateway HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n"
+            f"Content-Length: {length}\r\n\r\n").encode()
+    t0 = _time.monotonic()
+    out = raw_http(base, head + b"{}")
+    assert out.startswith(b"HTTP/1.1 411") and _time.monotonic() - t0 < 2.5 and sent == []
+
+
+def test_errors_sent_back_never_quote_what_was_submitted(server, tmp_path):
+    base, sent, srv = server
+    leaky = [{"invoice_number": "INV-9", "paid_at": PII["Customer Name"] + " " + PII["Phone"], "counter": "C",
+              "mode": "Asha 9000000000", "amount": "4111 1111 1111 1111", "kind": "Payment", "ref": ""}]
+    custom = yaml.safe_load((PROFILES / "generic-csv.yaml").read_text(encoding="utf-8"))
+    custom.update(name="mapped", system="mapped-pos", timestampFormat="iso8601")
+    custom["files"] = {"payments": {"columns": {"billNo": "invoice_number", "timestamp": "paid_at", "till": "counter",
+                                                "tender": "mode", "amount": "amount", "direction": "kind", "reference": "ref"}}}
+    (tmp_path / "mapped.yaml").write_text(yaml.safe_dump(custom), encoding="utf-8")
+    srv.clients.clients.append(push.Client("mapped", push.profile_mod.load(tmp_path / "mapped.yaml"), "mapped.yaml",
+                                           sha("mapped-" + TOKEN)))
+    st, _, body = call(base, "/v1/records", {"payments": leaky}, token="mapped-" + TOKEN)
+    assert st == 200 and body["events"] == 0 and body["errors"]
+    text = json.dumps(body)
+    for v in (PII["Customer Name"], PII["Phone"], "9000000000", "4111", "INV-9"):
+        assert v not in text
+
+
+def test_absurd_numbers_and_deep_nesting_get_an_answer_not_a_crash(server):
+    base, sent, _ = server
+    st, _, body = call(base, "/v1/records", raw=b'{"bills": [' + b"[" * 30_000 + b"]" * 30_000 + b"]}")  # under 64 KiB
+    assert st in (400, 422) and sent == []
+    doc = json.dumps({"bills": [dict(BILL[0], amount=1)]}).replace('"amount": 1', '"amount": 1e1000000').encode()
+    st, _, body = call(base, "/v1/records", raw=doc)
+    assert st in (200, 422) and sent == []
+
+
+def test_an_unexpected_failure_is_a_500_problem_without_details(server, monkeypatch):
+    base, sent, _ = server
+
+    def explode(self, kind, name, records):
+        raise RuntimeError("secret detail " + PII["Phone"])
+    monkeypatch.setattr(push.Importer, "feed", explode)
+    st, _, body = call(base, "/v1/records", {"bills": BILL})
+    assert st == 500 and body["code"] == "internal-error" and PII["Phone"] not in json.dumps(body) and sent == []
+
+
+def test_forged_webhooks_cannot_use_up_the_gateways_allowance(server):
+    base, sent, _ = server
+    hook = {"payload": {"payment": {"id": "pay_1", "amount": 100, "method": "upi", "created_at": 1767242740,
+                                    "notes": {"bill_no": "INV-1"}}}}
+    raw = json.dumps(hook).encode()
+    codes = [call(base, "/v1/webhooks/gateway", raw=raw, token=None, headers={"X-Gateway-Signature": "0" * 64})[0]
+             for _ in range(15)]
+    assert set(codes) <= {401, 429} and 429 in codes, "forgeries are limited in their own bucket"
+    sig = hmac.new(SIG_SECRET.encode(), raw, hashlib.sha256).hexdigest()
+    st, _, body = call(base, "/v1/webhooks/gateway", raw=raw, token=None, headers={"X-Gateway-Signature": sig})
+    assert st == 200 and body["events"] == 1
+
+
+def test_an_early_answer_closes_the_connection_so_an_unread_body_is_never_a_second_request(server):
+    base, _, _ = server
+    smuggled = b"GET /v1/health HTTP/1.1\r\nHost: x\r\n\r\n"
+    for head in (f"POST /v1/nothing HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: {len(smuggled)}\r\n\r\n",
+                 f"POST /v1/webhooks/unknown HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: {len(smuggled)}\r\n\r\n",
+                 "POST /v1/records HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\nContent-Type: application/json\r\n\r\n"):
+        out = raw_http(base, head.encode() + smuggled)
+        assert out.count(b"HTTP/1.1 ") == 1, out[:200]
+
+
+def test_a_half_sent_request_is_dropped_after_the_timeout_and_connections_are_capped(tmp_path):
+    clients_file = tmp_path / "clients.yaml"
+    push.add_client(clients_file, client_id="pos", profile=str(PROFILES / "canonical.yaml"))
+    srv = push.make_server(push.load_clients(clients_file), store="store-001", key=KEY, state_path=tmp_path / "s.db",
+                           sink=lambda e: None, bind="127.0.0.1", port=0, request_timeout=1, max_connections=2)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    port = srv.server_address[1]
+    try:
+        idle = [socket.create_connection(("127.0.0.1", port)) for _ in range(2)]
+        for s in idle:
+            s.sendall(b"POST /v1/records HTTP/1.1\r\nHost: x\r\n")   # never finished
+        _time.sleep(0.3)
+        third = raw_http(f"http://127.0.0.1:{port}", b"GET /v1/health HTTP/1.1\r\nHost: x\r\n\r\n", wait=2)
+        assert third.startswith(b"HTTP/1.1 503"), "over the cap: refused at once, not queued"
+        _time.sleep(1.6)                                                # past the 1 s request timeout
+        ok = raw_http(f"http://127.0.0.1:{port}", b"GET /v1/health HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+        assert ok.startswith(b"HTTP/1.1 200"), "the stalled connections were dropped and freed their slots"
+        for s in idle:
+            s.close()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_a_tls_client_that_never_says_hello_does_not_block_others(tmp_path):
+    import shutil
+    import ssl
+    import subprocess
+
+    if not shutil.which("openssl"):
+        pytest.skip("openssl binary not available to make a test certificate")
+    cert, key_file = tmp_path / "c.pem", tmp_path / "k.pem"
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(key_file), "-out", str(cert),
+                    "-days", "1", "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1"],
+                   check=True, capture_output=True)
+    clients_file = tmp_path / "clients.yaml"
+    push.add_client(clients_file, client_id="pos", profile=str(PROFILES / "canonical.yaml"))
+    srv = push.make_server(push.load_clients(clients_file), store="store-001", key=KEY, state_path=tmp_path / "s.db",
+                           sink=lambda e: None, bind="127.0.0.1", port=0, tls=(str(cert), str(key_file)), request_timeout=2)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    port = srv.server_address[1]
+    try:
+        silent = socket.create_connection(("127.0.0.1", port))      # TCP open, no ClientHello
+        _time.sleep(0.2)
+        ctx = ssl.create_default_context(cafile=str(cert))
+        t0 = _time.monotonic()
+        with urllib.request.urlopen(f"https://127.0.0.1:{port}/v1/health", context=ctx, timeout=5) as r:
+            assert r.status == 200
+        assert _time.monotonic() - t0 < 1.5
+        silent.close()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_a_clients_file_others_can_write_is_refused(tmp_path):
+    clients_file = tmp_path / "clients.yaml"
+    push.add_client(clients_file, client_id="pos", profile=str(PROFILES / "canonical.yaml"))
+    clients_file.chmod(0o666)
+    with pytest.raises(ValueError, match="writable"):
+        push.load_clients(clients_file)
