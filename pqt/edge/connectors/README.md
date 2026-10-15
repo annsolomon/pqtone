@@ -12,7 +12,10 @@ software, connects through the canonical records (ADR-037): the guide for the sh
 - **Push API (B5b)**: `serve` takes records over HTTP from the shop's software (bearer token per client,
   stored hashed; optional HMAC signature; kinds per client) and webhooks (`/v1/webhooks/<client>`, signature
   only); loopback unless TLS is given; size and rate limits; `openapi.yaml`. `push-client add|remove|list`.
-- **Records fed by a program** (`Importer.feed`): the database and REST sources (B5c, B5d).
+- **Database (B5c)**: `poll` runs a read-only query per kind with a stored cursor (SQLite built in;
+  PostgreSQL, MySQL/MariaDB, SQL Server as optional extras); single SELECT only, read-only connection,
+  lookback for late commits, pages never split a cursor value, a bad row holds the cursor.
+- **Records fed by a program** (`Importer.feed`): the REST source (B5d).
 - `profiles/canonical.yaml`: the canonical field names, nothing to map. `profiles/generic-csv.yaml`: the
   generic CSV export below.
 - `check` dry-runs a profile on samples (throw-away key, in-memory state, nothing kept); `suggest` writes a
@@ -62,4 +65,4 @@ then `store-sim export-billing --run run --out exports --shift-to <yesterday>` a
 (event-core takes real billing events up to 35 days old, ADR-036). `make chaos-edge` does exactly this on the
 edge box during the cable test and checks the result end to end (X1 B8).
 
-Database and REST sources follow in B5c-B5d, ready profiles for named systems in B5e (ADR-037).
+The REST source follows in B5d, ready profiles for named systems in B5e (ADR-037).

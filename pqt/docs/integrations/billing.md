@@ -16,7 +16,7 @@ on through the same outbox as the cameras, so a network cut loses nothing.
 | export or save a file (CSV, Excel, JSON) | **File drop**: save files into a folder on the edge box (or a share it reads) | available |
 | make an HTTP request when a bill is saved | **Push API** on the edge box, canonical JSON, no mapping needed | available |
 | receive payment-gateway webhooks | **Webhook** on the edge box, checked by the gateway's signature | available |
-| be read from its database (a view is enough) | **Database source**: a read-only query with a cursor | B5c |
+| be read from its database (a view is enough) | **Database source**: a read-only query with a cursor | available |
 | offer a REST API (cloud billing) | **REST source**: polled with your API key or OAuth | B5d |
 
 Writing new software, or adding PQT to your own? Send **canonical records** (below) by file drop now, or
@@ -145,6 +145,47 @@ its HMAC signature header (no token), mapped by the client's profile (`path` say
 pqt-connectors push-client add --clients /etc/pqt/push-clients.yaml --id gateway --webhook --kind payments \
   --profile my-gateway.yaml --sig-header X-Gateway-Signature --sig-secret env:GATEWAY_WEBHOOK_SECRET
 ```
+
+## Database source
+
+If the software keeps its data in SQLite, PostgreSQL, MySQL/MariaDB or SQL Server, the edge box can read it
+directly. Create a **read-only** database user that can see only the tables or views needed (a view per kind
+is best), and write one query per kind that returns what changed after a cursor:
+
+```yaml
+# sources.yaml
+apiVersion: connector.pqt/v1
+sources:
+  - id: shop-db
+    type: sql
+    profile: shop-db.yaml          # maps the query's columns, like any profile
+    driver: postgresql             # sqlite | postgresql | mysql | sqlserver
+    dsn: env:SHOP_DB_DSN           # a reference, never the password itself (SQLite: a file path)
+    queries:
+      bills:                       # every line of each bill that changed: put the cursor on the bill header
+        sql: |
+          SELECT b.bill_no, b.billed_at, b.counter, l.line_no, l.item_code, l.qty, l.uom, l.net, b.modified_at
+            FROM bills b JOIN bill_lines l ON l.bill_no = b.bill_no
+           WHERE b.modified_at > :cursor
+           ORDER BY b.modified_at, b.bill_no, l.line_no
+        cursor: modified_at        # returned by the query; the largest value read is remembered
+        start: "2026-10-01 00:00:00"   # read changes after this the first time
+        lookback: PT10M            # re-read 10 minutes before the cursor for late commits (adds nothing)
+      payments:
+        sql: SELECT id, bill_no, paid_at, mode, amount FROM payments WHERE id > :cursor ORDER BY id
+        cursor: id
+        start: 0
+```
+
+```bash
+pqt-connectors poll --sources sources.yaml --id shop-db --store store-001 --key /var/lib/pqt-edge/billing.key \
+  --state /var/lib/pqt-edge/connector-state.db --outbox /var/lib/pqt-edge/outbox.db
+```
+
+Only a single `SELECT` with the `:cursor` parameter is accepted, and the connection is opened read-only as
+well. The cursor moves only after the events are safely in the outbox, never past a row that could not be
+read (it is reported until fixed), and a page never splits rows that share a cursor value. Drivers for
+PostgreSQL, MySQL and SQL Server are optional installs (`pip install 'pqt-connectors[postgresql]'`).
 
 ## Mapping an existing export: profiles
 
