@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { get } from "../api";
 import { clock } from "../format";
-import { buildChart, describe, DEFAULT_SIZE } from "../timeline";
+import { buildChart, describe, isTill, tillLabel, DEFAULT_SIZE } from "../timeline";
 import type { IncidentTimelineData } from "../types";
 
 /**
  * Milestone C4: why did this fire? Queue length (or zone entries) around onset, with the threshold,
- * the breach/alert/clear moments and register changes. The same data is available as a table.
+ * the breach/alert/clear moments, register changes and (X1 B7) the till events at the tills serving the
+ * queue. The same data is available as a table.
  */
 export function IncidentTimeline({ incidentId, version }: { incidentId: string; version: number }) {
   const [data, setData] = useState<IncidentTimelineData | null>(null);
@@ -76,6 +77,12 @@ export function IncidentTimeline({ incidentId, version }: { incidentId: string; 
                 <title>{mk.label}</title>
               </g>
             ))}
+            {m.tills.map((tk, i) => (
+              <g key={`till${i}`} className={`tl-till tl-till-${tk.kind}`} data-testid="till-marker">
+                <path d={`M${tk.x},${size.padTop} l5,6 l-5,6 l-5,-6 z`} />
+                <title>{tk.label}</title>
+              </g>
+            ))}
           </svg>
           <ul className="tl-legend small" aria-hidden="true">
             <li><span className={data.kind === "zone" ? "sw sw-bar" : "sw sw-line"} /> {valueName}</li>
@@ -84,6 +91,7 @@ export function IncidentTimeline({ incidentId, version }: { incidentId: string; 
             <li><span className="sw sw-detected" /> Alert raised</li>
             {data.resolvedAt && <li><span className="sw sw-cleared" /> Cleared</li>}
             {m.markers.length > 0 && <li><span className="sw sw-reg" /> Register change</li>}
+            {m.tills.length > 0 && <li><span className="sw sw-till" /> Till event</li>}
           </ul>
           {data.truncated && <p className="muted small">Showing the first 5,000 points only.</p>}
           <details className="tl-table">
@@ -106,7 +114,7 @@ export function IncidentTimeline({ incidentId, version }: { incidentId: string; 
             {data.markers.length > 0 && (
               <ul className="small">
                 {data.markers.map((mk, i) => (
-                  <li key={i}><span className="num">{clock(mk.t)}</span> {mk.registerId} {mk.kind === "register.opened" ? "opened" : "closed"}</li>
+                  <li key={i}><span className="num">{clock(mk.t)}</span> {isTill(mk) ? tillLabel(mk) : `${mk.registerId} ${mk.kind === "register.opened" ? "opened" : "closed"}`}</li>
                 ))}
               </ul>
             )}

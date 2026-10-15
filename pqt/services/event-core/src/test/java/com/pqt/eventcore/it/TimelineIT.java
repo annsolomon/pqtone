@@ -2,16 +2,20 @@ package com.pqt.eventcore.it;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.pqt.eventcore.config.PqtProperties;
 import com.pqt.eventcore.incident.IncidentView;
 import com.pqt.eventcore.incident.TimelineService;
 import com.pqt.eventcore.ingest.Canonical;
 import com.pqt.eventcore.ingest.IngestService;
 import com.pqt.eventcore.ingest.ValidatedEvent;
+import com.pqt.eventcore.store.Layouts;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -42,7 +46,15 @@ class TimelineIT {
         db = new Db().start();
         db.migrate();
         ingest = Fixtures.ingest(db.app());
-        timelines = new TimelineService(new JdbcTemplate(db.app()));
+        // A layout for the test store: reg-1 and reg-2 name no queue (so they serve the first, checkout-1);
+        // reg-3 serves checkout-2 (milestone S2 rules).
+        Path layouts = Files.createTempDirectory("pqt-layouts");
+        Files.writeString(layouts.resolve(STORE + ".json"), """
+                {"storeId":"store-tl","name":"Timeline store","width":10,"height":10,"zones":[],
+                 "queues":[{"id":"checkout-1","zoneId":"checkout"},{"id":"checkout-2","zoneId":"checkout"}],
+                 "registers":[{"id":"reg-1"},{"id":"reg-2"},{"id":"reg-3","queueId":"checkout-2"}]}""");
+        PqtProperties props = new PqtProperties(null, null, null, new PqtProperties.Paths("unused", layouts.toString()), null, null);
+        timelines = new TimelineService(new JdbcTemplate(db.app()), new Layouts(Fixtures.MAPPER, props));
 
         // Before the window (onset - 10 min = 08:50): the carried-in starting value.
         queue(RUN, "checkout-1", "2026-01-01T08:45:00Z", 2, 1);
@@ -61,6 +73,10 @@ class TimelineIT {
         zoneEntered(RUN, "entrance", "2026-01-01T08:55:50Z");
         zoneEntered(RUN, "entrance", "2026-01-01T08:57:00Z");
         zoneEntered(RUN, "fitting-rooms", "2026-01-01T08:57:00Z");
+        // X1 B7: till events. Only reg-3 serves checkout-2; another run and a time after the window are noise.
+        till(RUN, "reg-3", "void", "2026-01-01T09:02:00Z", 4500);
+        till("run-other", "reg-3", "refund", "2026-01-01T09:02:30Z", 900);
+        till(RUN, "reg-3", "no_sale", "2026-01-01T10:00:00Z", null);
     }
 
     @AfterAll
@@ -93,6 +109,20 @@ class TimelineIT {
         assertEquals("register.opened", m.get(0).get("kind"));
         assertEquals("reg-2", m.get(0).get("registerId"));
         assertFalse((Boolean) t.get("truncated"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void aQueueTimelineShowsTheTillEventsOfTheTillsServingThatQueueInTimeOrder() throws Exception {
+        Map<String, Object> t = timelines.timeline(incident("queue:checkout-2", ONSET.plusSeconds(300), "{}"));
+        List<Map<String, Object>> m = (List<Map<String, Object>>) t.get("markers");
+        assertEquals(List.of("till.void", "register.opened"), m.stream().map(x -> x.get("kind")).toList(),
+                "the 09:02 void at reg-3 before the 09:03 register opening; the other run's refund and the later no-sale are left out");
+        assertEquals("reg-3", m.get(0).get("registerId"));
+        assertEquals(4500L, m.get(0).get("amountMinor"));
+        assertEquals("INR", m.get(0).get("currency"));
+        String json = Fixtures.MAPPER.writeValueAsString(t);
+        assertFalse(json.contains("bill-"), "no bill reference in a timeline");
     }
 
     @Test
@@ -137,6 +167,13 @@ class TimelineIT {
         String track = "trk-" + (++seq);
         put("com.pqt.store.zone.entered", "track:" + track, "https://schemas.pqt.local/store/zone.entered/1.0.0", run, time,
                 "{\"zoneId\":\"" + zoneId + "\",\"trackId\":\"" + track + "\"}");
+    }
+
+    static void till(String run, String tillId, String kind, String time, Integer amountMinor) throws Exception {
+        String amount = amountMinor == null ? "" : ",\"amountMinor\":" + amountMinor + ",\"currency\":\"INR\"";
+        put("com.pqt.pos.till.event", "till:" + tillId, "https://schemas.pqt.local/pos/till.event/1.0.0", run, time,
+                "{\"storeId\":\"" + STORE + "\",\"tillId\":\"" + tillId + "\",\"kind\":\"" + kind
+                        + "\",\"billRef\":\"bill-" + "0".repeat(31) + (++seq % 10) + "\"" + amount + "}");
     }
 
     static void put(String type, String subject, String dataschema, String run, String time, String data) throws Exception {

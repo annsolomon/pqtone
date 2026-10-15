@@ -1,5 +1,7 @@
 package com.pqt.eventcore.billing;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.pqt.eventcore.store.Layouts;
 import com.pqt.eventcore.web.ApiException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -9,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.IOException;
 import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
@@ -40,9 +43,13 @@ public class BillingController {
     private static final Pattern ZONE = Pattern.compile("^[A-Za-z]+(/[A-Za-z0-9_+-]+){0,2}$");
 
     private final BillingService service;
+    private final TrafficService traffic;
+    private final Layouts layouts;
 
-    public BillingController(BillingService service) {
+    public BillingController(BillingService service, TrafficService traffic, Layouts layouts) {
         this.service = service;
+        this.traffic = traffic;
+        this.layouts = layouts;
     }
 
     /** Bills and sales per 15 minutes, hour or day (in the store's time zone), optionally for one till. */
@@ -63,6 +70,21 @@ public class BillingController {
                                         @RequestParam(required = false) String till,
                                         @RequestParam(required = false) String run) {
         return service.payments(window(storeId, from, to, bucket, tz, till, run));
+    }
+
+    /**
+     * What the cameras saw in the same buckets (B7): visitors through the layout's entrance zones and each queue's
+     * time-weighted mean and peak length, to set next to the sales.
+     */
+    @GetMapping("/traffic")
+    public Map<String, Object> traffic(@PathVariable String storeId, @RequestParam String from, @RequestParam String to,
+                                       @RequestParam(defaultValue = "day") String bucket,
+                                       @RequestParam(defaultValue = DEFAULT_ZONE) String tz,
+                                       @RequestParam(required = false) String run) throws IOException {
+        BillingService.Window w = window(storeId, from, to, bucket, tz, null, run);
+        JsonNode layout = layouts.read(storeId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not-found", "unknown store"));
+        return traffic.traffic(w, Layouts.zonesOfKind(layout, "entrance"), Layouts.queues(layout));
     }
 
     /** Stock in and out per SKU and reason, with the latest reported level; paged by SKU. */

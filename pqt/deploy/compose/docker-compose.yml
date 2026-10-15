@@ -381,6 +381,8 @@ services:
       PQT_PUBLIC_URL: ${PQT_PUBLIC_URL}
       PQT_REVIEWER_PASSWORD: ${PQT_REVIEWER_PASSWORD}
       PQT_ADMIN_PASSWORD: ${PQT_ADMIN_PASSWORD}
+      # X1 B7: test_sales.py publishes a small simulated trading morning as the store-sim client.
+      PQT_SIM_CLIENT_SECRET: ${PQT_SIM_CLIENT_SECRET}
       PQT_UI_REPORTS: /work/reports/ui
       PQT_UI_TIMEOUT_S: "300"
     volumes:

@@ -54,7 +54,7 @@ def test_console_pages_have_no_serious_accessibility_violations(browser):
         sign_in(page, "admin", os.environ["PQT_ADMIN_PASSWORD"])
         nav = page.get_by_role("navigation", name="Main")
         routes = [("floor", "/"), ("review queue", "/review"), ("all incidents", "/incidents"),
-                  ("shadow rules", "/shadow"), ("audit log", "/audit")]
+                  ("sales", "/sales"), ("shadow rules", "/shadow"), ("audit log", "/audit")]
         if nav.get_by_role("link", name="Review metrics").count():
             routes.append(("review metrics", "/metrics"))
         for name, path in routes:

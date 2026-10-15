@@ -35,6 +35,8 @@ export interface QueueState {
 export interface StoreState {
   storeId: string;
   simRunId: string | null;
+  /** Event time of the store's most recent event (X1 B7: the Sales page opens a simulation on its day). */
+  lastEventAt?: string | null;
   queues: Record<string, QueueState>;
   zones: Record<string, number>;
 }
@@ -96,10 +98,15 @@ export interface TimelinePoint {
   entries?: number;
 }
 
+export type TillKind = "void" | "refund" | "no_sale" | "price_override" | "drawer_open" | "shift_open" | "shift_close";
+
 export interface TimelineMarker {
   t: string;
-  kind: "register.opened" | "register.closed";
+  /** Register changes, and (X1 B7) till events at the tills serving the queue. */
+  kind: "register.opened" | "register.closed" | `till.${TillKind}`;
   registerId: string;
+  amountMinor?: number | null;
+  currency?: string | null;
 }
 
 export interface IncidentTimelineData {
@@ -168,4 +175,83 @@ export interface RuleScores {
   windowDays: number;
   generatedAt: string;
   rules: RuleScore[];
+}
+
+/** X1 B3/B7: billing reads. Money in integer minor units, quantities in thousandths of the unit. */
+export type Bucket = "15m" | "hour" | "day";
+export type Tender = "cash" | "card" | "upi" | "wallet" | "credit" | "voucher" | "other";
+
+interface BillingWindow {
+  storeId: string;
+  simRunId: string | null;
+  from: string;
+  to: string;
+}
+
+export interface SalesBucket {
+  start: string;
+  currency: string;
+  bills: number;
+  salesMinor: number;
+  taxMinor: number;
+  lines: number;
+  voidedBills: number;
+}
+
+export interface Sales extends BillingWindow {
+  bucket: Bucket;
+  timeZone: string;
+  tillId: string | null;
+  buckets: SalesBucket[];
+  totals: Omit<SalesBucket, "start">[];
+}
+
+export interface PaymentsBucket {
+  start: string;
+  currency: string;
+  tender: Tender;
+  inMinor: number;
+  outMinor: number;
+  netMinor: number;
+  paymentsIn: number;
+  paymentsOut: number;
+}
+
+export interface Payments extends BillingWindow {
+  bucket: Bucket;
+  timeZone: string;
+  tillId: string | null;
+  buckets: PaymentsBucket[];
+  totals: Omit<PaymentsBucket, "start">[];
+}
+
+export interface StockRow {
+  sku: string;
+  unit: string;
+  inMilli: number;
+  outMilli: number;
+  netMilli: number;
+  inByReason: Record<string, number>;
+  outByReason: Record<string, number>;
+  movements: number;
+  level: { qtyMilli: number; at: string } | null;
+}
+
+export interface Stock extends BillingWindow {
+  skus: StockRow[];
+  next: string | null;
+}
+
+export interface TrafficBucket {
+  start: string;
+  visitors: number | null;
+  queues: { queueId: string; meanLength: number | null; maxLength: number | null }[];
+}
+
+export interface Traffic extends BillingWindow {
+  bucket: Bucket;
+  timeZone: string;
+  entranceZones: string[];
+  buckets: TrafficBucket[];
+  truncated: boolean;
 }
