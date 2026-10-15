@@ -48,6 +48,8 @@ public class RawEventConsumer {
             ValidatedEvent e = validator.validate(node);
             if (!policy.rawTopicAllows(e.source())) {
                 dlq.publish(rec, "forbidden-source", List.of("source " + e.source() + " may not use the raw topic"));
+            } else if (!SourcePolicy.storeMatchesSource(e.source(), e.storeId())) {
+                dlq.publish(rec, "forbidden-source", List.of("source " + e.source() + " may not publish for store " + e.storeId()));
             } else if (ingest.ingest(e, "kafka", "kafka:" + rec.topic()).status() == IngestService.Status.CONFLICT) {
                 dlq.publish(rec, "conflicting-duplicate", List.of("same (source, id) with a different payload"));
             }

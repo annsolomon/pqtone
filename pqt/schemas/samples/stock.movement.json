@@ -1,0 +1,23 @@
+{
+  "specversion": "1.0",
+  "id": "2a3114eb-0c57-5744-a69f-787a127510f7",
+  "source": "urn:pqt:edge:store-001:pos-file",
+  "type": "com.pqt.stock.movement",
+  "time": "2026-01-01T08:05:00.000Z",
+  "subject": "sku:ATTA-5KG",
+  "dataschema": "https://schemas.pqt.local/stock/movement/1.0.0",
+  "datacontenttype": "application/json",
+  "storeid": "store-001",
+  "partitionkey": "store-001",
+  "sequence": "0000000001",
+  "data": {
+    "storeId": "store-001",
+    "sku": "ATTA-5KG",
+    "direction": "in",
+    "reason": "purchase_receipt",
+    "qtyMilli": 40000,
+    "unit": "pcs",
+    "docRef": "doc-a2e6497b51089aaf49182b67e134c7ff",
+    "lineNo": 1
+  }
+}

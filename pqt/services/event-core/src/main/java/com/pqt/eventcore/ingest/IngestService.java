@@ -2,6 +2,7 @@ package com.pqt.eventcore.ingest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pqt.eventcore.audit.AuditService;
+import com.pqt.eventcore.billing.BillingProjector;
 import com.pqt.eventcore.config.PqtProperties;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -14,7 +15,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * The single write path. One transaction: dedup ledger -> event row -> outbox row.
+ * The single write path. One transaction: dedup ledger -> event row -> typed billing row (X1 types only)
+ * -> outbox row.
  * Same (source, id) and same canonical payload => duplicate (idempotent success);
  * same (source, id) with a different payload => conflict (rejected and audited).
  */
@@ -31,11 +33,13 @@ public class IngestService {
     private final PqtProperties props;
     private final ObjectMapper mapper;
     private final MeterRegistry meters;
+    private final BillingProjector billing;
     private final Timer timer;
 
     public IngestService(JdbcTemplate jdbc, TransactionTemplate tx, AuditService audit, PqtProperties props,
-                         ObjectMapper mapper, MeterRegistry meters) {
+                         ObjectMapper mapper, MeterRegistry meters, BillingProjector billing) {
         this.jdbc = jdbc;
+        this.billing = billing;
         this.tx = tx;
         this.audit = audit;
         this.props = props;
@@ -74,6 +78,7 @@ public class IngestService {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)""",
                 e.source(), e.id(), e.type(), e.time().atOffset(ZoneOffset.UTC), e.subject(), e.storeId(),
                 e.simRunId(), e.dataschema(), Canonical.json(e.node().get("data")), e.traceparent(), channel, producer);
+        billing.project(e);
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("ce_id", e.id());
         headers.put("ce_source", e.source());

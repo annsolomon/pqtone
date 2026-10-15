@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pqt.local/pos/till.event/1.0.0",
+  "title": "com.pqt.pos.till.event data",
+  "description": "Something at the till that is not a sale line or a payment (X1, B1). Allow-listed fields only: no customer identity, card numbers or free text (ADR-033).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "storeId",
+    "tillId",
+    "kind"
+  ],
+  "dependentRequired": {
+    "amountMinor": [
+      "currency"
+    ]
+  },
+  "properties": {
+    "storeId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,64}$"
+    },
+    "tillId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,64}$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "void",
+        "refund",
+        "no_sale",
+        "price_override",
+        "drawer_open",
+        "shift_open",
+        "shift_close"
+      ]
+    },
+    "billRef": {
+      "type": "string",
+      "pattern": "^bill-[0-9a-f]{32}$",
+      "description": "HMAC-SHA256 of the bill number concerned with the store's key (ADR-033); never the real number."
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000,
+      "description": "For a void: the revision of the bill that was voided."
+    },
+    "amountMinor": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000000000,
+      "description": "Amount involved, in minor units."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "ISO 4217 code, e.g. INR."
+    }
+  }
+}

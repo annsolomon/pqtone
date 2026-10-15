@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pqt.local/stock/movement/1.0.0",
+  "title": "com.pqt.stock.movement data",
+  "description": "Stock received into or leaving the store (X1, B1). Quantity always positive; `direction` gives the sign. Allow-listed fields only: no customer identity, card numbers or free text (ADR-033).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "storeId",
+    "sku",
+    "direction",
+    "reason",
+    "qtyMilli",
+    "unit"
+  ],
+  "properties": {
+    "storeId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,64}$"
+    },
+    "sku": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$",
+      "description": "The billing system's item code (business data, not personal)."
+    },
+    "direction": {
+      "type": "string",
+      "enum": [
+        "in",
+        "out"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "purchase_receipt",
+        "sale",
+        "customer_return",
+        "supplier_return",
+        "transfer_in",
+        "transfer_out",
+        "adjustment",
+        "damage"
+      ]
+    },
+    "qtyMilli": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000000000,
+      "description": "Quantity in thousandths of `unit`, always positive."
+    },
+    "unit": {
+      "type": "string",
+      "enum": [
+        "pcs",
+        "kg",
+        "g",
+        "l",
+        "ml",
+        "m",
+        "box",
+        "pack",
+        "other"
+      ]
+    },
+    "docRef": {
+      "type": "string",
+      "pattern": "^doc-[0-9a-f]{32}$",
+      "description": "HMAC-SHA256 of the purchase bill, delivery note or transfer number with the store's key (ADR-033); never the real number."
+    },
+    "lineNo": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000
+    }
+  }
+}

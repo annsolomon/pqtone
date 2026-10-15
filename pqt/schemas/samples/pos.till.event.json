@@ -1,0 +1,22 @@
+{
+  "specversion": "1.0",
+  "id": "1d9ae6c1-a22f-5320-bc7b-252503d19462",
+  "source": "urn:pqt:edge:store-001:pos-file",
+  "type": "com.pqt.pos.till.event",
+  "time": "2026-01-01T10:20:00.000Z",
+  "subject": "till:till-1",
+  "dataschema": "https://schemas.pqt.local/pos/till.event/1.0.0",
+  "datacontenttype": "application/json",
+  "storeid": "store-001",
+  "partitionkey": "store-001",
+  "sequence": "0000000001",
+  "data": {
+    "storeId": "store-001",
+    "tillId": "till-1",
+    "kind": "void",
+    "billRef": "bill-9c05b144c6325ed1692f05ea8e277b1a",
+    "revision": 0,
+    "amountMinor": 49000,
+    "currency": "INR"
+  }
+}

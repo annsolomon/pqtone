@@ -1,0 +1,26 @@
+{
+  "specversion": "1.0",
+  "id": "2d841d52-e724-555c-bbed-383751e45cec",
+  "source": "urn:pqt:edge:store-001:pos-file",
+  "type": "com.pqt.pos.sale.line",
+  "time": "2026-01-01T10:15:02.000Z",
+  "subject": "till:till-1",
+  "dataschema": "https://schemas.pqt.local/pos/sale.line/1.0.0",
+  "datacontenttype": "application/json",
+  "storeid": "store-001",
+  "partitionkey": "store-001",
+  "sequence": "0000000001",
+  "data": {
+    "storeId": "store-001",
+    "tillId": "till-1",
+    "billRef": "bill-9c05b144c6325ed1692f05ea8e277b1a",
+    "revision": 0,
+    "lineNo": 1,
+    "sku": "ATTA-5KG",
+    "qtyMilli": 2000,
+    "unit": "pcs",
+    "amountMinor": 49000,
+    "taxMinor": 2333,
+    "currency": "INR"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "specversion": "1.0",
+  "id": "d5434941-250b-5578-b686-625852009bcb",
+  "source": "urn:pqt:edge:store-001:pos-file",
+  "type": "com.pqt.pos.day.total",
+  "time": "2026-01-01T23:59:59.000Z",
+  "subject": "store:store-001",
+  "dataschema": "https://schemas.pqt.local/pos/day.total/1.0.0",
+  "datacontenttype": "application/json",
+  "storeid": "store-001",
+  "partitionkey": "store-001",
+  "sequence": "0000000001",
+  "data": {
+    "storeId": "store-001",
+    "businessDate": "2026-01-01",
+    "salesMinor": 4512300,
+    "refundsMinor": 49000,
+    "bills": 212,
+    "paymentsByTender": {
+      "cash": 1203000,
+      "upi": 2950300,
+      "card": 310000
+    },
+    "currency": "INR",
+    "source": "file"
+  }
+}
