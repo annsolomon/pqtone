@@ -37,7 +37,7 @@ a queue place at once when it appears within 5 s of the loss (otherwise it waits
 and `queue.length` is reported once per instant.
 
 `store-sim matrix --noise-profile <file> --noise-scale 2` runs the whole matrix with every rate
-doubled (jitter spread too); `make offline-noise` scores clean, measured and 2x measured side by side.
+doubled (jitter spread too); `make offline-noise` scores clean, measured and 2x measured side by side (CI runs it as its own job, "offline score under vision noise").
 
 ## Privacy
 

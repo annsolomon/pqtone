@@ -74,6 +74,8 @@ class AgentConfig:
     status_every_s: float = 10.0
     strict_secrets: bool = True
     heartbeat_every_s: float = 30.0
+    # At a clean stop, how long to keep sending what is pending once the cameras have stopped (A4).
+    drain_on_stop_s: float = 10.0
 
     def client_secret(self) -> str:
         return read_secret(self.client_secret_file, strict=self.strict_secrets)
@@ -104,6 +106,7 @@ def load(path: str | Path) -> AgentConfig:
             outbox_quota_bytes=int(float(ob.get("quotaMb", 512)) * 1024 * 1024), detector=doc.get("detector", {}),
             cameras=cams, status_path=Path(doc.get("statusPath", "/var/lib/pqt-edge/status.json")),
             status_every_s=float(doc.get("statusEverySeconds", 10)), strict_secrets=strict,
-            heartbeat_every_s=float(doc.get("heartbeatEverySeconds", 30)))
+            heartbeat_every_s=float(doc.get("heartbeatEverySeconds", 30)),
+            drain_on_stop_s=float(doc.get("drainOnStopSeconds", 10)))
     except KeyError as e:
         raise ConfigError(f"missing setting {e}") from e
